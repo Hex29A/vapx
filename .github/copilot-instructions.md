@@ -224,9 +224,9 @@ impl XxxCmd {
 ## TODO (Implementation Roadmap)
 
 ### Priority 1 — Core robustness
-- [ ] Retry with exponential backoff (3 attempts on 5xx/timeout)
-- [ ] Per-command timeout defaults (120s for firmware, 30s for ACAP upload)
-- [ ] `--timeout` global override flag
+- [x] Retry with exponential backoff (3 attempts on 5xx/timeout)
+- [x] Per-command timeout defaults (120s for firmware, config-based for others)
+- [x] `--timeout` per-command override flag
 
 ### Priority 2 — More subcommands
 - [x] `vapx fw` — firmware status

@@ -38,6 +38,10 @@ pub struct SnapCmd {
     /// Compression level 0-100 (higher = more compression)
     #[arg(short, long)]
     pub compression: Option<u8>,
+
+    /// Request timeout in seconds
+    #[arg(long)]
+    pub timeout: Option<u64>,
 }
 
 impl SnapCmd {
@@ -50,7 +54,8 @@ impl SnapCmd {
             self.insecure,
         )?;
 
-        let client = VapixClient::new(&resolved_host, creds.port, creds, 10);
+        let timeout = self.timeout.unwrap_or(creds.timeout);
+        let client = VapixClient::new(&resolved_host, creds.port, creds, timeout);
 
         let mut params: Vec<(&str, &str)> = Vec::new();
         let res_str;

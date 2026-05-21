@@ -199,11 +199,16 @@ src/
   main.rs              # CLI parsing, subcommand dispatch
   cmd/
     info.rs            # vapx info — device identification
+    snap.rs            # vapx snap — JPEG snapshot
+    fw.rs              # vapx fw — firmware status
+    acap.rs            # vapx acap — ACAP app management
     config.rs          # vapx config — config management
   vapix/
     auth.rs            # Digest/Basic auth negotiation
     client.rs          # VapixClient (HTTP POST/GET with auth + validation)
     device.rs          # basicdeviceinfo.cgi wrapper
+    firmware.rs        # firmwaremanagement.cgi wrapper
+    applications.rs    # ACAP list/control (XML parsing)
   config/
     cameras.rs         # cameras.yaml loading, env substitution, name resolution
     credentials.rs     # Credential resolution (flags > yaml > prompt)
@@ -218,14 +223,17 @@ tests/
 Currently implemented:
 
 - [x] Basic Device Information (`basicdeviceinfo.cgi`)
+- [x] JPEG Snapshot (`jpg/image.cgi`)
+- [x] Firmware Management (`firmwaremanagement.cgi`)
+- [x] ACAP Application Lifecycle (`applications/*.cgi`)
 
 Planned:
 
-- [ ] Firmware Management (`firmwaremanagement.cgi`)
-- [ ] ACAP Application Lifecycle (`applications/*.cgi`)
 - [ ] PTZ Control (`com/ptz.cgi`)
-- [ ] JPEG Snapshot (`jpg/image.cgi`)
 - [ ] Parameter Management (`param.cgi`)
+- [ ] User Management / Password (`pwdgrp.cgi`)
+- [ ] Network Configuration (`network_settings.cgi`)
+- [ ] Time & NTP (`ntp.cgi`, `timeservice.cgi`)
 - [ ] I/O Port Management (`io/portmanagement.cgi`)
 - [ ] Light Control (`lightcontrol.cgi`)
 - [ ] Network Settings

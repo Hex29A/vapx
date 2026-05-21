@@ -29,6 +29,10 @@ pub struct FwCmd {
     /// Output as plain text instead of JSON
     #[arg(long)]
     pub plain: bool,
+
+    /// Request timeout in seconds (default: 120 for firmware operations)
+    #[arg(long)]
+    pub timeout: Option<u64>,
 }
 
 impl FwCmd {
@@ -41,7 +45,8 @@ impl FwCmd {
             self.insecure,
         )?;
 
-        let client = VapixClient::new(&resolved_host, creds.port, creds, 10);
+        let timeout = self.timeout.unwrap_or(120);
+        let client = VapixClient::new(&resolved_host, creds.port, creds, timeout);
         let resp = firmware::status(&client)?;
 
         let output = resp

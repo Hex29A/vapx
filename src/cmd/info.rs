@@ -33,6 +33,10 @@ pub struct InfoCmd {
     /// Only show specific properties (comma-separated)
     #[arg(long, value_delimiter = ',')]
     pub props: Option<Vec<String>>,
+
+    /// Request timeout in seconds
+    #[arg(long)]
+    pub timeout: Option<u64>,
 }
 
 impl InfoCmd {
@@ -45,7 +49,8 @@ impl InfoCmd {
             self.insecure,
         )?;
 
-        let client = VapixClient::new(&resolved_host, creds.port, creds, 10);
+        let timeout = self.timeout.unwrap_or(creds.timeout);
+        let client = VapixClient::new(&resolved_host, creds.port, creds, timeout);
 
         let resp = if let Some(ref props) = self.props {
             let prop_refs: Vec<&str> = props.iter().map(|s| s.as_str()).collect();

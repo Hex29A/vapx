@@ -27,6 +27,9 @@ pub enum AcapCommands {
         port: Option<u16>,
         #[arg(long)]
         plain: bool,
+        /// Request timeout in seconds
+        #[arg(long)]
+        timeout: Option<u64>,
     },
     /// Start an application
     Start {
@@ -43,6 +46,9 @@ pub enum AcapCommands {
         insecure: bool,
         #[arg(long)]
         port: Option<u16>,
+        /// Request timeout in seconds
+        #[arg(long)]
+        timeout: Option<u64>,
     },
     /// Stop an application
     Stop {
@@ -59,6 +65,9 @@ pub enum AcapCommands {
         insecure: bool,
         #[arg(long)]
         port: Option<u16>,
+        /// Request timeout in seconds
+        #[arg(long)]
+        timeout: Option<u64>,
     },
     /// Restart an application
     Restart {
@@ -75,6 +84,9 @@ pub enum AcapCommands {
         insecure: bool,
         #[arg(long)]
         port: Option<u16>,
+        /// Request timeout in seconds
+        #[arg(long)]
+        timeout: Option<u64>,
     },
     /// Remove an application
     Remove {
@@ -91,6 +103,9 @@ pub enum AcapCommands {
         insecure: bool,
         #[arg(long)]
         port: Option<u16>,
+        /// Request timeout in seconds
+        #[arg(long)]
+        timeout: Option<u64>,
     },
 }
 
@@ -104,10 +119,12 @@ impl AcapCmd {
                 insecure,
                 port,
                 plain,
+                timeout,
             } => {
                 let (creds, resolved_host) =
                     resolve(&host, user.as_deref(), pass.as_deref(), port, insecure)?;
-                let client = VapixClient::new(&resolved_host, creds.port, creds, 10);
+                let t = timeout.unwrap_or(creds.timeout);
+                let client = VapixClient::new(&resolved_host, creds.port, creds, t);
                 let apps = applications::list_applications(&client)?;
 
                 if plain {
@@ -131,10 +148,12 @@ impl AcapCmd {
                 pass,
                 insecure,
                 port,
+                timeout,
             } => {
                 let (creds, resolved_host) =
                     resolve(&host, user.as_deref(), pass.as_deref(), port, insecure)?;
-                let client = VapixClient::new(&resolved_host, creds.port, creds, 10);
+                let t = timeout.unwrap_or(creds.timeout);
+                let client = VapixClient::new(&resolved_host, creds.port, creds, t);
                 applications::control(&client, "start", &package)?;
                 println!("Started: {}", package);
             }
@@ -145,10 +164,12 @@ impl AcapCmd {
                 pass,
                 insecure,
                 port,
+                timeout,
             } => {
                 let (creds, resolved_host) =
                     resolve(&host, user.as_deref(), pass.as_deref(), port, insecure)?;
-                let client = VapixClient::new(&resolved_host, creds.port, creds, 10);
+                let t = timeout.unwrap_or(creds.timeout);
+                let client = VapixClient::new(&resolved_host, creds.port, creds, t);
                 applications::control(&client, "stop", &package)?;
                 println!("Stopped: {}", package);
             }
@@ -159,10 +180,12 @@ impl AcapCmd {
                 pass,
                 insecure,
                 port,
+                timeout,
             } => {
                 let (creds, resolved_host) =
                     resolve(&host, user.as_deref(), pass.as_deref(), port, insecure)?;
-                let client = VapixClient::new(&resolved_host, creds.port, creds, 10);
+                let t = timeout.unwrap_or(creds.timeout);
+                let client = VapixClient::new(&resolved_host, creds.port, creds, t);
                 applications::control(&client, "restart", &package)?;
                 println!("Restarted: {}", package);
             }
@@ -173,10 +196,12 @@ impl AcapCmd {
                 pass,
                 insecure,
                 port,
+                timeout,
             } => {
                 let (creds, resolved_host) =
                     resolve(&host, user.as_deref(), pass.as_deref(), port, insecure)?;
-                let client = VapixClient::new(&resolved_host, creds.port, creds, 10);
+                let t = timeout.unwrap_or(creds.timeout);
+                let client = VapixClient::new(&resolved_host, creds.port, creds, t);
                 applications::control(&client, "remove", &package)?;
                 println!("Removed: {}", package);
             }
