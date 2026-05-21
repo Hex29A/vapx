@@ -32,6 +32,10 @@ pub enum Commands {
     Param(cmd::param::ParamCmd),
     /// User account management
     User(cmd::user::UserCmd),
+    /// Change user password
+    Pass(cmd::pass::PassCmd),
+    /// Network configuration
+    Net(cmd::net::NetCmd),
     /// Configuration management
     Config(cmd::config::ConfigCmd),
 }
@@ -62,6 +66,8 @@ fn main() -> anyhow::Result<()> {
         Commands::Ptz(cmd) => cmd.run(),
         Commands::Param(cmd) => cmd.run(),
         Commands::User(cmd) => cmd.run(),
+        Commands::Pass(cmd) => cmd.run(),
+        Commands::Net(cmd) => cmd.run(),
         Commands::Config(cmd) => cmd.run(),
     }
 }

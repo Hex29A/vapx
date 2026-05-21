@@ -43,6 +43,8 @@ vapx/
       ptz.rs             # vapx ptz — PTZ control
       param.rs           # vapx param — parameter management
       user.rs            # vapx user — user account management
+      pass.rs            # vapx pass — password management
+      net.rs             # vapx net — network configuration
       config.rs          # vapx config — config file management
     vapix/
       mod.rs
@@ -54,6 +56,7 @@ vapx/
       ptz.rs             # PTZ control (com/ptz.cgi)
       params.rs          # Parameter management (param.cgi)
       users.rs           # User management (pwdgrp.cgi)
+      network.rs         # Network configuration (param.cgi root.Network)
     config/
       mod.rs
       cameras.rs         # cameras.yaml loading, env var substitution
@@ -241,8 +244,8 @@ impl XxxCmd {
 - [x] `vapx ptz` — pan/tilt/zoom control
 - [x] `vapx param` — parameter list/get/set
 - [x] `vapx user` — user account management (list, add, update, remove)
-- [ ] `vapx pass` — user/password management
-- [ ] `vapx net` — network configuration
+- [x] `vapx pass` — password management
+- [x] `vapx net` — network configuration (show, set)
 - [ ] `vapx time` — NTP/timezone
 - [ ] `vapx hw` — I/O ports, lights
 

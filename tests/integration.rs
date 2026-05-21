@@ -904,3 +904,254 @@ fn test_user_add_update_remove_lifecycle() {
         stdout
     );
 }
+
+// ── Password management tests ───────────────────────────────────────
+
+#[test]
+fn test_pass_change_lifecycle() {
+    if skip_if_no_camera() {
+        eprintln!("SKIP: camera not reachable");
+        return;
+    }
+
+    let test_account = "vapxpasst";
+    let initial_pwd = "InitPass1";
+    let new_pwd = "NewPass42";
+
+    // 1. Create a test user
+    let output = vapx_bin()
+        .args([
+            "user",
+            "add",
+            &test_host(),
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+            "--name",
+            test_account,
+            "--pwd",
+            initial_pwd,
+            "--role",
+            "viewer",
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    assert!(
+        output.status.success(),
+        "user add failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // 2. Change password via vapx pass
+    let output = vapx_bin()
+        .args([
+            "pass",
+            &test_host(),
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+            "--name",
+            test_account,
+            "--pwd",
+            new_pwd,
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "pass change failed: {}",
+        stderr
+    );
+    assert!(
+        stderr.contains("Modified account"),
+        "Expected 'Modified account', got: {}",
+        stderr
+    );
+
+    // 3. Cleanup: remove test user
+    let output = vapx_bin()
+        .args([
+            "user",
+            "remove",
+            &test_host(),
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+            "--name",
+            test_account,
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    assert!(
+        output.status.success(),
+        "user remove failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+// ── Network configuration tests ─────────────────────────────────────
+
+#[test]
+fn test_net_show_json() {
+    if skip_if_no_camera() {
+        eprintln!("SKIP: camera not reachable");
+        return;
+    }
+
+    let output = vapx_bin()
+        .args([
+            "net",
+            "show",
+            &test_host(),
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "net show failed: {}",
+        stderr
+    );
+
+    let json: serde_json::Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|e| panic!("Invalid JSON: {}\nstdout: {}", e, stdout));
+    assert!(json.is_object());
+    assert!(
+        json.get("root.Network.IPAddress").is_some(),
+        "Missing root.Network.IPAddress"
+    );
+    assert!(
+        json.get("root.Network.BootProto").is_some(),
+        "Missing root.Network.BootProto"
+    );
+}
+
+#[test]
+fn test_net_show_plain() {
+    if skip_if_no_camera() {
+        eprintln!("SKIP: camera not reachable");
+        return;
+    }
+
+    let output = vapx_bin()
+        .args([
+            "net",
+            "show",
+            &test_host(),
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+            "--plain",
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success());
+    assert!(
+        stdout.contains("root.Network.IPAddress"),
+        "Missing IP address in plain output"
+    );
+}
+
+#[test]
+fn test_net_set_hostname_roundtrip() {
+    if skip_if_no_camera() {
+        eprintln!("SKIP: camera not reachable");
+        return;
+    }
+
+    // 1. Read current hostname
+    let output = vapx_bin()
+        .args([
+            "param",
+            "get",
+            &test_host(),
+            "root.Network.HostName",
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    let original_hostname = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+    // 2. Set a test hostname via vapx net set
+    let output = vapx_bin()
+        .args([
+            "net",
+            "set",
+            &test_host(),
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+            "--hostname",
+            "vapxtest",
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "net set hostname failed: {}",
+        stderr
+    );
+
+    // 3. Verify it changed
+    let output = vapx_bin()
+        .args([
+            "param",
+            "get",
+            &test_host(),
+            "root.Network.HostName",
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    let new_hostname = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    assert_eq!(new_hostname, "vapxtest", "Hostname was not changed");
+
+    // 4. Restore original hostname
+    let output = vapx_bin()
+        .args([
+            "net",
+            "set",
+            &test_host(),
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+            "--hostname",
+            &original_hostname,
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    assert!(
+        output.status.success(),
+        "Restoring hostname failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
