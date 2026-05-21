@@ -40,12 +40,6 @@ jobs:
           - target: armv7-unknown-linux-musleabihf
             os: ubuntu-latest
             use_cross: true
-          - target: x86_64-apple-darwin
-            os: macos-13
-            use_cross: false
-          - target: aarch64-apple-darwin
-            os: macos-14
-            use_cross: false
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -116,5 +110,3 @@ jobs:
             | vapx-x86_64-unknown-linux-musl | Linux x86_64 (static) |
             | vapx-aarch64-unknown-linux-musl | Linux ARM64 / Raspberry Pi 4-5 |
             | vapx-armv7-unknown-linux-musleabihf | Linux ARMv7 / Raspberry Pi 3 |
-            | vapx-x86_64-apple-darwin | macOS Intel |
-            | vapx-aarch64-apple-darwin | macOS Apple Silicon |
