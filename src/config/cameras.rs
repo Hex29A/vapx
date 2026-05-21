@@ -222,8 +222,8 @@ groups:
         assert_eq!(config.cameras["testcam"].host, "192.168.1.100");
         assert_eq!(config.effective_user(&config.cameras["testcam"]), Some("root".into()));
         assert_eq!(config.effective_user(&config.cameras["othercam"]), Some("admin".into()));
-        assert_eq!(config.effective_https(&config.cameras["testcam"]), false);
-        assert_eq!(config.effective_https(&config.cameras["othercam"]), true);
+        assert!(!config.effective_https(&config.cameras["testcam"]));
+        assert!(config.effective_https(&config.cameras["othercam"]));
         assert_eq!(config.group("all").len(), 2);
     }
 

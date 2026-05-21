@@ -10,8 +10,7 @@
 use std::process::Command;
 
 fn vapx_bin() -> Command {
-    let cmd = Command::new(env!("CARGO_BIN_EXE_vapx"));
-    cmd
+    Command::new(env!("CARGO_BIN_EXE_vapx"))
 }
 
 fn test_host() -> String {
