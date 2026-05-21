@@ -33,6 +33,9 @@ The `host` argument can be an IP address, hostname, or a camera name defined in 
 | Command | Description |
 |---------|-------------|
 | `info` | Device info (model, firmware, serial, architecture) |
+| `snap` | JPEG snapshot to file |
+| `fw` | Firmware status |
+| `acap` | ACAP application management (list, start, stop, restart, remove) |
 | `config` | Manage cameras.yaml (path, check, list, init) |
 
 ### Examples
@@ -46,6 +49,24 @@ vapx info 192.168.7.10 -u martincr -p secret --plain
 
 # Specific properties only
 vapx info 192.168.7.10 -u martincr -p secret --props Brand,Version,Architecture
+
+# Take a snapshot
+vapx snap 192.168.7.10 -u martincr -p secret -o photo.jpg
+vapx snap 192.168.7.10 -u martincr -p secret --resolution 1920x1080 --compression 25
+
+# Check firmware status
+vapx fw 192.168.7.10 -u martincr -p secret
+vapx fw 192.168.7.10 -u martincr -p secret --plain
+
+# List installed ACAP applications
+vapx acap list 192.168.7.10 -u martincr -p secret
+vapx acap list 192.168.7.10 -u martincr -p secret --plain
+
+# Control ACAP applications
+vapx acap start 192.168.7.10 --package vdo_larod -u martincr -p secret
+vapx acap stop 192.168.7.10 --package vdo_larod -u martincr -p secret
+vapx acap restart 192.168.7.10 --package vdo_larod -u martincr -p secret
+vapx acap remove 192.168.7.10 --package vdo_larod -u martincr -p secret
 
 # Use camera name from config
 vapx info entrance

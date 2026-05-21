@@ -324,3 +324,190 @@ cameras:
 
     std::fs::remove_dir_all(&tmp).ok();
 }
+
+// ── Snapshot tests ──────────────────────────────────────────────────
+
+#[test]
+fn test_snap_default() {
+    if skip_if_no_camera() {
+        eprintln!("SKIP: camera not reachable");
+        return;
+    }
+
+    let tmp = std::env::temp_dir().join(format!("vapx_snap_{}", std::process::id()));
+    std::fs::create_dir_all(&tmp).unwrap();
+    let out_file = tmp.join("test.jpg");
+
+    let output = vapx_bin()
+        .args([
+            "snap",
+            &test_host(),
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+            "-o",
+            out_file.to_str().unwrap(),
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "snap failed: {}", stderr);
+
+    assert!(out_file.exists(), "Snapshot file not created");
+    let metadata = std::fs::metadata(&out_file).unwrap();
+    assert!(metadata.len() > 1000, "Snapshot too small: {} bytes", metadata.len());
+
+    let json: serde_json::Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|e| panic!("Invalid JSON: {}\nstdout: {}", e, stdout));
+    assert!(json.get("file").is_some());
+    assert!(json.get("bytes").is_some());
+
+    std::fs::remove_dir_all(&tmp).ok();
+}
+
+#[test]
+fn test_snap_with_resolution() {
+    if skip_if_no_camera() {
+        eprintln!("SKIP: camera not reachable");
+        return;
+    }
+
+    let tmp = std::env::temp_dir().join(format!("vapx_snap_res_{}", std::process::id()));
+    std::fs::create_dir_all(&tmp).unwrap();
+    let out_file = tmp.join("small.jpg");
+
+    let output = vapx_bin()
+        .args([
+            "snap",
+            &test_host(),
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+            "-o",
+            out_file.to_str().unwrap(),
+            "--resolution",
+            "320x240",
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    assert!(output.status.success());
+    assert!(out_file.exists());
+
+    std::fs::remove_dir_all(&tmp).ok();
+}
+
+// ── Firmware tests ──────────────────────────────────────────────────
+
+#[test]
+fn test_fw_status_json() {
+    if skip_if_no_camera() {
+        eprintln!("SKIP: camera not reachable");
+        return;
+    }
+
+    let output = vapx_bin()
+        .args(["fw", &test_host(), "-u", &test_user(), "-p", &test_pass()])
+        .output()
+        .expect("failed to run vapx");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "fw status failed: {}", stderr);
+
+    let json: serde_json::Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|e| panic!("Invalid JSON: {}\nstdout: {}", e, stdout));
+    assert!(
+        json.get("activeFirmwareVersion").is_some(),
+        "Missing activeFirmwareVersion"
+    );
+}
+
+#[test]
+fn test_fw_status_plain() {
+    if skip_if_no_camera() {
+        eprintln!("SKIP: camera not reachable");
+        return;
+    }
+
+    let output = vapx_bin()
+        .args([
+            "fw",
+            &test_host(),
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+            "--plain",
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success());
+    assert!(stdout.contains("activeFirmwareVersion:"));
+}
+
+// ── ACAP tests ──────────────────────────────────────────────────────
+
+#[test]
+fn test_acap_list_json() {
+    if skip_if_no_camera() {
+        eprintln!("SKIP: camera not reachable");
+        return;
+    }
+
+    let output = vapx_bin()
+        .args([
+            "acap",
+            "list",
+            &test_host(),
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "acap list failed: {}", stderr);
+
+    let json: serde_json::Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|e| panic!("Invalid JSON: {}\nstdout: {}", e, stdout));
+    assert!(json.is_array(), "Expected JSON array");
+}
+
+#[test]
+fn test_acap_list_plain() {
+    if skip_if_no_camera() {
+        eprintln!("SKIP: camera not reachable");
+        return;
+    }
+
+    let output = vapx_bin()
+        .args([
+            "acap",
+            "list",
+            &test_host(),
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+            "--plain",
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.starts_with('['),
+        "Plain output should not be JSON array"
+    );
+}

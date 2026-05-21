@@ -18,8 +18,14 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Device info, status, syslog
+    /// Device info (model, firmware, serial)
     Info(cmd::info::InfoCmd),
+    /// JPEG snapshot to file
+    Snap(cmd::snap::SnapCmd),
+    /// Firmware status
+    Fw(cmd::fw::FwCmd),
+    /// ACAP application management
+    Acap(cmd::acap::AcapCmd),
     /// Configuration management
     Config(cmd::config::ConfigCmd),
 }
@@ -44,6 +50,9 @@ fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Commands::Info(cmd) => cmd.run(),
+        Commands::Snap(cmd) => cmd.run(),
+        Commands::Fw(cmd) => cmd.run(),
+        Commands::Acap(cmd) => cmd.run(),
         Commands::Config(cmd) => cmd.run(),
     }
 }

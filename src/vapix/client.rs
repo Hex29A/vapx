@@ -69,7 +69,6 @@ impl VapixClient {
     }
 
     /// GET with query params. Returns raw response.
-    #[allow(dead_code)]
     pub fn get(
         &self,
         path: &str,
@@ -104,13 +103,11 @@ impl VapixClient {
     }
 
     /// GET and return response as text.
-    #[allow(dead_code)]
     pub fn get_text(&self, path: &str, params: &[(&str, &str)]) -> anyhow::Result<String> {
         Ok(self.get(path, params)?.text()?)
     }
 
     /// GET and return response as raw bytes.
-    #[allow(dead_code)]
     pub fn get_bytes(&self, path: &str, params: &[(&str, &str)]) -> anyhow::Result<Vec<u8>> {
         let bytes = self.get(path, params)?.bytes()?.to_vec();
         Ok(bytes)

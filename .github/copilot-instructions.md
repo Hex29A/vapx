@@ -37,12 +37,17 @@ vapx/
     cmd/
       mod.rs
       info.rs            # vapx info — device identification
+      snap.rs            # vapx snap — JPEG snapshot
+      fw.rs              # vapx fw — firmware status
+      acap.rs            # vapx acap — ACAP application management
       config.rs          # vapx config — config file management
     vapix/
       mod.rs
       auth.rs            # Digest/Basic auth auto-negotiation
       client.rs          # VapixClient with response body validation
       device.rs          # basicdeviceinfo.cgi
+      firmware.rs        # firmwaremanagement.cgi
+      applications.rs    # ACAP application list/control (XML)
     config/
       mod.rs
       cameras.rs         # cameras.yaml loading, env var substitution
@@ -224,9 +229,9 @@ impl XxxCmd {
 - [ ] `--timeout` global override flag
 
 ### Priority 2 — More subcommands
-- [ ] `vapx fw` — firmware status, upgrade
-- [ ] `vapx acap` — list, install, start/stop, remove
-- [ ] `vapx snap` — JPEG snapshot to file
+- [x] `vapx fw` — firmware status
+- [x] `vapx acap` — list, start/stop, restart, remove
+- [x] `vapx snap` — JPEG snapshot to file
 - [ ] `vapx ptz` — pan/tilt/zoom control
 - [ ] `vapx pass` — user/password management
 - [ ] `vapx net` — network configuration
