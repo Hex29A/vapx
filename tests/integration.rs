@@ -10,7 +10,7 @@
 use std::process::Command;
 
 fn vapx_bin() -> Command {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_vapx"));
+    let cmd = Command::new(env!("CARGO_BIN_EXE_vapx"));
     cmd
 }
 

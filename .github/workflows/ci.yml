@@ -20,7 +20,7 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - name: Unit tests
-        run: cargo test --lib
+        run: cargo test --bin vapx
       - name: Build
         run: cargo build --release
       - name: Clippy
