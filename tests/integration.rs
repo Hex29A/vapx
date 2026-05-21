@@ -511,3 +511,397 @@ fn test_acap_list_plain() {
         "Plain output should not be JSON array"
     );
 }
+
+// ── PTZ tests ───────────────────────────────────────────────────────
+
+#[test]
+fn test_ptz_info() {
+    if skip_if_no_camera() {
+        eprintln!("SKIP: camera not reachable");
+        return;
+    }
+
+    let output = vapx_bin()
+        .args([
+            "ptz",
+            "info",
+            &test_host(),
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "ptz info failed: {}",
+        stderr
+    );
+    // Info returns text listing available PTZ commands
+    assert!(!stdout.is_empty(), "ptz info returned empty output");
+}
+
+#[test]
+fn test_ptz_query_position() {
+    if skip_if_no_camera() {
+        eprintln!("SKIP: camera not reachable");
+        return;
+    }
+
+    let output = vapx_bin()
+        .args([
+            "ptz",
+            "query",
+            &test_host(),
+            "position",
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "ptz query position failed: {}",
+        stderr
+    );
+
+    let json: serde_json::Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|e| panic!("Invalid JSON: {}\nstdout: {}", e, stdout));
+    assert!(json.is_object(), "Expected JSON object");
+}
+
+#[test]
+fn test_ptz_query_limits() {
+    if skip_if_no_camera() {
+        eprintln!("SKIP: camera not reachable");
+        return;
+    }
+
+    let output = vapx_bin()
+        .args([
+            "ptz",
+            "query",
+            &test_host(),
+            "limits",
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+            "--plain",
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success());
+    assert!(!stdout.is_empty(), "ptz query limits returned empty");
+}
+
+// ── Parameter tests ─────────────────────────────────────────────────
+
+#[test]
+fn test_param_list_brand_group() {
+    if skip_if_no_camera() {
+        eprintln!("SKIP: camera not reachable");
+        return;
+    }
+
+    let output = vapx_bin()
+        .args([
+            "param",
+            "list",
+            &test_host(),
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+            "--group",
+            "root.Brand",
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "param list failed: {}",
+        stderr
+    );
+
+    let json: serde_json::Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|e| panic!("Invalid JSON: {}\nstdout: {}", e, stdout));
+    assert!(json.is_object());
+    assert!(json.get("root.Brand.Brand").is_some(), "Missing root.Brand.Brand");
+    assert_eq!(json["root.Brand.Brand"].as_str().unwrap(), "AXIS");
+}
+
+#[test]
+fn test_param_get_single() {
+    if skip_if_no_camera() {
+        eprintln!("SKIP: camera not reachable");
+        return;
+    }
+
+    let output = vapx_bin()
+        .args([
+            "param",
+            "get",
+            &test_host(),
+            "root.Brand.Brand",
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success());
+    assert_eq!(stdout.trim(), "AXIS");
+}
+
+#[test]
+fn test_param_list_plain() {
+    if skip_if_no_camera() {
+        eprintln!("SKIP: camera not reachable");
+        return;
+    }
+
+    let output = vapx_bin()
+        .args([
+            "param",
+            "list",
+            &test_host(),
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+            "--group",
+            "root.Brand",
+            "--plain",
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success());
+    assert!(stdout.contains("root.Brand.Brand=AXIS"));
+}
+
+// ── User management tests ───────────────────────────────────────────
+
+#[test]
+fn test_user_list_json() {
+    if skip_if_no_camera() {
+        eprintln!("SKIP: camera not reachable");
+        return;
+    }
+
+    let output = vapx_bin()
+        .args([
+            "user",
+            "list",
+            &test_host(),
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "user list failed: {}",
+        stderr
+    );
+
+    let json: serde_json::Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|e| panic!("Invalid JSON: {}\nstdout: {}", e, stdout));
+    assert!(json.is_object());
+}
+
+#[test]
+fn test_user_list_plain() {
+    if skip_if_no_camera() {
+        eprintln!("SKIP: camera not reachable");
+        return;
+    }
+
+    let output = vapx_bin()
+        .args([
+            "user",
+            "list",
+            &test_host(),
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+            "--plain",
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success());
+    assert!(!stdout.is_empty(), "user list returned empty");
+}
+
+#[test]
+fn test_user_add_update_remove_lifecycle() {
+    if skip_if_no_camera() {
+        eprintln!("SKIP: camera not reachable");
+        return;
+    }
+
+    let test_account = "vapxtest";
+
+    // 1. Add user
+    let output = vapx_bin()
+        .args([
+            "user",
+            "add",
+            &test_host(),
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+            "--name",
+            test_account,
+            "--pwd",
+            "TestPass123",
+            "--role",
+            "viewer",
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "user add failed: {}",
+        stderr
+    );
+    assert!(
+        stderr.contains("Created account"),
+        "Expected 'Created account', got: {}",
+        stderr
+    );
+
+    // 2. Verify user appears in list
+    let output = vapx_bin()
+        .args([
+            "user",
+            "list",
+            &test_host(),
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+            "--plain",
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains(test_account),
+        "User {} not found in list: {}",
+        test_account,
+        stdout
+    );
+
+    // 3. Update password
+    let output = vapx_bin()
+        .args([
+            "user",
+            "update",
+            &test_host(),
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+            "--name",
+            test_account,
+            "--pwd",
+            "NewPass456",
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "user update failed: {}",
+        stderr
+    );
+    assert!(
+        stderr.contains("Modified account"),
+        "Expected 'Modified account', got: {}",
+        stderr
+    );
+
+    // 4. Remove user
+    let output = vapx_bin()
+        .args([
+            "user",
+            "remove",
+            &test_host(),
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+            "--name",
+            test_account,
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "user remove failed: {}",
+        stderr
+    );
+    assert!(
+        stderr.contains("Removed account"),
+        "Expected 'Removed account', got: {}",
+        stderr
+    );
+
+    // 5. Verify user is gone
+    let output = vapx_bin()
+        .args([
+            "user",
+            "list",
+            &test_host(),
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+            "--plain",
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains(test_account),
+        "User {} still in list after removal: {}",
+        test_account,
+        stdout
+    );
+}

@@ -26,6 +26,12 @@ pub enum Commands {
     Fw(cmd::fw::FwCmd),
     /// ACAP application management
     Acap(cmd::acap::AcapCmd),
+    /// PTZ control (pan, tilt, zoom)
+    Ptz(cmd::ptz::PtzCmd),
+    /// Parameter management
+    Param(cmd::param::ParamCmd),
+    /// User account management
+    User(cmd::user::UserCmd),
     /// Configuration management
     Config(cmd::config::ConfigCmd),
 }
@@ -53,6 +59,9 @@ fn main() -> anyhow::Result<()> {
         Commands::Snap(cmd) => cmd.run(),
         Commands::Fw(cmd) => cmd.run(),
         Commands::Acap(cmd) => cmd.run(),
+        Commands::Ptz(cmd) => cmd.run(),
+        Commands::Param(cmd) => cmd.run(),
+        Commands::User(cmd) => cmd.run(),
         Commands::Config(cmd) => cmd.run(),
     }
 }

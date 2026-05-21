@@ -40,6 +40,9 @@ vapx/
       snap.rs            # vapx snap — JPEG snapshot
       fw.rs              # vapx fw — firmware status
       acap.rs            # vapx acap — ACAP application management
+      ptz.rs             # vapx ptz — PTZ control
+      param.rs           # vapx param — parameter management
+      user.rs            # vapx user — user account management
       config.rs          # vapx config — config file management
     vapix/
       mod.rs
@@ -48,6 +51,9 @@ vapx/
       device.rs          # basicdeviceinfo.cgi
       firmware.rs        # firmwaremanagement.cgi
       applications.rs    # ACAP application list/control (XML)
+      ptz.rs             # PTZ control (com/ptz.cgi)
+      params.rs          # Parameter management (param.cgi)
+      users.rs           # User management (pwdgrp.cgi)
     config/
       mod.rs
       cameras.rs         # cameras.yaml loading, env var substitution
@@ -232,7 +238,9 @@ impl XxxCmd {
 - [x] `vapx fw` — firmware status
 - [x] `vapx acap` — list, start/stop, restart, remove
 - [x] `vapx snap` — JPEG snapshot to file
-- [ ] `vapx ptz` — pan/tilt/zoom control
+- [x] `vapx ptz` — pan/tilt/zoom control
+- [x] `vapx param` — parameter list/get/set
+- [x] `vapx user` — user account management (list, add, update, remove)
 - [ ] `vapx pass` — user/password management
 - [ ] `vapx net` — network configuration
 - [ ] `vapx time` — NTP/timezone

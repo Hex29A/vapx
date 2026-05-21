@@ -36,6 +36,9 @@ The `host` argument can be an IP address, hostname, or a camera name defined in 
 | `snap` | JPEG snapshot to file |
 | `fw` | Firmware status |
 | `acap` | ACAP application management (list, start, stop, restart, remove) |
+| `ptz` | PTZ control (move, goto, preset, query, info) |
+| `param` | Parameter management (list, get, set) |
+| `user` | User account management (list, add, update, remove) |
 | `config` | Manage cameras.yaml (path, check, list, init) |
 
 ### Examples
@@ -67,6 +70,27 @@ vapx acap start 192.168.7.10 --package vdo_larod -u martincr -p secret
 vapx acap stop 192.168.7.10 --package vdo_larod -u martincr -p secret
 vapx acap restart 192.168.7.10 --package vdo_larod -u martincr -p secret
 vapx acap remove 192.168.7.10 --package vdo_larod -u martincr -p secret
+
+# PTZ control
+vapx ptz move 192.168.7.10 home -u martincr -p secret
+vapx ptz goto 192.168.7.10 --pan 90.0 --tilt -20.0 --zoom 5000 -u martincr -p secret
+vapx ptz goto 192.168.7.10 --rpan 10.0 --speed 50 -u martincr -p secret
+vapx ptz preset 192.168.7.10 "Door" -u martincr -p secret
+vapx ptz query 192.168.7.10 position -u martincr -p secret
+vapx ptz query 192.168.7.10 limits --plain -u martincr -p secret
+vapx ptz info 192.168.7.10 -u martincr -p secret
+
+# Parameter management
+vapx param list 192.168.7.10 --group root.Brand -u martincr -p secret
+vapx param get 192.168.7.10 root.Brand.Brand -u martincr -p secret
+vapx param set 192.168.7.10 root.Network.HostName=myaxis -u martincr -p secret
+
+# User management
+vapx user list 192.168.7.10 -u martincr -p secret
+vapx user add 192.168.7.10 --name viewer1 --pwd secret --role viewer -u martincr -p secret
+vapx user add 192.168.7.10 --name op1 --pwd secret --role operator --ptz -u martincr -p secret
+vapx user update 192.168.7.10 --name viewer1 --pwd newpass -u martincr -p secret
+vapx user remove 192.168.7.10 --name viewer1 -u martincr -p secret
 
 # Use camera name from config
 vapx info entrance
@@ -202,6 +226,9 @@ src/
     snap.rs            # vapx snap — JPEG snapshot
     fw.rs              # vapx fw — firmware status
     acap.rs            # vapx acap — ACAP app management
+    ptz.rs             # vapx ptz — PTZ control
+    param.rs           # vapx param — parameter management
+    user.rs            # vapx user — user account management
     config.rs          # vapx config — config management
   vapix/
     auth.rs            # Digest/Basic auth negotiation
@@ -209,6 +236,9 @@ src/
     device.rs          # basicdeviceinfo.cgi wrapper
     firmware.rs        # firmwaremanagement.cgi wrapper
     applications.rs    # ACAP list/control (XML parsing)
+    ptz.rs             # PTZ control (com/ptz.cgi)
+    params.rs          # Parameter management (param.cgi)
+    users.rs           # User management (pwdgrp.cgi)
   config/
     cameras.rs         # cameras.yaml loading, env substitution, name resolution
     credentials.rs     # Credential resolution (flags > yaml > prompt)
@@ -226,19 +256,15 @@ Currently implemented:
 - [x] JPEG Snapshot (`jpg/image.cgi`)
 - [x] Firmware Management (`firmwaremanagement.cgi`)
 - [x] ACAP Application Lifecycle (`applications/*.cgi`)
+- [x] PTZ Control (`com/ptz.cgi`)
+- [x] Parameter Management (`param.cgi`)
+- [x] User Management (`pwdgrp.cgi`)
 
 Planned:
-
-- [ ] PTZ Control (`com/ptz.cgi`)
-- [ ] Parameter Management (`param.cgi`)
-- [ ] User Management / Password (`pwdgrp.cgi`)
 - [ ] Network Configuration (`network_settings.cgi`)
 - [ ] Time & NTP (`ntp.cgi`, `timeservice.cgi`)
 - [ ] I/O Port Management (`io/portmanagement.cgi`)
 - [ ] Light Control (`lightcontrol.cgi`)
-- [ ] Network Settings
-- [ ] Time/NTP Configuration
-- [ ] User/Password Management
 - [ ] Batch operations (parallel, multi-camera)
 
 ## License

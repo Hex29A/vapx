@@ -3,3 +3,6 @@ pub mod auth;
 pub mod client;
 pub mod device;
 pub mod firmware;
+pub mod params;
+pub mod ptz;
+pub mod users;

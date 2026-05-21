@@ -28,6 +28,18 @@ fn is_retryable_status(status: reqwest::StatusCode) -> bool {
     status.is_server_error()
 }
 
+/// Percent-encode a query parameter value (RFC 3986 unreserved characters pass through).
+fn encode_value(v: &str) -> String {
+    v.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                String::from(b as char)
+            }
+            _ => format!("%{:02X}", b),
+        })
+        .collect()
+}
+
 impl VapixClient {
     pub fn new(host: &str, port: u16, creds: Credentials, timeout_secs: u64) -> Self {
         let scheme = if creds.https { "https" } else { "http" };
@@ -85,7 +97,7 @@ impl VapixClient {
     ) -> anyhow::Result<reqwest::blocking::Response> {
         let mut url = format!("{}{}", self.base_url, path);
         if !params.is_empty() {
-            let query: Vec<String> = params.iter().map(|(k, v)| format!("{}={}", k, v)).collect();
+            let query: Vec<String> = params.iter().map(|(k, v)| format!("{}={}", k, encode_value(v))).collect();
             url = format!("{}?{}", url, query.join("&"));
         }
 
