@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Unit tests
+        run: cargo test --lib
+      - name: Build
+        run: cargo build --release
+      - name: Clippy
+        run: cargo clippy -- -D warnings
+
+  build-matrix:
+    needs: test
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            use_cross: false
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            use_cross: true
+          - target: armv7-unknown-linux-musleabihf
+            os: ubuntu-latest
+            use_cross: true
+          - target: x86_64-apple-darwin
+            os: macos-13
+            use_cross: false
+          - target: aarch64-apple-darwin
+            os: macos-14
+            use_cross: false
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install cross
+        if: matrix.use_cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Install musl-tools
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get install -y musl-tools
+
+      - name: Build (cross)
+        if: matrix.use_cross
+        run: cross build --release --target ${{ matrix.target }}
+
+      - name: Build (cargo)
+        if: "!matrix.use_cross"
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vapx-${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/vapx
+
+  release:
+    needs: build-matrix
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          for dir in artifacts/vapx-*; do
+            target=$(basename "$dir" | sed 's/vapx-//')
+            cp "$dir/vapx" "release/vapx-${target}"
+            chmod +x "release/vapx-${target}"
+          done
+          ls -la release/
+
+      - name: Create/Update dev release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: dev
+          name: Development Build
+          prerelease: true
+          files: release/*
+          body: |
+            Latest build from main branch.
+            
+            | File | Platform |
+            |------|----------|
+            | vapx-x86_64-unknown-linux-musl | Linux x86_64 (static) |
+            | vapx-aarch64-unknown-linux-musl | Linux ARM64 / Raspberry Pi 4-5 |
+            | vapx-armv7-unknown-linux-musleabihf | Linux ARMv7 / Raspberry Pi 3 |
+            | vapx-x86_64-apple-darwin | macOS Intel |
+            | vapx-aarch64-apple-darwin | macOS Apple Silicon |
