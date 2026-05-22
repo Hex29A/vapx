@@ -68,7 +68,11 @@ pub fn resolve(
         }
     }
 
-    // Interactive prompt as fallback
+    // Interactive prompt as fallback (only if TTY)
+    if !atty::is(atty::Stream::Stdin) {
+        anyhow::bail!("No credentials provided and stdin is not a terminal. Use -u/-p flags or cameras.yaml.");
+    }
+
     let u = user
         .map(String::from)
         .unwrap_or_else(|| {

@@ -13,6 +13,24 @@ fn vapx_bin() -> Command {
     Command::new(env!("CARGO_BIN_EXE_vapx"))
 }
 
+/// Parse JSON envelope from stdout: {"status":"ok","data":...}
+/// Returns the "data" field.
+fn parse_ok_data(stdout: &str) -> serde_json::Value {
+    let envelope: serde_json::Value = serde_json::from_str(stdout)
+        .unwrap_or_else(|e| panic!("Invalid JSON: {}\nstdout: {}", e, stdout));
+    assert_eq!(envelope["status"].as_str().unwrap(), "ok", "Expected status=ok, got: {}", envelope);
+    envelope["data"].clone()
+}
+
+/// Parse JSON envelope from stdout: {"status":"ok","message":"..."}
+/// Returns the message string.
+fn parse_ok_message(stdout: &str) -> String {
+    let envelope: serde_json::Value = serde_json::from_str(stdout)
+        .unwrap_or_else(|e| panic!("Invalid JSON: {}\nstdout: {}", e, stdout));
+    assert_eq!(envelope["status"].as_str().unwrap(), "ok", "Expected status=ok, got: {}", envelope);
+    envelope["message"].as_str().unwrap().to_string()
+}
+
 fn test_host() -> String {
     std::env::var("VAPX_TEST_HOST").unwrap_or_else(|_| "192.168.7.10".into())
 }
@@ -58,8 +76,7 @@ fn test_info_json_output() {
         stderr
     );
 
-    let json: serde_json::Value = serde_json::from_str(&stdout)
-        .unwrap_or_else(|e| panic!("Invalid JSON output: {}\nstdout: {}", e, stdout));
+    let json = parse_ok_data(&stdout);
 
     // Verify expected fields exist
     assert!(json.get("Brand").is_some(), "Missing Brand field");
@@ -125,11 +142,12 @@ fn test_info_selective_properties() {
     assert!(output.status.success());
 
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
-    assert!(json.get("Brand").is_some());
-    assert!(json.get("Version").is_some());
-    assert!(json.get("ProdNbr").is_some());
+    let data = &json["data"];
+    assert!(data.get("Brand").is_some());
+    assert!(data.get("Version").is_some());
+    assert!(data.get("ProdNbr").is_some());
     // Should NOT contain fields we didn't ask for
-    assert!(json.get("Architecture").is_none());
+    assert!(data.get("Architecture").is_none());
 }
 
 #[test]
@@ -209,7 +227,8 @@ cameras:
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(output.status.success(), "config check failed");
-    assert!(stdout.contains("1 cameras configured"));
+    let data = parse_ok_data(&stdout);
+    assert_eq!(data["cameras"].as_i64().unwrap(), 1);
 
     // Test config list
     let output = vapx_bin()
@@ -220,8 +239,12 @@ cameras:
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(output.status.success());
-    assert!(stdout.contains("testcam"));
-    assert!(stdout.contains("192.168.7.10"));
+    let data = parse_ok_data(&stdout);
+    assert!(data.is_array());
+    let cameras = data.as_array().unwrap();
+    assert_eq!(cameras.len(), 1);
+    assert_eq!(cameras[0]["name"].as_str().unwrap(), "testcam");
+    assert_eq!(cameras[0]["host"].as_str().unwrap(), "192.168.7.10");
 
     // Cleanup
     std::fs::remove_dir_all(&tmp).ok();
@@ -271,7 +294,7 @@ cameras:
     );
 
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
-    assert_eq!(json["Brand"].as_str().unwrap(), "AXIS");
+    assert_eq!(json["data"]["Brand"].as_str().unwrap(), "AXIS");
 
     std::fs::remove_dir_all(&tmp).ok();
 }
@@ -319,7 +342,7 @@ cameras:
     );
 
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
-    assert_eq!(json["Brand"].as_str().unwrap(), "AXIS");
+    assert_eq!(json["data"]["Brand"].as_str().unwrap(), "AXIS");
 
     std::fs::remove_dir_all(&tmp).ok();
 }
@@ -359,8 +382,7 @@ fn test_snap_default() {
     let metadata = std::fs::metadata(&out_file).unwrap();
     assert!(metadata.len() > 1000, "Snapshot too small: {} bytes", metadata.len());
 
-    let json: serde_json::Value = serde_json::from_str(&stdout)
-        .unwrap_or_else(|e| panic!("Invalid JSON: {}\nstdout: {}", e, stdout));
+    let json = parse_ok_data(&stdout);
     assert!(json.get("file").is_some());
     assert!(json.get("bytes").is_some());
 
@@ -418,8 +440,7 @@ fn test_fw_status_json() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(output.status.success(), "fw status failed: {}", stderr);
 
-    let json: serde_json::Value = serde_json::from_str(&stdout)
-        .unwrap_or_else(|e| panic!("Invalid JSON: {}\nstdout: {}", e, stdout));
+    let json = parse_ok_data(&stdout);
     assert!(
         json.get("activeFirmwareVersion").is_some(),
         "Missing activeFirmwareVersion"
@@ -477,8 +498,7 @@ fn test_acap_list_json() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(output.status.success(), "acap list failed: {}", stderr);
 
-    let json: serde_json::Value = serde_json::from_str(&stdout)
-        .unwrap_or_else(|e| panic!("Invalid JSON: {}\nstdout: {}", e, stdout));
+    let json = parse_ok_data(&stdout);
     assert!(json.is_array(), "Expected JSON array");
 }
 
@@ -573,8 +593,7 @@ fn test_ptz_query_position() {
         stderr
     );
 
-    let json: serde_json::Value = serde_json::from_str(&stdout)
-        .unwrap_or_else(|e| panic!("Invalid JSON: {}\nstdout: {}", e, stdout));
+    let json = parse_ok_data(&stdout);
     assert!(json.is_object(), "Expected JSON object");
 }
 
@@ -637,8 +656,7 @@ fn test_param_list_brand_group() {
         stderr
     );
 
-    let json: serde_json::Value = serde_json::from_str(&stdout)
-        .unwrap_or_else(|e| panic!("Invalid JSON: {}\nstdout: {}", e, stdout));
+    let json = parse_ok_data(&stdout);
     assert!(json.is_object());
     assert!(json.get("root.Brand.Brand").is_some(), "Missing root.Brand.Brand");
     assert_eq!(json["root.Brand.Brand"].as_str().unwrap(), "AXIS");
@@ -728,8 +746,7 @@ fn test_user_list_json() {
         stderr
     );
 
-    let json: serde_json::Value = serde_json::from_str(&stdout)
-        .unwrap_or_else(|e| panic!("Invalid JSON: {}\nstdout: {}", e, stdout));
+    let json = parse_ok_data(&stdout);
     assert!(json.is_object());
 }
 
@@ -788,16 +805,17 @@ fn test_user_add_update_remove_lifecycle() {
         .output()
         .expect("failed to run vapx");
 
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         output.status.success(),
         "user add failed: {}",
-        stderr
+        String::from_utf8_lossy(&output.stderr)
     );
+    let msg = parse_ok_message(&stdout);
     assert!(
-        stderr.contains("Created account"),
+        msg.contains("Created account"),
         "Expected 'Created account', got: {}",
-        stderr
+        msg
     );
 
     // 2. Verify user appears in list
@@ -841,16 +859,17 @@ fn test_user_add_update_remove_lifecycle() {
         .output()
         .expect("failed to run vapx");
 
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         output.status.success(),
         "user update failed: {}",
-        stderr
+        String::from_utf8_lossy(&output.stderr)
     );
+    let msg = parse_ok_message(&stdout);
     assert!(
-        stderr.contains("Modified account"),
+        msg.contains("Modified account"),
         "Expected 'Modified account', got: {}",
-        stderr
+        msg
     );
 
     // 4. Remove user
@@ -869,16 +888,17 @@ fn test_user_add_update_remove_lifecycle() {
         .output()
         .expect("failed to run vapx");
 
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         output.status.success(),
         "user remove failed: {}",
-        stderr
+        String::from_utf8_lossy(&output.stderr)
     );
+    let msg = parse_ok_message(&stdout);
     assert!(
-        stderr.contains("Removed account"),
+        msg.contains("Removed account"),
         "Expected 'Removed account', got: {}",
-        stderr
+        msg
     );
 
     // 5. Verify user is gone
@@ -961,16 +981,17 @@ fn test_pass_change_lifecycle() {
         .output()
         .expect("failed to run vapx");
 
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         output.status.success(),
         "pass change failed: {}",
-        stderr
+        String::from_utf8_lossy(&output.stderr)
     );
+    let msg = parse_ok_message(&stdout);
     assert!(
-        stderr.contains("Modified account"),
+        msg.contains("Modified account"),
         "Expected 'Modified account', got: {}",
-        stderr
+        msg
     );
 
     // 3. Cleanup: remove test user
@@ -1026,8 +1047,7 @@ fn test_net_show_json() {
         stderr
     );
 
-    let json: serde_json::Value = serde_json::from_str(&stdout)
-        .unwrap_or_else(|e| panic!("Invalid JSON: {}\nstdout: {}", e, stdout));
+    let json = parse_ok_data(&stdout);
     assert!(json.is_object());
     assert!(
         json.get("root.Network.IPAddress").is_some(),

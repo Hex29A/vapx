@@ -40,7 +40,7 @@ pub enum Commands {
     Config(cmd::config::ConfigCmd),
 }
 
-fn main() -> anyhow::Result<()> {
+fn main() {
     let cli = Cli::parse();
 
     let filter = match cli.verbose {
@@ -58,7 +58,7 @@ fn main() -> anyhow::Result<()> {
         .without_time()
         .init();
 
-    match cli.command {
+    let result = match cli.command {
         Commands::Info(cmd) => cmd.run(),
         Commands::Snap(cmd) => cmd.run(),
         Commands::Fw(cmd) => cmd.run(),
@@ -69,5 +69,9 @@ fn main() -> anyhow::Result<()> {
         Commands::Pass(cmd) => cmd.run(),
         Commands::Net(cmd) => cmd.run(),
         Commands::Config(cmd) => cmd.run(),
+    };
+
+    if let Err(e) = result {
+        output::format::err_json("ERROR", &format!("{:#}", e));
     }
 }

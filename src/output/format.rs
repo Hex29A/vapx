@@ -1,8 +1,36 @@
 use serde::Serialize;
 use serde_json::Value;
 
-pub fn json(value: &impl Serialize) {
-    println!("{}", serde_json::to_string_pretty(value).unwrap());
+/// Output a successful result wrapped in a status envelope.
+/// `{"status":"ok","data":...}`
+pub fn ok(data: &impl Serialize) {
+    let envelope = serde_json::json!({
+        "status": "ok",
+        "data": serde_json::to_value(data).unwrap(),
+    });
+    println!("{}", serde_json::to_string_pretty(&envelope).unwrap());
+}
+
+/// Output a successful action result with a message.
+/// `{"status":"ok","message":"..."}`
+pub fn ok_msg(message: &str) {
+    let envelope = serde_json::json!({
+        "status": "ok",
+        "message": message,
+    });
+    println!("{}", serde_json::to_string_pretty(&envelope).unwrap());
+}
+
+/// Output an error as JSON to stderr and exit with code 1.
+/// `{"status":"error","code":"...","message":"..."}`
+pub fn err_json(code: &str, message: &str) -> ! {
+    let envelope = serde_json::json!({
+        "status": "error",
+        "code": code,
+        "message": message,
+    });
+    eprintln!("{}", serde_json::to_string_pretty(&envelope).unwrap());
+    std::process::exit(1);
 }
 
 pub fn plain(value: &Value) {

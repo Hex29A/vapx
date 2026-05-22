@@ -117,7 +117,7 @@ impl NetShowCmd {
                     map.insert(k.to_string(), serde_json::Value::String(v.to_string()));
                 }
             }
-            crate::output::format::json(&map);
+            crate::output::format::ok(&map);
         }
 
         Ok(())
@@ -179,7 +179,7 @@ impl NetSetCmd {
             .collect();
 
         let result = network::set_params(&client, &kv)?;
-        eprintln!("{}", result.trim());
+        crate::output::format::ok_msg(result.trim());
         Ok(())
     }
 }

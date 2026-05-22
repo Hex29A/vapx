@@ -84,7 +84,7 @@ impl SnapCmd {
             "size": format::human_bytes(bytes.len()),
             "bytes": bytes.len(),
         });
-        println!("{}", serde_json::to_string_pretty(&info)?);
+        format::ok(&info);
 
         Ok(())
     }

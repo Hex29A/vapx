@@ -138,7 +138,7 @@ impl AcapCmd {
                         println!("No applications installed.");
                     }
                 } else {
-                    format::json(&apps);
+                    format::ok(&apps);
                 }
             }
             AcapCommands::Start {
@@ -155,7 +155,7 @@ impl AcapCmd {
                 let t = timeout.unwrap_or(creds.timeout);
                 let client = VapixClient::new(&resolved_host, creds.port, creds, t);
                 applications::control(&client, "start", &package)?;
-                println!("Started: {}", package);
+                format::ok_msg(&format!("Started: {}", package));
             }
             AcapCommands::Stop {
                 host,
@@ -171,7 +171,7 @@ impl AcapCmd {
                 let t = timeout.unwrap_or(creds.timeout);
                 let client = VapixClient::new(&resolved_host, creds.port, creds, t);
                 applications::control(&client, "stop", &package)?;
-                println!("Stopped: {}", package);
+                format::ok_msg(&format!("Stopped: {}", package));
             }
             AcapCommands::Restart {
                 host,
@@ -187,7 +187,7 @@ impl AcapCmd {
                 let t = timeout.unwrap_or(creds.timeout);
                 let client = VapixClient::new(&resolved_host, creds.port, creds, t);
                 applications::control(&client, "restart", &package)?;
-                println!("Restarted: {}", package);
+                format::ok_msg(&format!("Restarted: {}", package));
             }
             AcapCommands::Remove {
                 host,
@@ -203,7 +203,7 @@ impl AcapCmd {
                 let t = timeout.unwrap_or(creds.timeout);
                 let client = VapixClient::new(&resolved_host, creds.port, creds, t);
                 applications::control(&client, "remove", &package)?;
-                println!("Removed: {}", package);
+                format::ok_msg(&format!("Removed: {}", package));
             }
         }
         Ok(())

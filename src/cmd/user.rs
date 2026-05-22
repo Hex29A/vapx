@@ -185,7 +185,7 @@ impl UserListCmd {
                     map.insert(k.to_string(), serde_json::Value::Array(user_list));
                 }
             }
-            crate::output::format::json(&map);
+            crate::output::format::ok(&map);
         }
 
         Ok(())
@@ -205,7 +205,7 @@ impl UserAddCmd {
         let client = VapixClient::new(&resolved_host, creds.port, creds, timeout);
         let sgrp = self.role.to_sgrp(self.ptz);
         let result = users::add(&client, &self.name, &self.pwd, &sgrp, &self.comment)?;
-        eprintln!("{}", result.trim());
+        crate::output::format::ok_msg(result.trim());
         Ok(())
     }
 }
@@ -222,7 +222,7 @@ impl UserUpdateCmd {
         let timeout = self.timeout.unwrap_or(creds.timeout);
         let client = VapixClient::new(&resolved_host, creds.port, creds, timeout);
         let result = users::update(&client, &self.name, &self.pwd)?;
-        eprintln!("{}", result.trim());
+        crate::output::format::ok_msg(result.trim());
         Ok(())
     }
 }
@@ -239,7 +239,7 @@ impl UserRemoveCmd {
         let timeout = self.timeout.unwrap_or(creds.timeout);
         let client = VapixClient::new(&resolved_host, creds.port, creds, timeout);
         let result = users::remove(&client, &self.name)?;
-        eprintln!("{}", result.trim());
+        crate::output::format::ok_msg(result.trim());
         Ok(())
     }
 }

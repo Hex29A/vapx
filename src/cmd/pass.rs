@@ -40,7 +40,7 @@ impl PassCmd {
         let target_user = self.name.unwrap_or_else(|| creds.user.clone());
         let client = VapixClient::new(&resolved_host, creds.port, creds, timeout);
         let result = users::update(&client, &target_user, &self.pwd)?;
-        eprintln!("{}", result.trim());
+        crate::output::format::ok_msg(result.trim());
         Ok(())
     }
 }

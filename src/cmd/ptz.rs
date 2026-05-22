@@ -1,6 +1,7 @@
 use clap::{Args, Subcommand, ValueEnum};
 
 use crate::config::credentials::resolve;
+use crate::output::format;
 use crate::vapix::client::VapixClient;
 use crate::vapix::ptz;
 
@@ -228,7 +229,7 @@ impl PtzMoveCmd {
         let timeout = self.timeout.unwrap_or(creds.timeout);
         let client = VapixClient::new(&resolved_host, creds.port, creds, timeout);
         ptz::move_direction(&client, &self.direction.to_string(), self.camera)?;
-        eprintln!("OK");
+        format::ok_msg("OK");
         Ok(())
     }
 }
@@ -257,7 +258,7 @@ impl PtzGotoCmd {
                 camera: self.camera,
             },
         )?;
-        eprintln!("OK");
+        format::ok_msg("OK");
         Ok(())
     }
 }
@@ -274,7 +275,7 @@ impl PtzPresetCmd {
         let timeout = self.timeout.unwrap_or(creds.timeout);
         let client = VapixClient::new(&resolved_host, creds.port, creds, timeout);
         ptz::goto_preset(&client, &self.name, self.camera)?;
-        eprintln!("OK");
+        format::ok_msg("OK");
         Ok(())
     }
 }
@@ -304,7 +305,7 @@ impl PtzQueryCmd {
                     );
                 }
             }
-            crate::output::format::json(&map);
+            format::ok(&map);
         }
 
         Ok(())

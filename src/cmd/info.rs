@@ -68,7 +68,7 @@ impl InfoCmd {
         if self.plain {
             format::plain(output);
         } else {
-            format::json(output);
+            format::ok(output);
         }
 
         Ok(())

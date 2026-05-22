@@ -1,6 +1,7 @@
 use clap::{Args, Subcommand};
 
 use crate::config::cameras;
+use crate::output::format;
 
 #[derive(Args)]
 pub struct ConfigCmd {
@@ -25,64 +26,62 @@ impl ConfigCmd {
         match self.command {
             ConfigCommands::Path => {
                 match cameras::config_path() {
-                    Some(p) => println!("{}", p.display()),
+                    Some(p) => {
+                        format::ok(&serde_json::json!({"path": p.display().to_string()}));
+                    }
                     None => {
-                        eprintln!("No config file found.");
-                        eprintln!("Searched:");
-                        eprintln!("  1. $VAPX_CONFIG");
-                        eprintln!("  2. ./cameras.yaml");
-                        if let Some(d) = dirs::config_dir() {
-                            eprintln!("  3. {}/vapx/cameras.yaml", d.display());
-                        }
-                        std::process::exit(1);
+                        format::err_json("CONFIG_NOT_FOUND", "No config file found");
                     }
                 }
             }
             ConfigCommands::Check => {
                 match cameras::config_path() {
                     Some(p) => {
-                        println!("Config file: {}", p.display());
                         match cameras::load_cameras() {
                             Ok(Some(config)) => {
-                                println!("OK: {} cameras configured", config.cameras.len());
-                                if !config.groups.is_empty() {
-                                    println!("Groups: {}", config.groups.keys().map(|k| k.as_str()).collect::<Vec<_>>().join(", "));
-                                }
-                                // Check for unresolved env vars
+                                let mut warnings: Vec<String> = Vec::new();
                                 for (name, entry) in &config.cameras {
                                     if entry.pass.as_deref() == Some("") {
-                                        eprintln!("WARNING: Camera '{}' has empty password (env var not set?)", name);
+                                        warnings.push(format!("Camera '{}' has empty password (env var not set?)", name));
                                     }
                                 }
+                                format::ok(&serde_json::json!({
+                                    "path": p.display().to_string(),
+                                    "cameras": config.cameras.len(),
+                                    "groups": config.groups.keys().collect::<Vec<_>>(),
+                                    "warnings": warnings,
+                                }));
                             }
                             Ok(None) => {
-                                eprintln!("No config loaded");
-                                std::process::exit(1);
+                                format::err_json("CONFIG_EMPTY", "No config loaded");
                             }
                             Err(e) => {
-                                eprintln!("ERROR: {}", e);
-                                std::process::exit(1);
+                                format::err_json("CONFIG_INVALID", &e.to_string());
                             }
                         }
                     }
                     None => {
-                        eprintln!("No config file found.");
-                        std::process::exit(1);
+                        format::err_json("CONFIG_NOT_FOUND", "No config file found");
                     }
                 }
             }
             ConfigCommands::List => {
                 match cameras::load_cameras()? {
                     Some(config) => {
-                        for (name, entry) in &config.cameras {
+                        let cameras: Vec<serde_json::Value> = config.cameras.iter().map(|(name, entry)| {
                             let user = config.effective_user(entry).unwrap_or_else(|| "-".into());
                             let proto = if config.effective_https(entry) { "https" } else { "http" };
-                            println!("{:<16} {:<16} {}  user={}", name, entry.host, proto, user);
-                        }
+                            serde_json::json!({
+                                "name": name,
+                                "host": entry.host,
+                                "protocol": proto,
+                                "user": user,
+                            })
+                        }).collect();
+                        format::ok(&cameras);
                     }
                     None => {
-                        eprintln!("No config file found.");
-                        std::process::exit(1);
+                        format::err_json("CONFIG_NOT_FOUND", "No config file found");
                     }
                 }
             }
@@ -92,8 +91,7 @@ impl ConfigCmd {
                     .unwrap_or_else(|| std::path::PathBuf::from("cameras.yaml"));
 
                 if target.exists() {
-                    eprintln!("Config already exists: {}", target.display());
-                    std::process::exit(1);
+                    format::err_json("CONFIG_EXISTS", &format!("Config already exists: {}", target.display()));
                 }
 
                 if let Some(parent) = target.parent() {
@@ -101,7 +99,7 @@ impl ConfigCmd {
                 }
 
                 std::fs::write(&target, TEMPLATE_CONFIG)?;
-                println!("Created: {}", target.display());
+                format::ok_msg(&format!("Created: {}", target.display()));
             }
         }
         Ok(())
