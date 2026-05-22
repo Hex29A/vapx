@@ -38,7 +38,7 @@ vapx/
       mod.rs
       info.rs            # vapx info — device identification
       snap.rs            # vapx snap — JPEG snapshot
-      fw.rs              # vapx fw — firmware status
+      fw.rs              # vapx fw — firmware management (status/upgrade/commit/rollback/reboot)
       acap.rs            # vapx acap — ACAP application management
       ptz.rs             # vapx ptz — PTZ control
       param.rs           # vapx param — parameter management
@@ -47,7 +47,13 @@ vapx/
       net.rs             # vapx net — network configuration
       time.rs            # vapx time — NTP/timezone management
       hw.rs              # vapx hw — I/O port management
-      config.rs          # vapx config — config file management
+      events.rs          # vapx events — real-time event streaming (WebSocket)
+      batch.rs           # vapx batch — parallel multi-camera operations
+      discover.rs        # vapx discover — API discovery
+      diff.rs            # vapx diff — parameter diff between cameras
+      backup.rs          # vapx backup — parameter backup/restore
+      overlay.rs         # vapx overlay — text/image overlay management
+      config.rs          # vapx config — config file + keyring management
     vapix/
       mod.rs
       auth.rs            # Digest/Basic auth auto-negotiation
@@ -61,6 +67,9 @@ vapx/
       time.rs            # Time/NTP configuration (param.cgi root.Time)
       io.rs              # I/O port configuration (param.cgi root.IOPort)
       network.rs         # Network configuration (param.cgi root.Network)
+      events.rs          # WebSocket event streaming
+      discover.rs        # API discovery (apidiscovery.cgi)
+      overlay.rs         # Dynamic overlay management (dynamicoverlay.cgi)
     config/
       mod.rs
       cameras.rs         # cameras.yaml loading, env var substitution
@@ -160,7 +169,8 @@ Features:
 Priority order:
 1. Explicit `-u`/`-p` CLI flags
 2. `cameras.yaml` lookup by name or host
-3. Interactive prompt (if TTY)
+3. OS keyring lookup by camera name (if `--features keyring`)
+4. Interactive prompt (if TTY)
 
 The `host` argument resolves through config: if it matches a camera name, use that entry's host/credentials.
 
@@ -242,7 +252,7 @@ impl XxxCmd {
 - [x] `--timeout` per-command override flag
 
 ### Priority 2 — More subcommands
-- [x] `vapx fw` — firmware status
+- [x] `vapx fw` — firmware management (status/upgrade/commit/rollback/reboot/factory-default)
 - [x] `vapx acap` — list, start/stop, restart, remove
 - [x] `vapx snap` — JPEG snapshot to file
 - [x] `vapx ptz` — pan/tilt/zoom control
@@ -252,13 +262,20 @@ impl XxxCmd {
 - [x] `vapx net` — network configuration (show, set)
 - [x] `vapx time` — NTP/timezone
 - [x] `vapx hw` — I/O ports, lights
+- [x] `vapx events` — real-time event streaming (WebSocket)
+- [x] `vapx discover` — API discovery
+- [x] `vapx diff` — parameter diff between two cameras
+- [x] `vapx backup` — parameter backup/restore
+- [x] `vapx overlay` — text/image overlay management
 
 ### Priority 3 — Batch & UX
 - [x] `vapx batch` — run command on multiple cameras (parallel with rayon)
-- [ ] Progress bars (indicatif) for batch and firmware operations
+- [x] Progress bars (indicatif) for batch and firmware operations
 - [x] Shell completions (`vapx completions bash|zsh|fish`)
 - [x] Man page generation (clap_mangen)
+- [x] Output filtering (`--filter key1,key2`) for extracting specific JSON fields
 
 ### Priority 4 — Config enhancements
 - [x] `vapx config add` with connectivity verification
-- [ ] OS keyring secrets backend (optional)
+- [x] Config profiles (`profiles:` section in cameras.yaml, `--profile` flag)
+- [x] OS keyring secrets backend (optional, `--features keyring`)

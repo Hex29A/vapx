@@ -43,14 +43,15 @@ pub fn resolve(
 
     // Try cameras.yaml
     if let Some(config) = load_cameras()? {
-        if let Some((_name, entry)) = config.find(host) {
+        if let Some((name, entry)) = config.find(host) {
             debug!("Found camera '{}' in config (host: {})", host, entry.host);
             let effective_user = user
                 .map(String::from)
                 .or_else(|| config.effective_user(entry));
             let effective_pass = pass
                 .map(String::from)
-                .or_else(|| entry.pass.clone());
+                .or_else(|| entry.pass.clone())
+                .or_else(|| crate::cmd::config::keyring_lookup(name));
 
             if let (Some(u), Some(p)) = (effective_user, effective_pass) {
                 return Ok((

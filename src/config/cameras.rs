@@ -1,10 +1,23 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 use anyhow::Context;
 use serde::Deserialize;
 use tracing::debug;
+
+static ACTIVE_PROFILE: OnceLock<String> = OnceLock::new();
+
+/// Set the active profile name (called from main.rs).
+pub fn set_profile(name: String) {
+    ACTIVE_PROFILE.set(name).ok();
+}
+
+/// Get the active profile name.
+pub fn active_profile() -> Option<&'static str> {
+    ACTIVE_PROFILE.get().map(|s| s.as_str())
+}
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct CamerasConfig {
@@ -13,6 +26,8 @@ pub struct CamerasConfig {
     pub cameras: HashMap<String, CameraEntry>,
     #[serde(default)]
     pub groups: HashMap<String, Vec<String>>,
+    #[serde(default)]
+    pub profiles: HashMap<String, CameraDefaults>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -67,11 +82,12 @@ impl CamerasConfig {
             .unwrap_or_default()
     }
 
-    /// Get the effective user for a camera (camera override > defaults)
+    /// Get the effective user for a camera (camera override > profile > defaults)
     pub fn effective_user(&self, entry: &CameraEntry) -> Option<String> {
         entry
             .user
             .clone()
+            .or_else(|| self.profile_defaults().and_then(|p| p.user.clone()))
             .or_else(|| self.defaults.as_ref().and_then(|d| d.user.clone()))
     }
 
@@ -79,6 +95,7 @@ impl CamerasConfig {
     pub fn effective_https(&self, entry: &CameraEntry) -> bool {
         entry
             .https
+            .or_else(|| self.profile_defaults().and_then(|p| p.https))
             .or_else(|| self.defaults.as_ref().and_then(|d| d.https))
             .unwrap_or(false)
     }
@@ -87,6 +104,7 @@ impl CamerasConfig {
     pub fn effective_verify_ssl(&self, entry: &CameraEntry) -> bool {
         entry
             .verify_ssl
+            .or_else(|| self.profile_defaults().and_then(|p| p.verify_ssl))
             .or_else(|| self.defaults.as_ref().and_then(|d| d.verify_ssl))
             .unwrap_or(false)
     }
@@ -95,8 +113,14 @@ impl CamerasConfig {
     pub fn effective_timeout(&self, entry: &CameraEntry) -> u64 {
         entry
             .timeout
+            .or_else(|| self.profile_defaults().and_then(|p| p.timeout))
             .or_else(|| self.defaults.as_ref().and_then(|d| d.timeout))
             .unwrap_or(10)
+    }
+
+    /// Get the active profile's defaults (if any).
+    fn profile_defaults(&self) -> Option<&CameraDefaults> {
+        active_profile().and_then(|name| self.profiles.get(name))
     }
 }
 

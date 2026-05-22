@@ -1,12 +1,53 @@
+use std::sync::OnceLock;
+
 use serde::Serialize;
 use serde_json::Value;
+
+static FILTER_KEYS: OnceLock<Vec<String>> = OnceLock::new();
+
+/// Set the global output filter keys (dot-separated paths like "model" or "firmware.version").
+pub fn set_filter(keys: Vec<String>) {
+    FILTER_KEYS.set(keys).ok();
+}
+
+/// Extract a value at a dot-separated path (e.g., "firmware.version").
+fn extract_path(value: &Value, path: &str) -> Option<Value> {
+    let parts: Vec<&str> = path.split('.').collect();
+    let mut current = value;
+    for part in &parts {
+        current = current.get(part)?;
+    }
+    Some(current.clone())
+}
+
+/// Apply the global filter to a data value if one is set.
+fn apply_filter(data: &Value) -> Value {
+    if let Some(keys) = FILTER_KEYS.get() {
+        if !keys.is_empty() {
+            if keys.len() == 1 {
+                // Single key: output just the value
+                return extract_path(data, &keys[0]).unwrap_or(Value::Null);
+            }
+            // Multiple keys: output as object
+            let mut map = serde_json::Map::new();
+            for key in keys {
+                let val = extract_path(data, key).unwrap_or(Value::Null);
+                map.insert(key.clone(), val);
+            }
+            return Value::Object(map);
+        }
+    }
+    data.clone()
+}
 
 /// Output a successful result wrapped in a status envelope.
 /// `{"status":"ok","data":...}`
 pub fn ok(data: &impl Serialize) {
+    let raw = serde_json::to_value(data).unwrap();
+    let filtered = apply_filter(&raw);
     let envelope = serde_json::json!({
         "status": "ok",
-        "data": serde_json::to_value(data).unwrap(),
+        "data": filtered,
     });
     println!("{}", serde_json::to_string_pretty(&envelope).unwrap());
 }

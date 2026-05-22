@@ -1,11 +1,15 @@
 pub mod acap;
+pub mod backup;
 pub mod batch;
 pub mod config;
+pub mod diff;
+pub mod discover;
 pub mod events;
 pub mod fw;
 pub mod hw;
 pub mod info;
 pub mod net;
+pub mod overlay;
 pub mod param;
 pub mod pass;
 pub mod ptz;

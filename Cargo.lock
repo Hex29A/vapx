@@ -723,6 +723,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "keyring"
+version = "3.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eebcc3aff044e5944a8fbaf69eb277d11986064cba30c468730e8b9909fb551c"
+dependencies = [
+ "log",
+ "zeroize",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1643,7 +1653,7 @@ checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
 
 [[package]]
 name = "vapx"
-version = "0.6.0"
+version = "0.8.0"
 dependencies = [
  "anyhow",
  "atty",
@@ -1653,6 +1663,7 @@ dependencies = [
  "digest_auth",
  "dirs",
  "indicatif",
+ "keyring",
  "rayon",
  "reqwest",
  "roxmltree",

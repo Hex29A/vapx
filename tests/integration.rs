@@ -1439,3 +1439,133 @@ fn test_completions_fish() {
     assert!(output.status.success());
     assert!(stdout.contains("vapx"), "Missing fish completion content");
 }
+
+// ── Discover tests ──────────────────────────────────────────────
+
+#[test]
+fn test_discover_json() {
+    if skip_if_no_camera() {
+        return;
+    }
+    let output = vapx_bin()
+        .args(["discover", &test_host(), "-u", &test_user(), "-p", &test_pass()])
+        .output()
+        .expect("failed to run vapx");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let data = parse_ok_data(&stdout);
+    let apis = data.as_array().expect("expected array of APIs");
+    assert!(!apis.is_empty(), "Expected at least one API");
+    // basic-device-info should always be present
+    assert!(apis.iter().any(|a| a["id"].as_str() == Some("basic-device-info")),
+        "Expected basic-device-info in API list");
+}
+
+#[test]
+fn test_discover_plain() {
+    if skip_if_no_camera() {
+        return;
+    }
+    let output = vapx_bin()
+        .args(["discover", &test_host(), "-u", &test_user(), "-p", &test_pass(), "--plain"])
+        .output()
+        .expect("failed to run vapx");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success());
+    assert!(stdout.contains("basic-device-info"), "Missing basic-device-info in plain output");
+}
+
+// ── Filter tests ──────────────────────────────────────────────
+
+#[test]
+fn test_filter_single_key() {
+    if skip_if_no_camera() {
+        return;
+    }
+    let output = vapx_bin()
+        .args(["info", &test_host(), "-u", &test_user(), "-p", &test_pass(), "--filter", "ProdNbr"])
+        .output()
+        .expect("failed to run vapx");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success());
+    let envelope: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    // Single key filter should return just the value as data
+    assert_eq!(envelope["data"].as_str().unwrap(), "Q1615 Mk III");
+}
+
+#[test]
+fn test_filter_multiple_keys() {
+    if skip_if_no_camera() {
+        return;
+    }
+    let output = vapx_bin()
+        .args(["info", &test_host(), "-u", &test_user(), "-p", &test_pass(), "--filter", "ProdNbr,SerialNumber"])
+        .output()
+        .expect("failed to run vapx");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success());
+    let envelope: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert!(envelope["data"]["ProdNbr"].is_string());
+    assert!(envelope["data"]["SerialNumber"].is_string());
+}
+
+// ── Overlay tests ──────────────────────────────────────────────
+
+#[test]
+fn test_overlay_list() {
+    if skip_if_no_camera() {
+        return;
+    }
+    let output = vapx_bin()
+        .args(["overlay", "list", &test_host(), "-u", &test_user(), "-p", &test_pass()])
+        .output()
+        .expect("failed to run vapx");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let data = parse_ok_data(&stdout);
+    // list response should contain textOverlays and imageOverlays arrays
+    assert!(data.get("textOverlays").is_some() || data.get("imageOverlays").is_some(),
+        "Expected overlay data in response");
+}
+
+// ── Backup tests ──────────────────────────────────────────────
+
+#[test]
+fn test_backup_save_and_restore_dry_run() {
+    if skip_if_no_camera() {
+        return;
+    }
+    let tmp = std::env::temp_dir().join("vapx-test-backup.json");
+
+    // Save backup of Brand params
+    let output = vapx_bin()
+        .args(["backup", "save", &test_host(), "-u", &test_user(), "-p", &test_pass(),
+            "--group", "root.Brand", "-o", tmp.to_str().unwrap()])
+        .output()
+        .expect("failed to run vapx");
+
+    assert!(output.status.success(), "backup save failed: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(tmp.exists(), "Backup file was not created");
+
+    // Restore with dry-run
+    let output = vapx_bin()
+        .args(["backup", "restore", &test_host(), "-u", &test_user(), "-p", &test_pass(),
+            "-f", tmp.to_str().unwrap(), "--dry-run"])
+        .output()
+        .expect("failed to run vapx");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "backup restore dry-run failed: {}", String::from_utf8_lossy(&output.stderr));
+    let envelope: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(envelope["status"].as_str().unwrap(), "ok");
+    // When restoring to the same camera, should find no changes
+    assert!(envelope.get("message").is_some() || envelope.get("data").is_some());
+
+    // Clean up
+    std::fs::remove_file(&tmp).ok();
+}

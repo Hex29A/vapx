@@ -1,6 +1,6 @@
 [package]
 name = "vapx"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2021"
 description = "Axis camera management CLI via VAPIX"
 license = "MIT"
@@ -31,6 +31,11 @@ clap_complete = "4"
 clap_mangen = "0.2"
 tungstenite = "0.26"
 url = "2"
+keyring = { version = "3", optional = true }
+
+[features]
+default = []
+keyring = ["dep:keyring"]
 
 [profile.release]
 opt-level = "z"

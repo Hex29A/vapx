@@ -46,6 +46,21 @@ pub enum ConfigCommands {
         #[arg(long)]
         no_verify: bool,
     },
+    /// Store a camera password in the OS keyring
+    SetSecret {
+        /// Camera name (as defined in cameras.yaml)
+        name: String,
+    },
+    /// Retrieve a camera password from the OS keyring
+    GetSecret {
+        /// Camera name (as defined in cameras.yaml)
+        name: String,
+    },
+    /// Remove a camera password from the OS keyring
+    RemoveSecret {
+        /// Camera name (as defined in cameras.yaml)
+        name: String,
+    },
 }
 
 impl ConfigCmd {
@@ -200,6 +215,15 @@ impl ConfigCmd {
 
                 format::ok_msg(&format!("Added camera '{}' ({})", name, host));
             }
+            ConfigCommands::SetSecret { name } => {
+                set_keyring_secret(&name)?;
+            }
+            ConfigCommands::GetSecret { name } => {
+                get_keyring_secret(&name)?;
+            }
+            ConfigCommands::RemoveSecret { name } => {
+                remove_keyring_secret(&name)?;
+            }
         }
         Ok(())
     }
@@ -207,6 +231,8 @@ impl ConfigCmd {
 
 const TEMPLATE_CONFIG: &str = r#"# vapx camera configuration
 # Env vars: use ${VAR_NAME} for secrets, loaded from environment.
+# Keyring: use `vapx config set-secret <name>` to store passwords securely.
+# Profiles: define named sets of defaults under profiles:
 
 defaults:
   user: root
@@ -220,7 +246,80 @@ cameras:
   #   pass: "${EXAMPLE_PASS}"
   #   port: 80
 
+profiles: {}
+  # secure:
+  #   https: true
+  #   verify_ssl: true
+  # fast:
+  #   timeout: 5
+
 groups: {}
   # home:
   #   - example
 "#;
+
+#[cfg(feature = "keyring")]
+const KEYRING_SERVICE: &str = "vapx";
+
+#[cfg(feature = "keyring")]
+fn set_keyring_secret(name: &str) -> anyhow::Result<()> {
+    let pass = rpassword::prompt_password(format!("Password for '{}': ", name))?;
+    let entry = keyring::Entry::new(KEYRING_SERVICE, name)?;
+    entry.set_password(&pass)?;
+    format::ok_msg(&format!("Password stored in keyring for '{}'", name));
+    Ok(())
+}
+
+#[cfg(not(feature = "keyring"))]
+fn set_keyring_secret(_name: &str) -> anyhow::Result<()> {
+    anyhow::bail!("Keyring support not compiled. Rebuild with: cargo build --features keyring");
+}
+
+#[cfg(feature = "keyring")]
+fn get_keyring_secret(name: &str) -> anyhow::Result<()> {
+    let entry = keyring::Entry::new(KEYRING_SERVICE, name)?;
+    match entry.get_password() {
+        Ok(_) => format::ok_msg(&format!("Keyring entry exists for '{}'", name)),
+        Err(keyring::Error::NoEntry) => {
+            format::err_json("NOT_FOUND", &format!("No keyring entry for '{}'", name));
+        }
+        Err(e) => anyhow::bail!("Keyring error: {}", e),
+    }
+    Ok(())
+}
+
+#[cfg(not(feature = "keyring"))]
+fn get_keyring_secret(_name: &str) -> anyhow::Result<()> {
+    anyhow::bail!("Keyring support not compiled. Rebuild with: cargo build --features keyring");
+}
+
+#[cfg(feature = "keyring")]
+fn remove_keyring_secret(name: &str) -> anyhow::Result<()> {
+    let entry = keyring::Entry::new(KEYRING_SERVICE, name)?;
+    match entry.delete_credential() {
+        Ok(()) => format::ok_msg(&format!("Removed keyring entry for '{}'", name)),
+        Err(keyring::Error::NoEntry) => {
+            format::err_json("NOT_FOUND", &format!("No keyring entry for '{}'", name));
+        }
+        Err(e) => anyhow::bail!("Keyring error: {}", e),
+    }
+    Ok(())
+}
+
+#[cfg(not(feature = "keyring"))]
+fn remove_keyring_secret(_name: &str) -> anyhow::Result<()> {
+    anyhow::bail!("Keyring support not compiled. Rebuild with: cargo build --features keyring");
+}
+
+/// Try to look up a password from the OS keyring (if feature enabled).
+#[cfg(feature = "keyring")]
+pub fn keyring_lookup(name: &str) -> Option<String> {
+    keyring::Entry::new(KEYRING_SERVICE, name)
+        .ok()
+        .and_then(|e| e.get_password().ok())
+}
+
+#[cfg(not(feature = "keyring"))]
+pub fn keyring_lookup(_name: &str) -> Option<String> {
+    None
+}

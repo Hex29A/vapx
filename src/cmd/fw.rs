@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use clap::{Args, Subcommand};
+use indicatif::{ProgressBar, ProgressStyle};
 
 use crate::config::credentials::{self, resolve};
 use crate::output::format;
@@ -145,7 +146,15 @@ impl FwCmd {
                 eprintln!("Uploading firmware...");
                 let upload_start = Instant::now();
 
+                let pb = ProgressBar::new_spinner();
+                pb.set_style(ProgressStyle::default_spinner()
+                    .template("{spinner:.green} {msg}")
+                    .unwrap());
+                pb.set_message("Uploading firmware...");
+                pb.enable_steady_tick(Duration::from_millis(100));
+
                 let resp = firmware::upgrade(&client, &firmware_data, fd, None, None)?;
+                pb.finish_and_clear();
 
                 let new_version = resp
                     .pointer("/data/firmwareVersion")
@@ -156,7 +165,14 @@ impl FwCmd {
                 eprintln!("Camera is rebooting...");
 
                 if wait {
+                    let pb = ProgressBar::new_spinner();
+                    pb.set_style(ProgressStyle::default_spinner()
+                        .template("{spinner:.yellow} {msg} [{elapsed_precise}]")
+                        .unwrap());
+                    pb.set_message("Waiting for reboot...");
+                    pb.enable_steady_tick(Duration::from_millis(100));
                     wait_for_reboot(&resolved_host, creds.port, creds, wait_timeout)?;
+                    pb.finish_and_clear();
                     eprintln!("Camera is back online.");
                 }
 

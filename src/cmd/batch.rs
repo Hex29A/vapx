@@ -2,6 +2,7 @@ use std::process::Command;
 use std::sync::Mutex;
 
 use clap::Args;
+use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 
 use crate::config::cameras::{self, CamerasConfig};
@@ -43,8 +44,15 @@ impl BatchCmd {
         let results: Mutex<Vec<serde_json::Value>> = Mutex::new(Vec::new());
         let vapx_bin = std::env::current_exe()?;
 
+        let pb = ProgressBar::new(targets.len() as u64);
+        pb.set_style(ProgressStyle::default_bar()
+            .template("{spinner:.green} [{bar:30.cyan/blue}] {pos}/{len} {msg}")
+            .unwrap()
+            .progress_chars("█▉▊▋▌▍▎▏ "));
+
         pool.install(|| {
             targets.par_iter().for_each(|camera_name| {
+                pb.set_message(camera_name.clone());
                 let mut cmd = Command::new(&vapx_bin);
                 cmd.args(&self.command);
                 cmd.arg(camera_name);
@@ -76,8 +84,11 @@ impl BatchCmd {
                 };
 
                 results.lock().unwrap().push(result);
+                pb.inc(1);
             });
         });
+
+        pb.finish_and_clear();
 
         let results = results.into_inner().unwrap();
         let total = results.len();

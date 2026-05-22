@@ -15,6 +15,14 @@ pub struct Cli {
     /// Verbosity level (-v, -vv, -vvv)
     #[arg(short, long, action = clap::ArgAction::Count, global = true)]
     pub verbose: u8,
+
+    /// Filter output fields (comma-separated, e.g. "model,serial")
+    #[arg(long, global = true)]
+    pub filter: Option<String>,
+
+    /// Config profile to use (from cameras.yaml profiles section)
+    #[arg(long, global = true)]
+    pub profile: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -45,6 +53,14 @@ pub enum Commands {
     Events(cmd::events::EventsCmd),
     /// Run command on multiple cameras
     Batch(cmd::batch::BatchCmd),
+    /// Discover supported APIs on the camera
+    Discover(cmd::discover::DiscoverCmd),
+    /// Compare parameters between two cameras
+    Diff(cmd::diff::DiffCmd),
+    /// Backup and restore camera parameters
+    Backup(cmd::backup::BackupCmd),
+    /// Manage text/image overlays
+    Overlay(cmd::overlay::OverlayCmd),
     /// Configuration management
     Config(cmd::config::ConfigCmd),
     /// Generate shell completions
@@ -64,7 +80,18 @@ pub enum Commands {
 fn main() {
     let cli = Cli::parse();
 
-    let filter = match cli.verbose {
+    // Set output filter before running commands
+    if let Some(ref filter) = cli.filter {
+        let keys: Vec<String> = filter.split(',').map(|s| s.trim().to_string()).collect();
+        output::format::set_filter(keys);
+    }
+
+    // Set active config profile
+    if let Some(ref profile) = cli.profile {
+        config::cameras::set_profile(profile.clone());
+    }
+
+    let log_filter = match cli.verbose {
         0 => "warn",
         1 => "info",
         2 => "debug",
@@ -73,7 +100,7 @@ fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(filter)),
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(log_filter)),
         )
         .with_target(false)
         .without_time()
@@ -93,6 +120,10 @@ fn main() {
         Commands::Hw(cmd) => cmd.run(),
         Commands::Events(cmd) => cmd.run(),
         Commands::Batch(cmd) => cmd.run(),
+        Commands::Discover(cmd) => cmd.run(),
+        Commands::Diff(cmd) => cmd.run(),
+        Commands::Backup(cmd) => cmd.run(),
+        Commands::Overlay(cmd) => cmd.run(),
         Commands::Config(cmd) => cmd.run(),
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();
