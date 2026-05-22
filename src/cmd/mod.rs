@@ -1,10 +1,12 @@
 pub mod acap;
 pub mod config;
 pub mod fw;
+pub mod hw;
 pub mod info;
 pub mod net;
 pub mod param;
 pub mod pass;
 pub mod ptz;
 pub mod snap;
+pub mod time;
 pub mod user;

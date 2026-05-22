@@ -45,6 +45,8 @@ vapx/
       user.rs            # vapx user — user account management
       pass.rs            # vapx pass — password management
       net.rs             # vapx net — network configuration
+      time.rs            # vapx time — NTP/timezone management
+      hw.rs              # vapx hw — I/O port management
       config.rs          # vapx config — config file management
     vapix/
       mod.rs
@@ -56,6 +58,8 @@ vapx/
       ptz.rs             # PTZ control (com/ptz.cgi)
       params.rs          # Parameter management (param.cgi)
       users.rs           # User management (pwdgrp.cgi)
+      time.rs            # Time/NTP configuration (param.cgi root.Time)
+      io.rs              # I/O port configuration (param.cgi root.IOPort)
       network.rs         # Network configuration (param.cgi root.Network)
     config/
       mod.rs
@@ -246,13 +250,13 @@ impl XxxCmd {
 - [x] `vapx user` — user account management (list, add, update, remove)
 - [x] `vapx pass` — password management
 - [x] `vapx net` — network configuration (show, set)
-- [ ] `vapx time` — NTP/timezone
-- [ ] `vapx hw` — I/O ports, lights
+- [x] `vapx time` — NTP/timezone
+- [x] `vapx hw` — I/O ports, lights
 
 ### Priority 3 — Batch & UX
 - [ ] `vapx batch` — run command on multiple cameras (parallel with rayon)
 - [ ] Progress bars (indicatif) for batch and firmware operations
-- [ ] Shell completions (`vapx completions bash|zsh|fish`)
+- [x] Shell completions (`vapx completions bash|zsh|fish`)
 - [ ] Man page generation (clap_mangen)
 
 ### Priority 4 — Config enhancements

@@ -1,4 +1,5 @@
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::{generate, Shell};
 
 mod cmd;
 mod config;
@@ -36,8 +37,18 @@ pub enum Commands {
     Pass(cmd::pass::PassCmd),
     /// Network configuration
     Net(cmd::net::NetCmd),
+    /// Time/NTP configuration
+    Time(cmd::time::TimeCmd),
+    /// I/O port management
+    Hw(cmd::hw::HwCmd),
     /// Configuration management
     Config(cmd::config::ConfigCmd),
+    /// Generate shell completions
+    Completions {
+        /// Shell to generate completions for
+        #[arg(value_enum)]
+        shell: Shell,
+    },
 }
 
 fn main() {
@@ -68,7 +79,14 @@ fn main() {
         Commands::User(cmd) => cmd.run(),
         Commands::Pass(cmd) => cmd.run(),
         Commands::Net(cmd) => cmd.run(),
+        Commands::Time(cmd) => cmd.run(),
+        Commands::Hw(cmd) => cmd.run(),
         Commands::Config(cmd) => cmd.run(),
+        Commands::Completions { shell } => {
+            let mut cmd = Cli::command();
+            generate(shell, &mut cmd, "vapx", &mut std::io::stdout());
+            Ok(())
+        }
     };
 
     if let Err(e) = result {

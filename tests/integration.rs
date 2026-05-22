@@ -1175,3 +1175,261 @@ fn test_net_set_hostname_roundtrip() {
         String::from_utf8_lossy(&output.stderr)
     );
 }
+
+// ── Time/NTP tests ──────────────────────────────────────────────────
+
+#[test]
+fn test_time_show_json() {
+    if skip_if_no_camera() {
+        eprintln!("SKIP: camera not reachable");
+        return;
+    }
+
+    let output = vapx_bin()
+        .args([
+            "time",
+            "show",
+            &test_host(),
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "time show failed: {}",
+        stderr
+    );
+
+    let json = parse_ok_data(&stdout);
+    assert!(json.is_object());
+    assert!(
+        json.get("root.Time.SyncSource").is_some(),
+        "Missing root.Time.SyncSource"
+    );
+    assert!(
+        json.get("root.Time.NTP.Server").is_some(),
+        "Missing root.Time.NTP.Server"
+    );
+}
+
+#[test]
+fn test_time_show_plain() {
+    if skip_if_no_camera() {
+        eprintln!("SKIP: camera not reachable");
+        return;
+    }
+
+    let output = vapx_bin()
+        .args([
+            "time",
+            "show",
+            &test_host(),
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+            "--plain",
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success());
+    assert!(stdout.contains("root.Time.SyncSource"));
+}
+
+#[test]
+fn test_time_set_ntp_roundtrip() {
+    if skip_if_no_camera() {
+        eprintln!("SKIP: camera not reachable");
+        return;
+    }
+
+    // 1. Read current NTP server
+    let output = vapx_bin()
+        .args([
+            "param",
+            "get",
+            &test_host(),
+            "root.Time.NTP.Server",
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    let original_ntp = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+    // 2. Set a test NTP server
+    let output = vapx_bin()
+        .args([
+            "time",
+            "set",
+            &test_host(),
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+            "--ntp",
+            "time.google.com",
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    assert!(
+        output.status.success(),
+        "time set failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // 3. Verify it changed
+    let output = vapx_bin()
+        .args([
+            "param",
+            "get",
+            &test_host(),
+            "root.Time.NTP.Server",
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    let new_ntp = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    assert_eq!(new_ntp, "time.google.com", "NTP server was not changed");
+
+    // 4. Restore original
+    let output = vapx_bin()
+        .args([
+            "time",
+            "set",
+            &test_host(),
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+            "--ntp",
+            &original_ntp,
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    assert!(
+        output.status.success(),
+        "Restoring NTP failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+// ── I/O port tests ──────────────────────────────────────────────────
+
+#[test]
+fn test_hw_show_json() {
+    if skip_if_no_camera() {
+        eprintln!("SKIP: camera not reachable");
+        return;
+    }
+
+    let output = vapx_bin()
+        .args([
+            "hw",
+            "show",
+            &test_host(),
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "hw show failed: {}",
+        stderr
+    );
+
+    let json = parse_ok_data(&stdout);
+    assert!(json.is_object());
+    assert!(
+        json.get("root.IOPort.I0.Direction").is_some(),
+        "Missing root.IOPort.I0.Direction"
+    );
+}
+
+#[test]
+fn test_hw_show_plain() {
+    if skip_if_no_camera() {
+        eprintln!("SKIP: camera not reachable");
+        return;
+    }
+
+    let output = vapx_bin()
+        .args([
+            "hw",
+            "show",
+            &test_host(),
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+            "--plain",
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success());
+    assert!(stdout.contains("root.IOPort.I0.Direction"));
+}
+
+// ── Shell completions test ──────────────────────────────────────────
+
+#[test]
+fn test_completions_bash() {
+    let output = vapx_bin()
+        .args(["completions", "bash"])
+        .output()
+        .expect("failed to run vapx");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success());
+    assert!(stdout.contains("_vapx"), "Missing bash completion function");
+    assert!(stdout.contains("COMPREPLY"), "Missing COMPREPLY");
+}
+
+#[test]
+fn test_completions_zsh() {
+    let output = vapx_bin()
+        .args(["completions", "zsh"])
+        .output()
+        .expect("failed to run vapx");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success());
+    assert!(stdout.contains("vapx"), "Missing zsh completion content");
+}
+
+#[test]
+fn test_completions_fish() {
+    let output = vapx_bin()
+        .args(["completions", "fish"])
+        .output()
+        .expect("failed to run vapx");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success());
+    assert!(stdout.contains("vapx"), "Missing fish completion content");
+}
