@@ -1,4 +1,5 @@
 pub mod acap;
+pub mod batch;
 pub mod config;
 pub mod fw;
 pub mod hw;

@@ -29,6 +29,7 @@ jobs:
 
   build-matrix:
     needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
     strategy:
       matrix:
         include:
@@ -73,44 +74,6 @@ jobs:
         with:
           name: vapx-${{ matrix.target }}
           path: target/${{ matrix.target }}/release/vapx
-
-  release:
-    needs: build-matrix
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts/
-
-      - name: Prepare release files
-        run: |
-          mkdir -p release
-          for dir in artifacts/vapx-*; do
-            target=$(basename "$dir" | sed 's/vapx-//')
-            cp "$dir/vapx" "release/vapx-${target}"
-            chmod +x "release/vapx-${target}"
-          done
-          ls -la release/
-
-      - name: Create/Update dev release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: dev
-          name: Development Build
-          prerelease: true
-          files: release/*
-          body: |
-            Latest build from main branch.
-            
-            | File | Platform |
-            |------|----------|
-            | vapx-x86_64-unknown-linux-musl | Linux x86_64 (static) |
-            | vapx-aarch64-unknown-linux-musl | Linux ARM64 / Raspberry Pi 4-5 |
-            | vapx-armv7-unknown-linux-musleabihf | Linux ARMv7 / Raspberry Pi 3 |
 
   tagged-release:
     needs: build-matrix

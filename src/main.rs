@@ -41,6 +41,8 @@ pub enum Commands {
     Time(cmd::time::TimeCmd),
     /// I/O port management
     Hw(cmd::hw::HwCmd),
+    /// Run command on multiple cameras
+    Batch(cmd::batch::BatchCmd),
     /// Configuration management
     Config(cmd::config::ConfigCmd),
     /// Generate shell completions
@@ -48,6 +50,12 @@ pub enum Commands {
         /// Shell to generate completions for
         #[arg(value_enum)]
         shell: Shell,
+    },
+    /// Generate man pages
+    Mangen {
+        /// Output directory for man pages
+        #[arg(default_value = ".")]
+        dir: std::path::PathBuf,
     },
 }
 
@@ -81,12 +89,21 @@ fn main() {
         Commands::Net(cmd) => cmd.run(),
         Commands::Time(cmd) => cmd.run(),
         Commands::Hw(cmd) => cmd.run(),
+        Commands::Batch(cmd) => cmd.run(),
         Commands::Config(cmd) => cmd.run(),
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();
             generate(shell, &mut cmd, "vapx", &mut std::io::stdout());
             Ok(())
         }
+        Commands::Mangen { dir } => (|| -> anyhow::Result<()> {
+            let cmd = Cli::command();
+            std::fs::create_dir_all(&dir)?;
+            clap_mangen::generate_to(cmd, &dir)
+                .map_err(|e| anyhow::anyhow!("Failed to generate man pages: {}", e))?;
+            eprintln!("Man pages written to {}", dir.display());
+            Ok(())
+        })(),
     };
 
     if let Err(e) = result {

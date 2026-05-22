@@ -254,11 +254,11 @@ impl XxxCmd {
 - [x] `vapx hw` — I/O ports, lights
 
 ### Priority 3 — Batch & UX
-- [ ] `vapx batch` — run command on multiple cameras (parallel with rayon)
+- [x] `vapx batch` — run command on multiple cameras (parallel with rayon)
 - [ ] Progress bars (indicatif) for batch and firmware operations
 - [x] Shell completions (`vapx completions bash|zsh|fish`)
-- [ ] Man page generation (clap_mangen)
+- [x] Man page generation (clap_mangen)
 
 ### Priority 4 — Config enhancements
-- [ ] `vapx config add` with connectivity verification
+- [x] `vapx config add` with connectivity verification
 - [ ] OS keyring secrets backend (optional)

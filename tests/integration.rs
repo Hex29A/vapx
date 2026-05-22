@@ -183,13 +183,18 @@ fn test_info_unreachable_host() {
 
 #[test]
 fn test_config_path_no_config() {
-    // Run in a temp dir where there's no cameras.yaml
+    // Run in a temp dir where there's no cameras.yaml, with no XDG config
+    let empty_dir = std::env::temp_dir().join(format!("vapx_no_config_{}", std::process::id()));
+    std::fs::create_dir_all(&empty_dir).unwrap();
     let output = vapx_bin()
         .args(["config", "path"])
         .env_remove("VAPX_CONFIG")
-        .current_dir(std::env::temp_dir())
+        .env("HOME", &empty_dir)
+        .current_dir(&empty_dir)
         .output()
         .expect("failed to run vapx");
+
+    let _ = std::fs::remove_dir_all(&empty_dir);
 
     // Should exit with error when no config found
     assert!(!output.status.success());

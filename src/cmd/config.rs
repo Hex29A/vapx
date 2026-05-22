@@ -1,7 +1,10 @@
 use clap::{Args, Subcommand};
 
 use crate::config::cameras;
+use crate::config::credentials;
 use crate::output::format;
+use crate::vapix::client::VapixClient;
+use crate::vapix::device;
 
 #[derive(Args)]
 pub struct ConfigCmd {
@@ -19,6 +22,30 @@ pub enum ConfigCommands {
     List,
     /// Create a template config file
     Init,
+    /// Add a camera to config (with optional connectivity check)
+    Add {
+        /// Name for this camera in config
+        #[arg(long)]
+        name: String,
+        /// Camera IP or hostname
+        #[arg(long)]
+        host: String,
+        /// Username
+        #[arg(short, long)]
+        user: Option<String>,
+        /// Password
+        #[arg(short, long)]
+        pass: Option<String>,
+        /// Use HTTPS
+        #[arg(long)]
+        https: bool,
+        /// Port number
+        #[arg(long)]
+        port: Option<u16>,
+        /// Skip connectivity verification
+        #[arg(long)]
+        no_verify: bool,
+    },
 }
 
 impl ConfigCmd {
@@ -100,6 +127,78 @@ impl ConfigCmd {
 
                 std::fs::write(&target, TEMPLATE_CONFIG)?;
                 format::ok_msg(&format!("Created: {}", target.display()));
+            }
+            ConfigCommands::Add { name, host, user, pass, https, port, no_verify } => {
+                // Verify connectivity unless --no-verify
+                if !no_verify {
+                    let cred_user = user.as_deref().unwrap_or("root");
+                    let cred_pass = pass.as_deref().unwrap_or("");
+
+                    if cred_pass.is_empty() {
+                        anyhow::bail!("Password required for connectivity check. Use --pass or --no-verify to skip.");
+                    }
+
+                    let (creds, resolved) = credentials::resolve(
+                        &host,
+                        Some(cred_user),
+                        Some(cred_pass),
+                        port,
+                        !https, // insecure if not https
+                    )?;
+                    let client = VapixClient::new(&resolved, creds.port, creds, 5);
+                    let info = device::get_all_properties(&client)?;
+                    let model = info
+                        .pointer("/data/propertyList/ProdNbr")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown");
+                    eprintln!("Verified: {} ({})", host, model);
+                }
+
+                // Build YAML entry and append to config file
+                let config_path = cameras::config_path()
+                    .or_else(|| dirs::config_dir().map(|d| d.join("vapx").join("cameras.yaml")))
+                    .unwrap_or_else(|| std::path::PathBuf::from("cameras.yaml"));
+
+                // Load existing to check for duplicates
+                if let Some(config) = cameras::load_cameras()? {
+                    if config.cameras.contains_key(&name) {
+                        anyhow::bail!("Camera '{}' already exists in config", name);
+                    }
+                }
+
+                // Build the entry lines
+                let mut entry = format!("\n  {}:\n    host: {}\n", name, host);
+                if let Some(ref u) = user {
+                    entry.push_str(&format!("    user: {}\n", u));
+                }
+                if let Some(ref p) = pass {
+                    entry.push_str(&format!("    pass: \"{}\"\n", p));
+                }
+                if https {
+                    entry.push_str("    https: true\n");
+                }
+                if let Some(p) = port {
+                    entry.push_str(&format!("    port: {}\n", p));
+                }
+
+                // Ensure the config file exists
+                if !config_path.exists() {
+                    if let Some(parent) = config_path.parent() {
+                        std::fs::create_dir_all(parent)?;
+                    }
+                    std::fs::write(&config_path, TEMPLATE_CONFIG)?;
+                }
+
+                // Insert entry into cameras: section (before groups: line, or at end)
+                let content = std::fs::read_to_string(&config_path)?;
+                let new_content = if let Some(pos) = content.find("\ngroups:") {
+                    format!("{}{}{}", &content[..pos + 1], entry, &content[pos + 1..])
+                } else {
+                    format!("{}{}", content, entry)
+                };
+                std::fs::write(&config_path, new_content)?;
+
+                format::ok_msg(&format!("Added camera '{}' ({})", name, host));
             }
         }
         Ok(())
