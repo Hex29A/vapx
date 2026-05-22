@@ -77,6 +77,12 @@ pub enum Commands {
     Cert(cmd::cert::CertCmd),
     /// Watch events from multiple cameras
     Watch(cmd::watch::WatchCmd),
+    /// Action rule management
+    Rule(cmd::rule::RuleCmd),
+    /// Storage and SD card management
+    Storage(cmd::storage::StorageCmd),
+    /// Fleet health check
+    Health(cmd::health::HealthCmd),
     /// Configuration management
     Config(cmd::config::ConfigCmd),
     /// Generate shell completions
@@ -151,6 +157,9 @@ fn main() {
         Commands::Audit(cmd) => cmd.run(),
         Commands::Cert(cmd) => cmd.run(),
         Commands::Watch(cmd) => cmd.run(),
+        Commands::Rule(cmd) => cmd.run(),
+        Commands::Storage(cmd) => cmd.run(),
+        Commands::Health(cmd) => cmd.run(),
         Commands::Config(cmd) => cmd.run(),
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();

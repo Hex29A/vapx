@@ -11,5 +11,7 @@ pub mod network;
 pub mod overlay;
 pub mod params;
 pub mod ptz;
+pub mod rules;
+pub mod storage;
 pub mod time;
 pub mod users;

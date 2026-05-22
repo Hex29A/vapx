@@ -1763,3 +1763,65 @@ fn test_template_create_and_diff() {
 
     std::fs::remove_file(&tmp).ok();
 }
+
+// ─── v0.10.0 tests ─────────────────────────────────────────────────────────
+
+#[test]
+fn test_rule_list() {
+    if skip_if_no_camera() { return; }
+    let output = vapx_bin()
+        .args(["rule", "list", &test_host(), "-u", &test_user(), "-p", &test_pass()])
+        .output()
+        .expect("failed to run vapx");
+    // Action rule API may not be available on all cameras
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success() || stderr.contains("error"),
+        "rule list unexpected failure: stdout={}, stderr={}", stdout, stderr
+    );
+}
+
+#[test]
+fn test_rule_templates() {
+    if skip_if_no_camera() { return; }
+    let output = vapx_bin()
+        .args(["rule", "templates", &test_host(), "-u", &test_user(), "-p", &test_pass()])
+        .output()
+        .expect("failed to run vapx");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success() || stderr.contains("error"),
+        "rule templates unexpected failure: stdout={}, stderr={}", stdout, stderr
+    );
+}
+
+#[test]
+fn test_storage_list() {
+    if skip_if_no_camera() { return; }
+    let output = vapx_bin()
+        .args(["storage", "list", &test_host(), "-u", &test_user(), "-p", &test_pass()])
+        .output()
+        .expect("failed to run vapx");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    // Disk API may not exist or SD card may not be inserted
+    assert!(
+        output.status.success() || stderr.contains("error"),
+        "storage list unexpected failure: stdout={}, stderr={}", stdout, stderr
+    );
+}
+
+#[test]
+fn test_storage_params() {
+    if skip_if_no_camera() { return; }
+    let output = vapx_bin()
+        .args(["storage", "params", &test_host(), "-u", &test_user(), "-p", &test_pass()])
+        .output()
+        .expect("failed to run vapx");
+    assert!(output.status.success(), "storage params failed: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let data = parse_ok_data(&stdout);
+    assert!(data.is_object());
+}

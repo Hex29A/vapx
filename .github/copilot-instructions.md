@@ -59,6 +59,9 @@ vapx/
       audit.rs           # vapx audit — security posture audit
       cert.rs            # vapx cert — certificate management
       watch.rs           # vapx watch — multi-camera event monitoring
+      rule.rs            # vapx rule — action rule management
+      storage.rs         # vapx storage — SD card/edge storage management
+      health.rs          # vapx health — fleet health check
       config.rs          # vapx config — config file + keyring management
     vapix/
       mod.rs
@@ -77,6 +80,8 @@ vapx/
       discover.rs        # API discovery (apidiscovery.cgi)
       overlay.rs         # Dynamic overlay management (dynamicoverlay.cgi)
       certs.rs           # Certificate management (certificate.cgi)
+      rules.rs           # Action rule management (action.cgi)
+      storage.rs         # Disk/storage management (disks/, record/)
     config/
       mod.rs
       cameras.rs         # cameras.yaml loading, env var substitution
@@ -298,3 +303,8 @@ impl XxxCmd {
 - [x] `vapx fw check` — firmware version comparison
 - [x] `vapx diff --group-diff` — diff reference camera against entire group
 - [x] Output formats (`--format table|csv|yaml`) for flexible output rendering
+
+### Priority 6 — Camera automation & operations
+- [x] `vapx rule` — action rule management (list/info/enable/disable/remove/templates)
+- [x] `vapx storage` — SD card and edge storage management (disks/recordings/params)
+- [x] `vapx health` — fleet health check (parallel, model/firmware/latency/issues)
