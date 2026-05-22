@@ -437,7 +437,7 @@ fn test_fw_status_json() {
     }
 
     let output = vapx_bin()
-        .args(["fw", &test_host(), "-u", &test_user(), "-p", &test_pass()])
+        .args(["fw", "status", &test_host(), "-u", &test_user(), "-p", &test_pass()])
         .output()
         .expect("failed to run vapx");
 
@@ -462,6 +462,7 @@ fn test_fw_status_plain() {
     let output = vapx_bin()
         .args([
             "fw",
+            "status",
             &test_host(),
             "-u",
             &test_user(),

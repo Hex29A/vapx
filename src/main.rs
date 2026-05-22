@@ -41,6 +41,8 @@ pub enum Commands {
     Time(cmd::time::TimeCmd),
     /// I/O port management
     Hw(cmd::hw::HwCmd),
+    /// Stream real-time events (motion, I/O, PTZ, etc.)
+    Events(cmd::events::EventsCmd),
     /// Run command on multiple cameras
     Batch(cmd::batch::BatchCmd),
     /// Configuration management
@@ -89,6 +91,7 @@ fn main() {
         Commands::Net(cmd) => cmd.run(),
         Commands::Time(cmd) => cmd.run(),
         Commands::Hw(cmd) => cmd.run(),
+        Commands::Events(cmd) => cmd.run(),
         Commands::Batch(cmd) => cmd.run(),
         Commands::Config(cmd) => cmd.run(),
         Commands::Completions { shell } => {

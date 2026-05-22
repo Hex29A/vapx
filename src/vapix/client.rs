@@ -175,6 +175,78 @@ impl VapixClient {
         Ok(bytes)
     }
 
+    /// POST a multipart/form-data request for firmware upload.
+    /// Part 1: JSON metadata (application/json)
+    /// Part 2: firmware file (application/octet-stream)
+    pub fn post_multipart_firmware(
+        &self,
+        path: &str,
+        json_body: &Value,
+        firmware_data: &[u8],
+    ) -> anyhow::Result<Value> {
+        let url = format!("{}{}", self.base_url, path);
+        let boundary = format!("vapx-{:016x}", std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos());
+
+        let json_str = serde_json::to_string(json_body)?;
+
+        // Build multipart body manually
+        let mut body = Vec::new();
+        // Part 1: JSON
+        body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+        body.extend_from_slice(b"Content-Disposition: form-data; name=\"json\"\r\n");
+        body.extend_from_slice(b"Content-Type: application/json\r\n\r\n");
+        body.extend_from_slice(json_str.as_bytes());
+        body.extend_from_slice(b"\r\n");
+        // Part 2: firmware file
+        body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+        body.extend_from_slice(b"Content-Disposition: form-data; name=\"file\"; filename=\"firmware.bin\"\r\n");
+        body.extend_from_slice(b"Content-Type: application/octet-stream\r\n\r\n");
+        body.extend_from_slice(firmware_data);
+        body.extend_from_slice(b"\r\n");
+        // Closing boundary
+        body.extend_from_slice(format!("--{}--\r\n", boundary).as_bytes());
+
+        let content_type = format!("multipart/form-data; boundary={}", boundary);
+
+        debug!("POST multipart {} ({} bytes firmware)", url, firmware_data.len());
+
+        // Single attempt (no retry for firmware upload — it's too large and the
+        // camera may already be processing)
+        let resp = request_with_auth(
+            &self.inner,
+            "POST",
+            &url,
+            Some(&body),
+            Some(&content_type),
+            &self.creds.user,
+            &self.creds.pass,
+            self.creds.https,
+        )?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let text = resp.text().unwrap_or_default();
+            bail!("HTTP {}: {}", status.as_u16(), text);
+        }
+
+        let json: Value = resp.json().context("Failed to parse JSON response")?;
+        trace!("Response: {}", json);
+
+        if let Some(error) = json.get("error") {
+            let code = error.get("code").and_then(|c| c.as_i64()).unwrap_or(0);
+            let message = error
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("Unknown error");
+            bail!("VAPIX error {}: {}", code, message);
+        }
+
+        Ok(json)
+    }
+
     #[allow(dead_code)]
     pub fn base_url(&self) -> &str {
         &self.base_url
