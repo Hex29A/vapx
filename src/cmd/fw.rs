@@ -105,6 +105,19 @@ pub enum FwCommands {
         #[arg(long, default_value = "soft")]
         mode: String,
     },
+    /// Check firmware version against another camera or expected version
+    Check {
+        #[command(flatten)]
+        cam: CameraArgs,
+
+        /// Expected firmware version (e.g., "12.1.0")
+        #[arg(long)]
+        expected: Option<String>,
+
+        /// Compare against another camera
+        #[arg(long)]
+        compare: Option<String>,
+    },
 }
 
 impl FwCmd {
@@ -217,6 +230,74 @@ impl FwCmd {
                 eprintln!("Factory defaulting camera (mode: {})...", mode);
                 firmware::factory_default(&client, &mode)?;
                 format::ok_msg(&format!("Factory default ({}) initiated", mode));
+            }
+            FwCommands::Check { cam, expected, compare } => {
+                let (creds, resolved_host) = resolve_cam(&cam)?;
+                let client = make_client(&resolved_host, creds, cam.timeout);
+                let resp = firmware::status(&client)?;
+                let current = resp
+                    .pointer("/data/activeFirmwareVersion")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+
+                if let Some(ref expected_ver) = expected {
+                    let matches = current == *expected_ver;
+                    let result = serde_json::json!({
+                        "host": cam.host,
+                        "current": current,
+                        "expected": expected_ver,
+                        "matches": matches,
+                    });
+                    if cam.plain {
+                        if matches {
+                            eprintln!("OK: {} is on expected firmware {}", cam.host, current);
+                        } else {
+                            eprintln!("MISMATCH: {} has {} (expected {})", cam.host, current, expected_ver);
+                        }
+                    } else {
+                        format::ok(&result);
+                    }
+                } else if let Some(ref other) = compare {
+                    let (creds_b, host_b) = resolve(
+                        other,
+                        cam.user.as_deref(),
+                        cam.pass.as_deref(),
+                        cam.port,
+                        cam.insecure,
+                    )?;
+                    let client_b = make_client(&host_b, creds_b, cam.timeout);
+                    let resp_b = firmware::status(&client_b)?;
+                    let other_ver = resp_b
+                        .pointer("/data/activeFirmwareVersion")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown")
+                        .to_string();
+
+                    let matches = current == other_ver;
+                    let result = serde_json::json!({
+                        "host_a": cam.host,
+                        "version_a": current,
+                        "host_b": other,
+                        "version_b": other_ver,
+                        "matches": matches,
+                    });
+                    if cam.plain {
+                        if matches {
+                            eprintln!("OK: Both on firmware {}", current);
+                        } else {
+                            eprintln!("{}: {}  |  {}: {}", cam.host, current, other, other_ver);
+                        }
+                    } else {
+                        format::ok(&result);
+                    }
+                } else {
+                    // Just show current version
+                    format::ok(&serde_json::json!({
+                        "host": cam.host,
+                        "firmware": current,
+                    }));
+                }
             }
         }
 

@@ -1569,3 +1569,197 @@ fn test_backup_save_and_restore_dry_run() {
     // Clean up
     std::fs::remove_file(&tmp).ok();
 }
+
+// ─── New v0.9.0 tests ──────────────────────────────────────────────────────
+
+#[test]
+fn test_log_system() {
+    if skip_if_no_camera() { return; }
+    let output = vapx_bin()
+        .args(["log", "system", &test_host(), "-u", &test_user(), "-p", &test_pass(), "-n", "5"])
+        .output()
+        .expect("failed to run vapx");
+    assert!(output.status.success(), "log system failed: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let data = parse_ok_data(&stdout);
+    assert!(data["lines"].as_u64().unwrap() <= 5);
+    assert!(data["log"].is_array());
+}
+
+#[test]
+fn test_log_access() {
+    if skip_if_no_camera() { return; }
+    let output = vapx_bin()
+        .args(["log", "access", &test_host(), "-u", &test_user(), "-p", &test_pass(), "-n", "3"])
+        .output()
+        .expect("failed to run vapx");
+    assert!(output.status.success(), "log access failed: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let data = parse_ok_data(&stdout);
+    assert!(data["log"].is_array());
+}
+
+#[test]
+fn test_stream_rtsp() {
+    if skip_if_no_camera() { return; }
+    let output = vapx_bin()
+        .args(["stream", "rtsp", &test_host(), "-u", &test_user(), "-p", &test_pass()])
+        .output()
+        .expect("failed to run vapx");
+    assert!(output.status.success(), "stream rtsp failed: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let data = parse_ok_data(&stdout);
+    assert_eq!(data["type"].as_str().unwrap(), "rtsp");
+    assert!(data["url"].as_str().unwrap().starts_with("rtsp://"));
+}
+
+#[test]
+fn test_stream_mjpeg() {
+    if skip_if_no_camera() { return; }
+    let output = vapx_bin()
+        .args(["stream", "mjpeg", &test_host(), "-u", &test_user(), "-p", &test_pass()])
+        .output()
+        .expect("failed to run vapx");
+    assert!(output.status.success(), "stream mjpeg failed: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let data = parse_ok_data(&stdout);
+    assert_eq!(data["type"].as_str().unwrap(), "mjpeg");
+    assert!(data["url"].as_str().unwrap().contains("/axis-cgi/mjpg/video.cgi"));
+}
+
+#[test]
+fn test_stream_snapshot_url() {
+    if skip_if_no_camera() { return; }
+    let output = vapx_bin()
+        .args(["stream", "snapshot", &test_host(), "-u", &test_user(), "-p", &test_pass(), "--plain"])
+        .output()
+        .expect("failed to run vapx");
+    assert!(output.status.success(), "stream snapshot failed: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.trim().contains("/axis-cgi/jpg/image.cgi"));
+}
+
+#[test]
+fn test_audit_json() {
+    if skip_if_no_camera() { return; }
+    let output = vapx_bin()
+        .args(["audit", &test_host(), "-u", &test_user(), "-p", &test_pass()])
+        .output()
+        .expect("failed to run vapx");
+    assert!(output.status.success(), "audit failed: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let data = parse_ok_data(&stdout);
+    assert!(data["summary"].is_object());
+    assert!(data["findings"].is_array());
+    assert!(data["summary"]["total"].as_u64().is_some());
+}
+
+#[test]
+fn test_audit_plain() {
+    if skip_if_no_camera() { return; }
+    let output = vapx_bin()
+        .args(["audit", &test_host(), "-u", &test_user(), "-p", &test_pass(), "--plain"])
+        .output()
+        .expect("failed to run vapx");
+    assert!(output.status.success(), "audit plain failed: {}", String::from_utf8_lossy(&output.stderr));
+    // Plain output goes to stderr
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("Security audit:"));
+}
+
+#[test]
+fn test_cert_list() {
+    if skip_if_no_camera() { return; }
+    let output = vapx_bin()
+        .args(["cert", "list", &test_host(), "-u", &test_user(), "-p", &test_pass()])
+        .output()
+        .expect("failed to run vapx");
+    // Certificate API may not be available on all cameras, so just check it doesn't crash
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    // Either success or a clean error
+    assert!(
+        output.status.success() || stderr.contains("error"),
+        "cert list unexpected failure: stdout={}, stderr={}", stdout, stderr
+    );
+}
+
+#[test]
+fn test_fw_check_version() {
+    if skip_if_no_camera() { return; }
+    let output = vapx_bin()
+        .args(["fw", "check", &test_host(), "-u", &test_user(), "-p", &test_pass()])
+        .output()
+        .expect("failed to run vapx");
+    assert!(output.status.success(), "fw check failed: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let data = parse_ok_data(&stdout);
+    assert!(data["firmware"].as_str().is_some());
+}
+
+#[test]
+fn test_format_yaml() {
+    if skip_if_no_camera() { return; }
+    let output = vapx_bin()
+        .args(["--format", "yaml", "info", &test_host(), "-u", &test_user(), "-p", &test_pass()])
+        .output()
+        .expect("failed to run vapx");
+    assert!(output.status.success(), "yaml format failed: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("status: ok"));
+}
+
+#[test]
+fn test_format_table() {
+    if skip_if_no_camera() { return; }
+    let output = vapx_bin()
+        .args(["--format", "table", "info", &test_host(), "-u", &test_user(), "-p", &test_pass()])
+        .output()
+        .expect("failed to run vapx");
+    assert!(output.status.success(), "table format failed: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Table output should have content (not JSON)
+    assert!(!stdout.starts_with('{'));
+}
+
+#[test]
+fn test_format_csv() {
+    if skip_if_no_camera() { return; }
+    let output = vapx_bin()
+        .args(["--format", "csv", "info", &test_host(), "-u", &test_user(), "-p", &test_pass()])
+        .output()
+        .expect("failed to run vapx");
+    assert!(output.status.success(), "csv format failed: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("key,value"));
+}
+
+#[test]
+fn test_template_create_and_diff() {
+    if skip_if_no_camera() { return; }
+    let tmp = std::env::temp_dir().join("vapx_test_template.yaml");
+
+    // Create template from a small group
+    let output = vapx_bin()
+        .args(["template", "create", &test_host(), "-u", &test_user(), "-p", &test_pass(),
+            "-o", tmp.to_str().unwrap(), "--groups", "root.Brand"])
+        .output()
+        .expect("failed to run vapx");
+    assert!(output.status.success(), "template create failed: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let data = parse_ok_data(&stdout);
+    assert!(data["parameters"].as_u64().unwrap() > 0);
+
+    // Diff template against same camera (should show 0 diffs)
+    let output = vapx_bin()
+        .args(["template", "diff", &test_host(), "-u", &test_user(), "-p", &test_pass(),
+            "-f", tmp.to_str().unwrap()])
+        .output()
+        .expect("failed to run vapx");
+    assert!(output.status.success(), "template diff failed: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let data = parse_ok_data(&stdout);
+    assert_eq!(data["total_diffs"].as_u64().unwrap(), 0);
+
+    std::fs::remove_file(&tmp).ok();
+}

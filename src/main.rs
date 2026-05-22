@@ -20,6 +20,10 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub filter: Option<String>,
 
+    /// Output format: json (default), table, csv, yaml
+    #[arg(long, global = true, default_value = "json")]
+    pub format: String,
+
     /// Config profile to use (from cameras.yaml profiles section)
     #[arg(long, global = true)]
     pub profile: Option<String>,
@@ -31,7 +35,7 @@ pub enum Commands {
     Info(cmd::info::InfoCmd),
     /// JPEG snapshot to file
     Snap(cmd::snap::SnapCmd),
-    /// Firmware status
+    /// Firmware management
     Fw(cmd::fw::FwCmd),
     /// ACAP application management
     Acap(cmd::acap::AcapCmd),
@@ -61,6 +65,18 @@ pub enum Commands {
     Backup(cmd::backup::BackupCmd),
     /// Manage text/image overlays
     Overlay(cmd::overlay::OverlayCmd),
+    /// View system/access logs
+    Log(cmd::log::LogCmd),
+    /// Generate stream URLs (RTSP, MJPEG, snapshot)
+    Stream(cmd::stream::StreamCmd),
+    /// Apply/create parameter templates (desired-state config)
+    Template(cmd::template::TemplateCmd),
+    /// Security posture audit
+    Audit(cmd::audit::AuditCmd),
+    /// Certificate management
+    Cert(cmd::cert::CertCmd),
+    /// Watch events from multiple cameras
+    Watch(cmd::watch::WatchCmd),
     /// Configuration management
     Config(cmd::config::ConfigCmd),
     /// Generate shell completions
@@ -84,6 +100,11 @@ fn main() {
     if let Some(ref filter) = cli.filter {
         let keys: Vec<String> = filter.split(',').map(|s| s.trim().to_string()).collect();
         output::format::set_filter(keys);
+    }
+
+    // Set output format
+    if cli.format != "json" {
+        output::format::set_output_format(cli.format.clone());
     }
 
     // Set active config profile
@@ -124,6 +145,12 @@ fn main() {
         Commands::Diff(cmd) => cmd.run(),
         Commands::Backup(cmd) => cmd.run(),
         Commands::Overlay(cmd) => cmd.run(),
+        Commands::Log(cmd) => cmd.run(),
+        Commands::Stream(cmd) => cmd.run(),
+        Commands::Template(cmd) => cmd.run(),
+        Commands::Audit(cmd) => cmd.run(),
+        Commands::Cert(cmd) => cmd.run(),
+        Commands::Watch(cmd) => cmd.run(),
         Commands::Config(cmd) => cmd.run(),
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();

@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use clap::Args;
 
+use crate::config::cameras;
 use crate::config::credentials::resolve;
 use crate::output::format;
 use crate::vapix::client::VapixClient;
@@ -12,7 +13,7 @@ pub struct DiffCmd {
     /// First camera IP, hostname, or name from cameras.yaml
     pub host_a: String,
 
-    /// Second camera IP, hostname, or name from cameras.yaml
+    /// Second camera IP, hostname, or name — OR a group name when --group-diff is set
     pub host_b: String,
 
     #[arg(short, long, env = "VAPX_USER")]
@@ -31,6 +32,10 @@ pub struct DiffCmd {
     #[arg(long)]
     pub group: Option<String>,
 
+    /// Treat host_b as a camera group name and diff host_a against each member
+    #[arg(long)]
+    pub group_diff: bool,
+
     /// Request timeout in seconds
     #[arg(long)]
     pub timeout: Option<u64>,
@@ -38,6 +43,13 @@ pub struct DiffCmd {
 
 impl DiffCmd {
     pub fn run(self) -> anyhow::Result<()> {
+        if self.group_diff {
+            return self.run_group_diff();
+        }
+        self.run_pair_diff()
+    }
+
+    fn run_pair_diff(self) -> anyhow::Result<()> {
         let (creds_a, host_a) = resolve(
             &self.host_a,
             self.user.as_deref(),
@@ -114,6 +126,92 @@ impl DiffCmd {
 
         Ok(())
     }
+
+    fn run_group_diff(self) -> anyhow::Result<()> {
+        let config = cameras::load_cameras()?
+            .ok_or_else(|| anyhow::anyhow!("No cameras.yaml found"))?;
+
+        // host_a is the reference camera, host_b is the group name
+        let group_members = config.groups.get(&self.host_b)
+            .ok_or_else(|| anyhow::anyhow!("Group '{}' not found in cameras.yaml", self.host_b))?
+            .clone();
+
+        // Get reference camera params
+        let (creds_ref, host_ref) = resolve(
+            &self.host_a, self.user.as_deref(), self.pass.as_deref(),
+            self.port, self.insecure,
+        )?;
+        let timeout_ref = self.timeout.unwrap_or(creds_ref.timeout);
+        let client_ref = VapixClient::new(&host_ref, creds_ref.port, creds_ref, timeout_ref);
+        let text_ref = params::list(&client_ref, self.group.as_deref())?;
+        let map_ref = parse_params(&text_ref);
+
+        let mut results = Vec::new();
+
+        for member in &group_members {
+            if member == &self.host_a {
+                continue; // Skip reference camera itself
+            }
+
+            match resolve(member, self.user.as_deref(), self.pass.as_deref(), self.port, self.insecure) {
+                Ok((creds_m, host_m)) => {
+                    let timeout_m = self.timeout.unwrap_or(creds_m.timeout);
+                    let client_m = VapixClient::new(&host_m, creds_m.port, creds_m, timeout_m);
+
+                    match params::list(&client_m, self.group.as_deref()) {
+                        Ok(text_m) => {
+                            let map_m = parse_params(&text_m);
+                            let diff_count = count_diffs(&map_ref, &map_m);
+                            results.push(serde_json::json!({
+                                "camera": member,
+                                "diffs": diff_count,
+                                "status": if diff_count == 0 { "identical" } else { "different" },
+                            }));
+                        }
+                        Err(e) => {
+                            results.push(serde_json::json!({
+                                "camera": member,
+                                "status": "error",
+                                "error": format!("{}", e),
+                            }));
+                        }
+                    }
+                }
+                Err(e) => {
+                    results.push(serde_json::json!({
+                        "camera": member,
+                        "status": "error",
+                        "error": format!("{}", e),
+                    }));
+                }
+            }
+        }
+
+        format::ok(&serde_json::json!({
+            "reference": self.host_a,
+            "group": self.host_b,
+            "results": results,
+        }));
+
+        Ok(())
+    }
+}
+
+fn count_diffs(map_a: &BTreeMap<String, String>, map_b: &BTreeMap<String, String>) -> usize {
+    let mut count = 0;
+    for (k, v_a) in map_a {
+        match map_b.get(k) {
+            Some(v_b) if v_a != v_b => count += 1,
+            None => count += 1,
+            _ => {}
+        }
+    }
+    for k in map_b.keys() {
+        if !map_a.contains_key(k) {
+            count += 1;
+        }
+    }
+    count
 }
 
 fn parse_params(text: &str) -> BTreeMap<String, String> {

@@ -37,8 +37,8 @@ vapx/
     cmd/
       mod.rs
       info.rs            # vapx info — device identification
-      snap.rs            # vapx snap — JPEG snapshot
-      fw.rs              # vapx fw — firmware management (status/upgrade/commit/rollback/reboot)
+      snap.rs            # vapx snap — JPEG snapshot (+ time-lapse)
+      fw.rs              # vapx fw — firmware management (status/upgrade/commit/rollback/reboot/check)
       acap.rs            # vapx acap — ACAP application management
       ptz.rs             # vapx ptz — PTZ control
       param.rs           # vapx param — parameter management
@@ -50,9 +50,15 @@ vapx/
       events.rs          # vapx events — real-time event streaming (WebSocket)
       batch.rs           # vapx batch — parallel multi-camera operations
       discover.rs        # vapx discover — API discovery
-      diff.rs            # vapx diff — parameter diff between cameras
+      diff.rs            # vapx diff — parameter diff between cameras (+ group diff)
       backup.rs          # vapx backup — parameter backup/restore
       overlay.rs         # vapx overlay — text/image overlay management
+      log.rs             # vapx log — system/access log viewer
+      stream.rs          # vapx stream — RTSP/MJPEG/snapshot URL builder
+      template.rs        # vapx template — desired-state parameter templates
+      audit.rs           # vapx audit — security posture audit
+      cert.rs            # vapx cert — certificate management
+      watch.rs           # vapx watch — multi-camera event monitoring
       config.rs          # vapx config — config file + keyring management
     vapix/
       mod.rs
@@ -70,6 +76,7 @@ vapx/
       events.rs          # WebSocket event streaming
       discover.rs        # API discovery (apidiscovery.cgi)
       overlay.rs         # Dynamic overlay management (dynamicoverlay.cgi)
+      certs.rs           # Certificate management (certificate.cgi)
     config/
       mod.rs
       cameras.rs         # cameras.yaml loading, env var substitution
@@ -279,3 +286,15 @@ impl XxxCmd {
 - [x] `vapx config add` with connectivity verification
 - [x] Config profiles (`profiles:` section in cameras.yaml, `--profile` flag)
 - [x] OS keyring secrets backend (optional, `--features keyring`)
+
+### Priority 5 — Fleet management & advanced features
+- [x] `vapx log` — system/access log viewer
+- [x] `vapx stream` — RTSP/MJPEG/snapshot URL builder
+- [x] `vapx snap --interval/--count` — time-lapse snapshots
+- [x] `vapx template` — desired-state parameter templates (create/apply/diff)
+- [x] `vapx audit` — security posture audit
+- [x] `vapx cert` — certificate management (list/self-sign/CSR/remove)
+- [x] `vapx watch` — multi-camera event monitoring (threaded)
+- [x] `vapx fw check` — firmware version comparison
+- [x] `vapx diff --group-diff` — diff reference camera against entire group
+- [x] Output formats (`--format table|csv|yaml`) for flexible output rendering
