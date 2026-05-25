@@ -340,6 +340,9 @@ impl PtzInfoCmd {
         let timeout = self.timeout.unwrap_or(creds.timeout);
         let client = VapixClient::new(&resolved_host, creds.port, creds, timeout);
         let text = ptz::info(&client, self.camera)?;
+        if text.trim().starts_with("Error:") || text.contains("PTZ disabled") {
+            anyhow::bail!("{}", text.trim().trim_start_matches("Error:").trim());
+        }
         print!("{}", text);
         Ok(())
     }

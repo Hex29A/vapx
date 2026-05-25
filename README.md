@@ -33,12 +33,31 @@ The `host` argument can be an IP address, hostname, or a camera name defined in 
 | Command | Description |
 |---------|-------------|
 | `info` | Device info (model, firmware, serial, architecture) |
-| `snap` | JPEG snapshot to file |
-| `fw` | Firmware status |
+| `snap` | JPEG snapshot to file (supports time-lapse) |
+| `fw` | Firmware management (status, upgrade, commit, rollback, reboot, factory-default, check) |
 | `acap` | ACAP application management (list, start, stop, restart, remove) |
 | `ptz` | PTZ control (move, goto, preset, query, info) |
 | `param` | Parameter management (list, get, set) |
 | `user` | User account management (list, add, update, remove) |
+| `pass` | Change user password |
+| `net` | Network configuration (show, set) |
+| `time` | Time/NTP configuration (show, set) |
+| `hw` | I/O port management |
+| `events` | Stream real-time events via WebSocket |
+| `batch` | Run command on multiple cameras in parallel |
+| `discover` | Discover supported APIs on the camera |
+| `diff` | Compare parameters between two cameras (or group diff) |
+| `backup` | Backup and restore camera parameters |
+| `overlay` | Manage text/image overlays |
+| `log` | View system/access logs |
+| `stream` | Generate stream URLs (RTSP, MJPEG, snapshot) |
+| `template` | Apply/create parameter templates (desired-state config) |
+| `audit` | Security posture audit |
+| `cert` | Certificate management (list, self-sign, CSR, remove) |
+| `watch` | Watch events from multiple cameras |
+| `rule` | Action rule management (list, info, enable, disable, remove, templates) |
+| `storage` | Storage and SD card management (list, health, recordings, params) |
+| `health` | Fleet health check (parallel, model/firmware/latency/issues) |
 | `temp` | Temperature sensor readings |
 | `daynight` | Day/night IR-cut filter mode |
 | `imaging` | Image sensor settings (brightness, contrast, exposure, WDR) |
@@ -51,7 +70,9 @@ The `host` argument can be an IP address, hostname, or a camera name defined in 
 | `signedvideo` | Signed video management (status, enable, disable) |
 | `zipstream` | ZipStream compression profiles (status, set) |
 | `viewarea` | View area management (list, get, set geometry) |
-| `config` | Manage cameras.yaml (path, check, list, init) |
+| `config` | Manage cameras.yaml (path, check, list, init, add) |
+| `completions` | Generate shell completions (bash, zsh, fish) |
+| `mangen` | Generate man pages |
 
 ### Examples
 
@@ -77,11 +98,11 @@ vapx fw 192.168.7.10 -u martincr -p secret --plain
 vapx acap list 192.168.7.10 -u martincr -p secret
 vapx acap list 192.168.7.10 -u martincr -p secret --plain
 
-# Control ACAP applications
-vapx acap start 192.168.7.10 --package vdo_larod -u martincr -p secret
-vapx acap stop 192.168.7.10 --package vdo_larod -u martincr -p secret
-vapx acap restart 192.168.7.10 --package vdo_larod -u martincr -p secret
-vapx acap remove 192.168.7.10 --package vdo_larod -u martincr -p secret
+# Control ACAP applications (package name is positional)
+vapx acap start 192.168.7.10 vdo_larod -u martincr -p secret
+vapx acap stop 192.168.7.10 vdo_larod -u martincr -p secret
+vapx acap restart 192.168.7.10 vdo_larod -u martincr -p secret
+vapx acap remove 192.168.7.10 vdo_larod -u martincr -p secret
 
 # PTZ control
 vapx ptz move 192.168.7.10 home -u martincr -p secret
@@ -162,15 +183,96 @@ vapx config list
 
 # Create template config
 vapx config init
+
+# Change password
+vapx pass 192.168.7.10 -u root -p oldpass --name root --pwd newpass
+
+# Network configuration
+vapx net show 192.168.7.10 -u admin -p secret
+vapx net set 192.168.7.10 root.Network.HostName=myaxis -u admin -p secret
+
+# Time/NTP configuration
+vapx time show 192.168.7.10 -u admin -p secret
+vapx time set 192.168.7.10 --ntp-server pool.ntp.org -u admin -p secret
+
+# I/O port management
+vapx hw show 192.168.7.10 -u admin -p secret
+
+# Stream real-time events via WebSocket
+vapx events 192.168.7.10 -u admin -p secret
+
+# Run a command on multiple cameras in parallel
+vapx batch info cam1 cam2 cam3 -u admin -p secret
+vapx batch fw building_a -u admin -p secret
+
+# Discover supported APIs
+vapx discover 192.168.7.10 -u admin -p secret
+
+# Compare parameters between two cameras
+vapx diff 192.168.7.10 192.168.7.11 -u admin -p secret
+vapx diff 192.168.7.10 --group-diff building_a -u admin -p secret
+
+# Backup/restore parameters
+vapx backup save 192.168.7.10 -u admin -p secret -o backup.json
+vapx backup restore 192.168.7.10 -u admin -p secret -i backup.json --dry-run
+
+# Overlay management
+vapx overlay list 192.168.7.10 -u admin -p secret
+
+# View system/access logs
+vapx log system 192.168.7.10 -u admin -p secret
+vapx log access 192.168.7.10 -u admin -p secret
+
+# Generate stream URLs
+vapx stream rtsp 192.168.7.10
+vapx stream mjpeg 192.168.7.10 --resolution 1920x1080
+
+# Parameter templates (desired-state config)
+vapx template create 192.168.7.10 --groups root.Network,root.Time -u admin -p secret -o template.json
+vapx template apply 192.168.7.10 -u admin -p secret -i template.json --dry-run
+vapx template diff 192.168.7.10 -u admin -p secret -i template.json
+
+# Security audit
+vapx audit 192.168.7.10 -u admin -p secret
+vapx audit 192.168.7.10 -u admin -p secret --plain
+
+# Certificate management
+vapx cert list 192.168.7.10 -u admin -p secret
+
+# Watch events from multiple cameras
+vapx watch cam1 cam2 cam3 -u admin -p secret
+
+# Action rule management
+vapx rule list 192.168.7.10 -u admin -p secret
+vapx rule templates 192.168.7.10 -u admin -p secret
+
+# Storage/SD card management
+vapx storage list 192.168.7.10 -u admin -p secret
+vapx storage recordings 192.168.7.10 -u admin -p secret
+vapx storage health 192.168.7.10 -u admin -p secret
+
+# Fleet health check
+vapx health cam1 cam2 cam3 -u admin -p secret
+vapx health building_a -u admin -p secret
+
+# Shell completions
+vapx completions bash > ~/.local/share/bash-completion/completions/vapx
+vapx completions zsh > ~/.zfunc/_vapx
+vapx completions fish > ~/.config/fish/completions/vapx.fish
+
+# Generate man pages
+vapx mangen /usr/local/share/man/man1/
 ```
 
 ### Global Options
 
 | Flag | Description |
 |------|-------------|
-| `-v` | Info-level logging |
-| `-vv` | Debug-level logging |
-| `-vvv` | Trace-level logging |
+| `-v` / `-vv` / `-vvv` | Verbosity level (info / debug / trace) |
+| `--filter` | Filter output fields (comma-separated, e.g. `--filter model,serial`) |
+| `--format` | Output format: `json` (default), `table`, `csv`, `yaml` |
+| `--profile` | Config profile (from `cameras.yaml` profiles section) |
+| `--config` | Path to cameras.yaml config file |
 
 ### Per-command Options
 
@@ -180,6 +282,7 @@ vapx config init
 | `-p, --pass` | Password (or set `VAPX_PASS`) |
 | `-k, --insecure` | Skip TLS cert verification |
 | `--port` | Override port (default: 80/443) |
+| `--timeout` | Request timeout in seconds |
 | `--plain` | Output plain text instead of JSON |
 
 ## Configuration
@@ -230,7 +333,8 @@ Passwords use `${ENV_VAR}` substitution. Set them via:
 
 1. CLI flags (`-u`, `-p`)
 2. `cameras.yaml` lookup (by name or host)
-3. Interactive prompt (TTY only)
+3. OS keyring lookup (if built with `--features keyring`)
+4. Interactive prompt (TTY only)
 
 ## Authentication
 
@@ -279,34 +383,80 @@ src/
   main.rs              # CLI parsing, subcommand dispatch
   cmd/
     info.rs            # vapx info — device identification
-    snap.rs            # vapx snap — JPEG snapshot
-    fw.rs              # vapx fw — firmware status
+    snap.rs            # vapx snap — JPEG snapshot (+ time-lapse)
+    fw.rs              # vapx fw — firmware management
     acap.rs            # vapx acap — ACAP app management
     ptz.rs             # vapx ptz — PTZ control
     param.rs           # vapx param — parameter management
     user.rs            # vapx user — user account management
+    pass.rs            # vapx pass — password management
+    net.rs             # vapx net — network configuration
+    time.rs            # vapx time — NTP/timezone
+    hw.rs              # vapx hw — I/O port management
+    events.rs          # vapx events — real-time event streaming
+    batch.rs           # vapx batch — parallel multi-camera operations
+    discover.rs        # vapx discover — API discovery
+    diff.rs            # vapx diff — parameter diff between cameras
+    backup.rs          # vapx backup — parameter backup/restore
+    overlay.rs         # vapx overlay — overlay management
+    log.rs             # vapx log — system/access log viewer
+    stream.rs          # vapx stream — RTSP/MJPEG/snapshot URL builder
+    template.rs        # vapx template — desired-state parameter templates
+    audit.rs           # vapx audit — security posture audit
+    cert.rs            # vapx cert — certificate management
+    watch.rs           # vapx watch — multi-camera event monitoring
+    rule.rs            # vapx rule — action rule management
+    storage.rs         # vapx storage — SD card/edge storage management
+    health.rs          # vapx health — fleet health check
+    temp.rs            # vapx temp — temperature sensor readings
+    daynight.rs        # vapx daynight — IR-cut filter mode
+    imaging.rs         # vapx imaging — image sensor settings
+    light.rs           # vapx light — IR illuminator status
+    vmd.rs             # vapx vmd — video motion detection
+    audio.rs           # vapx audio — audio source configuration
+    mqtt.rs            # vapx mqtt — MQTT client management
+    streamstatus.rs    # vapx streamstatus — stream status
+    selftest.rs        # vapx selftest — device self-test
+    signedvideo.rs     # vapx signedvideo — signed video
+    zipstream.rs       # vapx zipstream — ZipStream compression
+    viewarea.rs        # vapx viewarea — view area management
     config.rs          # vapx config — config management
   vapix/
     auth.rs            # Digest/Basic auth negotiation
-    client.rs          # VapixClient (HTTP POST/GET with auth + validation)
-    device.rs          # basicdeviceinfo.cgi wrapper
-    firmware.rs        # firmwaremanagement.cgi wrapper
+    client.rs          # VapixClient (HTTP with auth, retry, error sanitization)
+    device.rs          # basicdeviceinfo.cgi
+    firmware.rs        # firmwaremanagement.cgi
     applications.rs    # ACAP list/control (XML parsing)
     ptz.rs             # PTZ control (com/ptz.cgi)
     params.rs          # Parameter management (param.cgi)
     users.rs           # User management (pwdgrp.cgi)
+    time.rs            # Time/NTP configuration
+    io.rs              # I/O port configuration
+    network.rs         # Network configuration
+    events.rs          # WebSocket event streaming
+    discover.rs        # API discovery (apidiscovery.cgi)
+    overlay.rs         # Dynamic overlay management
+    certs.rs           # Certificate management
+    rules.rs           # Action rule management
+    storage.rs         # Disk/storage management
+    temperature.rs     # Temperature sensors
+    image.rs           # Image params (daynight, imaging, light, vmd, audio)
+    mqtt.rs            # MQTT client management
+    streamstatus.rs    # Stream status
+    selftest.rs        # Device self-test
+    signedvideo.rs     # Signed video
+    zipstream.rs       # ZipStream compression
+    viewarea.rs        # View area management
   config/
     cameras.rs         # cameras.yaml loading, env substitution, name resolution
-    credentials.rs     # Credential resolution (flags > yaml > prompt)
+    credentials.rs     # Credential resolution (flags > yaml > keyring > prompt)
   output/
-    format.rs          # JSON and plain text formatters
+    format.rs          # JSON, table, CSV, YAML formatters
 tests/
-  integration.rs       # Live camera integration tests
+  integration.rs       # Live camera integration tests (75 tests)
 ```
 
 ## VAPIX API Coverage
-
-Currently implemented:
 
 - [x] Basic Device Information (`basicdeviceinfo.cgi`)
 - [x] JPEG Snapshot (`jpg/image.cgi`)
@@ -315,6 +465,17 @@ Currently implemented:
 - [x] PTZ Control (`com/ptz.cgi`)
 - [x] Parameter Management (`param.cgi`)
 - [x] User Management (`pwdgrp.cgi`)
+- [x] Network Configuration (`param.cgi root.Network`)
+- [x] Time/NTP Configuration (`param.cgi root.Time`)
+- [x] I/O Port Management (`param.cgi root.IOPort`, `portmanagement.cgi`)
+- [x] WebSocket Event Streaming
+- [x] API Discovery (`apidiscovery.cgi`)
+- [x] Dynamic Overlays (`dynamicoverlay.cgi`)
+- [x] Certificate Management (`certificate.cgi`)
+- [x] Action Rules (`action.cgi`)
+- [x] Storage/Disk Management (`disks/*.cgi`, `record/*.cgi`)
+- [x] Temperature Sensors (`temperaturecontrol.cgi`)
+- [x] Image Source Parameters (day/night, imaging, light, VMD, audio)
 - [x] MQTT Client (`mqtt/client.cgi`, `mqtt/event.cgi`)
 - [x] Stream Status (`streamstatus.cgi`, `param.cgi` fallback)
 - [x] Device Self-Test (`deviceselftest.cgi`)

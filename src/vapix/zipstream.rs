@@ -6,7 +6,8 @@ use crate::vapix::client::VapixClient;
 /// Returns the raw XML response.
 pub fn list_profiles(client: &VapixClient) -> anyhow::Result<String> {
     let text = client.get_text("/axis-cgi/zipstream/listprofiles.cgi", &[])?;
-    if text.contains("<Error>") || text.contains("Not found") {
+    let lower = text.to_lowercase();
+    if lower.contains("<error>") || lower.contains("not found") {
         bail!("ZipStream API not available on this camera");
     }
     Ok(text)
@@ -20,7 +21,8 @@ pub fn set_profile(client: &VapixClient, profile: &str, level: u32) -> anyhow::R
         "/axis-cgi/zipstream/setprofile.cgi",
         &[("profile", profile), ("level", &level.to_string())],
     )?;
-    if text.contains("<Error>") || text.contains("Not found") {
+    let lower = text.to_lowercase();
+    if lower.contains("<error>") || lower.contains("not found") {
         bail!("ZipStream API not available on this camera");
     }
     Ok(text)

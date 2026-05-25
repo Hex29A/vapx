@@ -9,6 +9,31 @@ use crate::vapix::auth::request_with_auth;
 const MAX_RETRIES: u32 = 3;
 const INITIAL_BACKOFF_MS: u64 = 500;
 
+/// Strip HTML from error response bodies, returning a clean message.
+fn sanitize_error_body(text: &str) -> String {
+    let trimmed = text.trim();
+    // If it looks like HTML, extract a meaningful message
+    if trimmed.starts_with("<!DOCTYPE") || trimmed.starts_with("<html") || trimmed.starts_with("<HTML") {
+        // Try to extract <title>...</title>
+        if let Some(start) = trimmed.find("<title>").or_else(|| trimmed.find("<Title>")) {
+            let after = &trimmed[start + 7..];
+            if let Some(end) = after.find("</title>").or_else(|| after.find("</Title>")) {
+                let title = after[..end].trim();
+                if !title.is_empty() {
+                    return title.to_string();
+                }
+            }
+        }
+        return "HTML error page (no details)".to_string();
+    }
+    // Return as-is for non-HTML (truncate very long messages)
+    if trimmed.len() > 200 {
+        format!("{}...", &trimmed[..200])
+    } else {
+        trimmed.to_string()
+    }
+}
+
 pub struct VapixClient {
     inner: reqwest::blocking::Client,
     base_url: String,
@@ -69,7 +94,7 @@ impl VapixClient {
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().unwrap_or_default();
-            bail!("HTTP {}: {}", status.as_u16(), text);
+            bail!("HTTP {}: {}", status.as_u16(), sanitize_error_body(&text));
         }
 
         let json: Value = resp.json().context("Failed to parse JSON response")?;
@@ -108,7 +133,7 @@ impl VapixClient {
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().unwrap_or_default();
-            bail!("HTTP {}: {}", status.as_u16(), text);
+            bail!("HTTP {}: {}", status.as_u16(), sanitize_error_body(&text));
         }
 
         Ok(resp)
@@ -149,8 +174,8 @@ impl VapixClient {
                 Ok(resp) if is_retryable_status(resp.status()) => {
                     let status = resp.status();
                     let text = resp.text().unwrap_or_default();
-                    warn!("Server error HTTP {}: {}", status.as_u16(), text);
-                    last_err = Some(anyhow::anyhow!("HTTP {}: {}", status.as_u16(), text));
+                    warn!("Server error HTTP {}: {}", status.as_u16(), sanitize_error_body(&text));
+                    last_err = Some(anyhow::anyhow!("HTTP {}: {}", status.as_u16(), sanitize_error_body(&text)));
                 }
                 Ok(resp) => return Ok(resp),
                 Err(err) if is_retryable_error(&err) => {
