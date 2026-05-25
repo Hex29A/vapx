@@ -99,17 +99,15 @@ impl HwShowCmd {
         if self.plain {
             print!("{}", text);
         } else {
-            let mut map = serde_json::Map::new();
-            for line in text.lines() {
-                let line = line.trim();
-                if line.is_empty() || line.starts_with('#') {
-                    continue;
-                }
-                if let Some((k, v)) = line.split_once('=') {
-                    map.insert(k.to_string(), serde_json::Value::String(v.to_string()));
-                }
+            // Try parsing as JSON first (from portmanagement API fallback)
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
+                let data = json.get("data").unwrap_or(&json);
+                format::ok(data);
+            } else {
+                // param.cgi key=value format
+                let map = crate::cmd::param_to_json(&text);
+                format::ok(&map);
             }
-            format::ok(&map);
         }
 
         Ok(())

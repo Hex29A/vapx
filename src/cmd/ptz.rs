@@ -15,11 +15,11 @@ pub struct PtzCmd {
 pub enum PtzCommands {
     /// Move in a direction (home, up, down, left, right, stop)
     Move(PtzMoveCmd),
-    /// Move to absolute or relative position
+    /// Move to absolute/relative position (--pan, --tilt, --zoom in degrees/1-9999)
     Goto(PtzGotoCmd),
-    /// Go to a named preset position
+    /// Go to a named preset, or save current position as preset
     Preset(PtzPresetCmd),
-    /// Query PTZ status (position, limits, presetposcam, speed)
+    /// Query PTZ status (position, limits, presetposcam, presetposall, speed, status)
     Query(PtzQueryCmd),
     /// Show available PTZ commands
     Info(PtzInfoCmd),
@@ -61,7 +61,11 @@ pub enum QueryType {
     Position,
     Limits,
     Presetposcam,
+    Presetposall,
     Speed,
+    Status,
+    Attributes,
+    Auxiliary,
 }
 
 impl std::fmt::Display for QueryType {
@@ -70,7 +74,11 @@ impl std::fmt::Display for QueryType {
             QueryType::Position => write!(f, "position"),
             QueryType::Limits => write!(f, "limits"),
             QueryType::Presetposcam => write!(f, "presetposcam"),
+            QueryType::Presetposall => write!(f, "presetposall"),
             QueryType::Speed => write!(f, "speed"),
+            QueryType::Status => write!(f, "status"),
+            QueryType::Attributes => write!(f, "attributes"),
+            QueryType::Auxiliary => write!(f, "auxiliary"),
         }
     }
 }
@@ -142,8 +150,11 @@ pub struct PtzGotoCmd {
 pub struct PtzPresetCmd {
     /// Camera IP, hostname, or name from cameras.yaml
     pub host: String,
-    /// Preset name to go to
+    /// Preset name to go to (or save with --save)
     pub name: String,
+    /// Save current position as this preset name instead of going to it
+    #[arg(long)]
+    pub save: bool,
     #[arg(short, long, env = "VAPX_USER")]
     pub user: Option<String>,
     #[arg(short, long, env = "VAPX_PASS")]
@@ -274,8 +285,13 @@ impl PtzPresetCmd {
         )?;
         let timeout = self.timeout.unwrap_or(creds.timeout);
         let client = VapixClient::new(&resolved_host, creds.port, creds, timeout);
-        ptz::goto_preset(&client, &self.name, self.camera)?;
-        format::ok_msg("OK");
+        if self.save {
+            ptz::save_preset(&client, &self.name, self.camera)?;
+            format::ok_msg(&format!("Preset saved: {}", self.name));
+        } else {
+            ptz::goto_preset(&client, &self.name, self.camera)?;
+            format::ok_msg("OK");
+        }
         Ok(())
     }
 }

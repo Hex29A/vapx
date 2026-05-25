@@ -36,7 +36,6 @@ pub enum AcapCommands {
         /// Camera IP, hostname, or name from cameras.yaml
         host: String,
         /// Application package name
-        #[arg(long)]
         package: String,
         #[arg(short, long, env = "VAPX_USER")]
         user: Option<String>,
@@ -55,7 +54,6 @@ pub enum AcapCommands {
         /// Camera IP, hostname, or name from cameras.yaml
         host: String,
         /// Application package name
-        #[arg(long)]
         package: String,
         #[arg(short, long, env = "VAPX_USER")]
         user: Option<String>,
@@ -74,7 +72,6 @@ pub enum AcapCommands {
         /// Camera IP, hostname, or name from cameras.yaml
         host: String,
         /// Application package name
-        #[arg(long)]
         package: String,
         #[arg(short, long, env = "VAPX_USER")]
         user: Option<String>,
@@ -93,7 +90,6 @@ pub enum AcapCommands {
         /// Camera IP, hostname, or name from cameras.yaml
         host: String,
         /// Application package name
-        #[arg(long)]
         package: String,
         #[arg(short, long, env = "VAPX_USER")]
         user: Option<String>,

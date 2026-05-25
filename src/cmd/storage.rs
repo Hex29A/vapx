@@ -58,6 +58,11 @@ pub enum StorageCommands {
         #[command(flatten)]
         cam: CameraArgs,
     },
+    /// Show disk health, wear level, and status
+    Health {
+        #[command(flatten)]
+        cam: CameraArgs,
+    },
     /// Show storage parameters
     Params {
         #[command(flatten)]
@@ -93,11 +98,22 @@ impl StorageCmd {
             StorageCommands::Recordings { cam } => {
                 let (creds, host) = resolve_cam(&cam)?;
                 let client = make_client(&host, creds, cam.timeout);
-                let text = storage::list_recordings(&client)?;
-                let lines: Vec<&str> = text.lines().collect();
-                format::ok(&serde_json::json!({
-                    "recordings": lines,
-                }));
+                let data = storage::list_recordings(&client)?;
+                if cam.plain {
+                    format::plain(&data);
+                } else {
+                    format::ok(&data);
+                }
+            }
+            StorageCommands::Health { cam } => {
+                let (creds, host) = resolve_cam(&cam)?;
+                let client = make_client(&host, creds, cam.timeout);
+                let data = storage::get_disk_health(&client)?;
+                if cam.plain {
+                    format::plain(&data);
+                } else {
+                    format::ok(&data);
+                }
             }
             StorageCommands::Params { cam } => {
                 let (creds, host) = resolve_cam(&cam)?;

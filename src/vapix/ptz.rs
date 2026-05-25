@@ -79,6 +79,21 @@ pub fn goto_preset(
     ptz_command(client, &params)
 }
 
+/// Save the current PTZ position as a named server preset.
+pub fn save_preset(
+    client: &VapixClient,
+    name: &str,
+    camera: Option<u8>,
+) -> anyhow::Result<()> {
+    let cam_str;
+    let mut params: Vec<(&str, &str)> = vec![("setserverpresetname", name)];
+    if let Some(c) = camera {
+        cam_str = c.to_string();
+        params.push(("camera", &cam_str));
+    }
+    ptz_command(client, &params)
+}
+
 /// Query PTZ status (position, limits, presetposcam, speed).
 pub fn query(
     client: &VapixClient,
