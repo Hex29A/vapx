@@ -45,6 +45,12 @@ The `host` argument can be an IP address, hostname, or a camera name defined in 
 | `light` | IR illuminator status and intensity |
 | `vmd` | Video motion detection configuration |
 | `audio` | Audio source configuration |
+| `mqtt` | MQTT client management (status, configure, enable, disable, events) |
+| `streamstatus` | Stream status and parameters |
+| `selftest` | Device self-test (preview mode only) |
+| `signedvideo` | Signed video management (status, enable, disable) |
+| `zipstream` | ZipStream compression profiles (status, set) |
+| `viewarea` | View area management (list, get, set geometry) |
 | `config` | Manage cameras.yaml (path, check, list, init) |
 
 ### Examples
@@ -119,6 +125,31 @@ vapx vmd 192.168.7.10 -u admin -p secret
 
 # Audio source configuration
 vapx audio 192.168.7.10 -u admin -p secret
+
+# MQTT client management
+vapx mqtt status 192.168.7.10 -u admin -p secret
+vapx mqtt enable 192.168.7.10 -u admin -p secret
+vapx mqtt disable 192.168.7.10 -u admin -p secret
+vapx mqtt configure 192.168.7.10 --broker mqtt.example.com --broker-port 1883 -u admin -p secret
+vapx mqtt events 192.168.7.10 -u admin -p secret
+
+# Stream status
+vapx streamstatus 192.168.7.10 -u admin -p secret
+
+# Device self-test (requires preview mode)
+vapx selftest 192.168.7.10 -u admin -p secret
+
+# Signed video
+vapx signedvideo status 192.168.7.10 -u admin -p secret
+vapx signedvideo enable 192.168.7.10 -u admin -p secret
+
+# ZipStream compression
+vapx zipstream status 192.168.7.10 -u admin -p secret
+vapx zipstream set 192.168.7.10 --profile classic --level 1 -u admin -p secret
+
+# View areas
+vapx viewarea list 192.168.7.10 -u admin -p secret
+vapx viewarea get 192.168.7.10 --id 1000001 -u admin -p secret
 
 # Show config file location
 vapx config path
@@ -284,13 +315,12 @@ Currently implemented:
 - [x] PTZ Control (`com/ptz.cgi`)
 - [x] Parameter Management (`param.cgi`)
 - [x] User Management (`pwdgrp.cgi`)
-
-Planned:
-- [ ] Network Configuration (`network_settings.cgi`)
-- [ ] Time & NTP (`ntp.cgi`, `timeservice.cgi`)
-- [ ] I/O Port Management (`io/portmanagement.cgi`)
-- [ ] Light Control (`lightcontrol.cgi`)
-- [ ] Batch operations (parallel, multi-camera)
+- [x] MQTT Client (`mqtt/client.cgi`, `mqtt/event.cgi`)
+- [x] Stream Status (`streamstatus.cgi`, `param.cgi` fallback)
+- [x] Device Self-Test (`deviceselftest.cgi`)
+- [x] Signed Video (`signedvideo.cgi`)
+- [x] ZipStream Compression (`zipstream/*.cgi`)
+- [x] View Area Management (`viewarea/info.cgi`)
 
 ## License
 

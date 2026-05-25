@@ -16,21 +16,27 @@ pub mod imaging;
 pub mod info;
 pub mod light;
 pub mod log;
+pub mod mqtt;
 pub mod net;
 pub mod overlay;
 pub mod param;
 pub mod pass;
 pub mod ptz;
 pub mod rule;
+pub mod selftest;
+pub mod signedvideo;
 pub mod snap;
 pub mod storage;
 pub mod stream;
+pub mod streamstatus;
 pub mod temp;
 pub mod template;
 pub mod time;
 pub mod user;
+pub mod viewarea;
 pub mod vmd;
 pub mod watch;
+pub mod zipstream;
 
 /// Parse param.cgi key=value text into a JSON map.
 pub fn param_to_json(text: &str) -> serde_json::Map<String, serde_json::Value> {

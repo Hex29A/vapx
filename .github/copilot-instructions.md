@@ -69,6 +69,12 @@ vapx/
       light.rs           # vapx light — IR illuminator status
       vmd.rs             # vapx vmd — video motion detection
       audio.rs           # vapx audio — audio source configuration
+      mqtt.rs            # vapx mqtt — MQTT client management
+      streamstatus.rs    # vapx streamstatus — stream status
+      selftest.rs        # vapx selftest — device self-test
+      signedvideo.rs     # vapx signedvideo — signed video management
+      zipstream.rs       # vapx zipstream — ZipStream compression
+      viewarea.rs        # vapx viewarea — view area management
     vapix/
       mod.rs
       auth.rs            # Digest/Basic auth auto-negotiation
@@ -90,6 +96,12 @@ vapx/
       storage.rs         # Disk/storage management (disks/, record/)
       temperature.rs     # Temperature sensor readings (temperaturecontrol.cgi)
       image.rs           # Image-related params (daynight, imaging, light, vmd, audio)
+      mqtt.rs            # MQTT client management (mqtt/client.cgi, mqtt/event.cgi)
+      streamstatus.rs    # Stream status (streamstatus.cgi / param.cgi fallback)
+      selftest.rs        # Device self-test (deviceselftest.cgi)
+      signedvideo.rs     # Signed video (signedvideo.cgi)
+      zipstream.rs       # ZipStream compression (zipstream/*.cgi)
+      viewarea.rs        # View area management (viewarea/info.cgi)
     config/
       mod.rs
       cameras.rs         # cameras.yaml loading, env var substitution

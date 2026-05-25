@@ -1958,3 +1958,162 @@ fn test_audio_json() {
         assert!(data.is_object());
     }
 }
+
+// ── Stream status tests ─────────────────────────────────────────────
+
+#[test]
+fn test_streamstatus_json() {
+    if skip_if_no_camera() { return; }
+    let output = vapx_bin()
+        .args(["streamstatus", &test_host(), "-u", &test_user(), "-p", &test_pass()])
+        .output()
+        .expect("failed to run vapx");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "streamstatus failed: {}", stdout);
+    let data = parse_ok_data(&stdout);
+    assert!(data.is_object(), "Expected object data: {}", data);
+}
+
+// ── Self-test tests ─────────────────────────────────────────────────
+
+#[test]
+fn test_selftest() {
+    if skip_if_no_camera() { return; }
+    let output = vapx_bin()
+        .args(["selftest", &test_host(), "-u", &test_user(), "-p", &test_pass()])
+        .output()
+        .expect("failed to run vapx");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    // Self-test may fail with "preview mode" error on deployed cameras — that's expected
+    // Error output goes to stderr in JSON format
+    let json_str = if stdout.trim().is_empty() { &stderr } else { &stdout };
+    let envelope: serde_json::Value = serde_json::from_str(json_str.trim())
+        .unwrap_or_else(|e| panic!("Invalid JSON: {}\nstdout: {}\nstderr: {}", e, stdout, stderr));
+    assert!(
+        envelope["status"].as_str() == Some("ok") || envelope["status"].as_str() == Some("error"),
+        "Unexpected selftest response: {}", json_str
+    );
+}
+
+// ── MQTT tests ──────────────────────────────────────────────────────
+
+#[test]
+fn test_mqtt_status() {
+    if skip_if_no_camera() { return; }
+    let output = vapx_bin()
+        .args(["mqtt", "status", &test_host(), "-u", &test_user(), "-p", &test_pass()])
+        .output()
+        .expect("failed to run vapx");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "mqtt status failed: {}", stdout);
+    let data = parse_ok_data(&stdout);
+    assert!(data["status"]["state"].is_string(), "Expected status.state: {}", data);
+}
+
+#[test]
+fn test_mqtt_events() {
+    if skip_if_no_camera() { return; }
+    let output = vapx_bin()
+        .args(["mqtt", "events", &test_host(), "-u", &test_user(), "-p", &test_pass()])
+        .output()
+        .expect("failed to run vapx");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "mqtt events failed: {}", stdout);
+}
+
+#[test]
+fn test_mqtt_enable_disable() {
+    if skip_if_no_camera() { return; }
+    // Enable
+    let output = vapx_bin()
+        .args(["mqtt", "enable", &test_host(), "-u", &test_user(), "-p", &test_pass()])
+        .output()
+        .expect("failed to run vapx");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "mqtt enable failed: {}", stdout);
+    let msg = parse_ok_message(&stdout);
+    assert!(msg.contains("activated"), "Expected activated message: {}", msg);
+
+    // Verify active
+    let output = vapx_bin()
+        .args(["mqtt", "status", &test_host(), "-u", &test_user(), "-p", &test_pass()])
+        .output()
+        .expect("failed to run vapx");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let data = parse_ok_data(&stdout);
+    assert_eq!(data["status"]["state"].as_str().unwrap(), "active");
+
+    // Disable
+    let output = vapx_bin()
+        .args(["mqtt", "disable", &test_host(), "-u", &test_user(), "-p", &test_pass()])
+        .output()
+        .expect("failed to run vapx");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "mqtt disable failed: {}", stdout);
+}
+
+// ── ZipStream tests ─────────────────────────────────────────────────
+
+#[test]
+fn test_zipstream_status() {
+    if skip_if_no_camera() { return; }
+    let output = vapx_bin()
+        .args(["zipstream", "status", &test_host(), "-u", &test_user(), "-p", &test_pass()])
+        .output()
+        .expect("failed to run vapx");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "zipstream status failed: {}", stdout);
+    let data = parse_ok_data(&stdout);
+    assert!(data["profiles"].is_array(), "Expected profiles array: {}", data);
+}
+
+#[test]
+fn test_zipstream_status_plain() {
+    if skip_if_no_camera() { return; }
+    let output = vapx_bin()
+        .args(["zipstream", "status", &test_host(), "-u", &test_user(), "-p", &test_pass(), "--plain"])
+        .output()
+        .expect("failed to run vapx");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "zipstream plain failed: {}", stdout);
+    assert!(stdout.contains("ZipStream") || stdout.contains("Profile") || stdout.contains("classic"),
+        "Expected XML content: {}", stdout);
+}
+
+// ── View area tests ─────────────────────────────────────────────────
+
+#[test]
+fn test_viewarea_list() {
+    if skip_if_no_camera() { return; }
+    let output = vapx_bin()
+        .args(["viewarea", "list", &test_host(), "-u", &test_user(), "-p", &test_pass()])
+        .output()
+        .expect("failed to run vapx");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "viewarea list failed: {}", stdout);
+    let data = parse_ok_data(&stdout);
+    assert!(data["viewAreas"].is_array(), "Expected viewAreas array: {}", data);
+}
+
+// ── Signed video tests ──────────────────────────────────────────────
+
+#[test]
+fn test_signedvideo_status() {
+    if skip_if_no_camera() { return; }
+    let output = vapx_bin()
+        .args(["signedvideo", "status", &test_host(), "-u", &test_user(), "-p", &test_pass()])
+        .output()
+        .expect("failed to run vapx");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    // Signed video may not be available — either ok or error is fine
+    // Error output goes to stderr in JSON format
+    let json_str = if stdout.trim().is_empty() { &stderr } else { &stdout };
+    let envelope: serde_json::Value = serde_json::from_str(json_str.trim())
+        .unwrap_or_else(|e| panic!("Invalid JSON: {}\nstdout: {}\nstderr: {}", e, stdout, stderr));
+    assert!(
+        envelope["status"].as_str() == Some("ok") || envelope["status"].as_str() == Some("error"),
+        "Unexpected signedvideo response: {}", json_str
+    );
+}

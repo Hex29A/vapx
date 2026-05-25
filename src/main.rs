@@ -99,6 +99,18 @@ pub enum Commands {
     Vmd(cmd::vmd::VmdCmd),
     /// Audio source configuration
     Audio(cmd::audio::AudioCmd),
+    /// MQTT client management
+    Mqtt(cmd::mqtt::MqttCmd),
+    /// Stream status and parameters
+    Streamstatus(cmd::streamstatus::StreamstatusCmd),
+    /// Device self-test
+    Selftest(cmd::selftest::SelftestCmd),
+    /// Signed video management
+    Signedvideo(cmd::signedvideo::SignedvideoCmd),
+    /// ZipStream compression profiles
+    Zipstream(cmd::zipstream::ZipstreamCmd),
+    /// View area management
+    Viewarea(cmd::viewarea::ViewareaCmd),
     /// Configuration management
     Config(cmd::config::ConfigCmd),
     /// Generate shell completions
@@ -187,6 +199,12 @@ fn main() {
         Commands::Light(cmd) => cmd.run(),
         Commands::Vmd(cmd) => cmd.run(),
         Commands::Audio(cmd) => cmd.run(),
+        Commands::Mqtt(cmd) => cmd.run(),
+        Commands::Streamstatus(cmd) => cmd.run(),
+        Commands::Selftest(cmd) => cmd.run(),
+        Commands::Signedvideo(cmd) => cmd.run(),
+        Commands::Zipstream(cmd) => cmd.run(),
+        Commands::Viewarea(cmd) => cmd.run(),
         Commands::Config(cmd) => cmd.run(),
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();
