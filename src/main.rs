@@ -87,6 +87,18 @@ pub enum Commands {
     Storage(cmd::storage::StorageCmd),
     /// Fleet health check
     Health(cmd::health::HealthCmd),
+    /// Temperature sensor readings
+    Temp(cmd::temp::TempCmd),
+    /// Day/night IR-cut filter mode
+    Daynight(cmd::daynight::DaynightCmd),
+    /// Image sensor settings (brightness, contrast, exposure)
+    Imaging(cmd::imaging::ImagingCmd),
+    /// IR illuminator status and intensity
+    Light(cmd::light::LightCmd),
+    /// Video motion detection configuration
+    Vmd(cmd::vmd::VmdCmd),
+    /// Audio source configuration
+    Audio(cmd::audio::AudioCmd),
     /// Configuration management
     Config(cmd::config::ConfigCmd),
     /// Generate shell completions
@@ -169,6 +181,12 @@ fn main() {
         Commands::Rule(cmd) => cmd.run(),
         Commands::Storage(cmd) => cmd.run(),
         Commands::Health(cmd) => cmd.run(),
+        Commands::Temp(cmd) => cmd.run(),
+        Commands::Daynight(cmd) => cmd.run(),
+        Commands::Imaging(cmd) => cmd.run(),
+        Commands::Light(cmd) => cmd.run(),
+        Commands::Vmd(cmd) => cmd.run(),
+        Commands::Audio(cmd) => cmd.run(),
         Commands::Config(cmd) => cmd.run(),
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();

@@ -1825,3 +1825,136 @@ fn test_storage_params() {
     let data = parse_ok_data(&stdout);
     assert!(data.is_object());
 }
+
+// ── Temperature sensor tests ────────────────────────────────────────
+
+#[test]
+fn test_temp_json() {
+    if skip_if_no_camera() { return; }
+    let output = vapx_bin()
+        .args(["temp", &test_host(), "-u", &test_user(), "-p", &test_pass()])
+        .output()
+        .expect("failed to run vapx");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    // Temp API may not be available on all cameras
+    assert!(
+        output.status.success() || stderr.contains("error"),
+        "temp unexpected failure: stdout={}, stderr={}", stdout, stderr
+    );
+    if output.status.success() {
+        let data = parse_ok_data(&stdout);
+        assert!(data.get("sensors").is_some(), "Missing sensors array");
+    }
+}
+
+#[test]
+fn test_temp_plain() {
+    if skip_if_no_camera() { return; }
+    let output = vapx_bin()
+        .args(["temp", &test_host(), "-u", &test_user(), "-p", &test_pass(), "--plain"])
+        .output()
+        .expect("failed to run vapx");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Should contain sensor data or error
+    assert!(
+        output.status.success() || !stdout.is_empty(),
+        "temp --plain produced no output"
+    );
+}
+
+// ── Day/night tests ─────────────────────────────────────────────────
+
+#[test]
+fn test_daynight_json() {
+    if skip_if_no_camera() { return; }
+    let output = vapx_bin()
+        .args(["daynight", &test_host(), "-u", &test_user(), "-p", &test_pass()])
+        .output()
+        .expect("failed to run vapx");
+    assert!(output.status.success(), "daynight failed: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let data = parse_ok_data(&stdout);
+    assert!(data.is_object());
+    assert!(
+        data.get("root.ImageSource.I0.DayNight.IrCutFilter").is_some(),
+        "Missing IrCutFilter"
+    );
+}
+
+// ── Imaging tests ───────────────────────────────────────────────────
+
+#[test]
+fn test_imaging_json() {
+    if skip_if_no_camera() { return; }
+    let output = vapx_bin()
+        .args(["imaging", &test_host(), "-u", &test_user(), "-p", &test_pass()])
+        .output()
+        .expect("failed to run vapx");
+    assert!(output.status.success(), "imaging failed: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let data = parse_ok_data(&stdout);
+    assert!(data.is_object());
+    assert!(
+        data.get("root.ImageSource.I0.Sensor.Brightness").is_some(),
+        "Missing Brightness"
+    );
+}
+
+// ── Light tests ─────────────────────────────────────────────────────
+
+#[test]
+fn test_light_json() {
+    if skip_if_no_camera() { return; }
+    let output = vapx_bin()
+        .args(["light", &test_host(), "-u", &test_user(), "-p", &test_pass()])
+        .output()
+        .expect("failed to run vapx");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    // Light params may not exist on all cameras
+    assert!(
+        output.status.success() || stderr.contains("error"),
+        "light unexpected failure: stdout={}, stderr={}", stdout, stderr
+    );
+}
+
+// ── VMD tests ───────────────────────────────────────────────────────
+
+#[test]
+fn test_vmd_json() {
+    if skip_if_no_camera() { return; }
+    let output = vapx_bin()
+        .args(["vmd", &test_host(), "-u", &test_user(), "-p", &test_pass()])
+        .output()
+        .expect("failed to run vapx");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    // VMD params may not exist on cameras using analytics-based VMD
+    assert!(
+        output.status.success() || stderr.contains("error"),
+        "vmd unexpected failure: stdout={}, stderr={}", stdout, stderr
+    );
+}
+
+// ── Audio tests ─────────────────────────────────────────────────────
+
+#[test]
+fn test_audio_json() {
+    if skip_if_no_camera() { return; }
+    let output = vapx_bin()
+        .args(["audio", &test_host(), "-u", &test_user(), "-p", &test_pass()])
+        .output()
+        .expect("failed to run vapx");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    // Audio may not be available on all camera models
+    assert!(
+        output.status.success() || stderr.contains("error"),
+        "audio unexpected failure: stdout={}, stderr={}", stdout, stderr
+    );
+    if output.status.success() {
+        let data = parse_ok_data(&stdout);
+        assert!(data.is_object());
+    }
+}

@@ -39,6 +39,12 @@ The `host` argument can be an IP address, hostname, or a camera name defined in 
 | `ptz` | PTZ control (move, goto, preset, query, info) |
 | `param` | Parameter management (list, get, set) |
 | `user` | User account management (list, add, update, remove) |
+| `temp` | Temperature sensor readings |
+| `daynight` | Day/night IR-cut filter mode |
+| `imaging` | Image sensor settings (brightness, contrast, exposure, WDR) |
+| `light` | IR illuminator status and intensity |
+| `vmd` | Video motion detection configuration |
+| `audio` | Audio source configuration |
 | `config` | Manage cameras.yaml (path, check, list, init) |
 
 ### Examples
@@ -94,6 +100,25 @@ vapx user remove 192.168.7.10 --name viewer1 -u martincr -p secret
 
 # Use camera name from config
 vapx info entrance
+
+# Temperature sensor readings
+vapx temp 192.168.7.10 -u admin -p secret
+vapx temp entrance --format table
+
+# Day/night mode
+vapx daynight 192.168.7.10 -u admin -p secret
+
+# Image sensor settings
+vapx imaging 192.168.7.10 -u admin -p secret
+
+# IR illuminator status
+vapx light 192.168.7.10 -u admin -p secret
+
+# Video motion detection config
+vapx vmd 192.168.7.10 -u admin -p secret
+
+# Audio source configuration
+vapx audio 192.168.7.10 -u admin -p secret
 
 # Show config file location
 vapx config path

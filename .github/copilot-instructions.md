@@ -63,6 +63,12 @@ vapx/
       storage.rs         # vapx storage — SD card/edge storage management
       health.rs          # vapx health — fleet health check
       config.rs          # vapx config — config file + keyring management
+      temp.rs            # vapx temp — temperature sensor readings
+      daynight.rs        # vapx daynight — IR-cut filter mode
+      imaging.rs         # vapx imaging — image sensor settings
+      light.rs           # vapx light — IR illuminator status
+      vmd.rs             # vapx vmd — video motion detection
+      audio.rs           # vapx audio — audio source configuration
     vapix/
       mod.rs
       auth.rs            # Digest/Basic auth auto-negotiation
@@ -82,6 +88,8 @@ vapx/
       certs.rs           # Certificate management (certificate.cgi)
       rules.rs           # Action rule management (action.cgi)
       storage.rs         # Disk/storage management (disks/, record/)
+      temperature.rs     # Temperature sensor readings (temperaturecontrol.cgi)
+      image.rs           # Image-related params (daynight, imaging, light, vmd, audio)
     config/
       mod.rs
       cameras.rs         # cameras.yaml loading, env var substitution
@@ -308,3 +316,11 @@ impl XxxCmd {
 - [x] `vapx rule` — action rule management (list/info/enable/disable/remove/templates)
 - [x] `vapx storage` — SD card and edge storage management (disks/recordings/params)
 - [x] `vapx health` — fleet health check (parallel, model/firmware/latency/issues)
+
+### Priority 7 — Camera inspection & sensors
+- [x] `vapx temp` — temperature sensor readings (temperaturecontrol.cgi)
+- [x] `vapx daynight` — IR-cut filter mode (ImageSource.I0.DayNight params)
+- [x] `vapx imaging` — image sensor settings (ImageSource.I0.Sensor params)
+- [x] `vapx light` — IR illuminator status and intensity (LightControl params)
+- [x] `vapx vmd` — video motion detection configuration (Motion params)
+- [x] `vapx audio` — audio source configuration (AudioSource params)
