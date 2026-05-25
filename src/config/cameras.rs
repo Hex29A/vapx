@@ -124,23 +124,31 @@ impl CamerasConfig {
     }
 }
 
+static CONFIG_OVERRIDE: OnceLock<PathBuf> = OnceLock::new();
+
+/// Set an explicit config path (from --config flag).
+pub fn set_config_path(path: PathBuf) {
+    CONFIG_OVERRIDE.set(path).ok();
+}
+
 /// Resolve the config file path. Search order:
-/// 1. $VAPX_CONFIG env var
-/// 2. ./cameras.yaml (current directory)
+/// 1. --config flag (set via set_config_path)
+/// 2. $VAPX_CONFIG env var
 /// 3. ~/.config/vapx/cameras.yaml (XDG)
 pub fn config_path() -> Option<PathBuf> {
+    // Explicit --config flag
+    if let Some(p) = CONFIG_OVERRIDE.get() {
+        if p.exists() {
+            return Some(p.clone());
+        }
+    }
+
     // Explicit env var
     if let Ok(path) = std::env::var("VAPX_CONFIG") {
         let p = PathBuf::from(path);
         if p.exists() {
             return Some(p);
         }
-    }
-
-    // Current directory
-    let local = PathBuf::from("cameras.yaml");
-    if local.exists() {
-        return Some(local);
     }
 
     // XDG config

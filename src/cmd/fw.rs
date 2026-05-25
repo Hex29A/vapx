@@ -114,9 +114,13 @@ pub enum FwCommands {
         #[arg(long)]
         expected: Option<String>,
 
-        /// Compare against another camera
+        /// Compare against another camera (also accepts second positional arg)
         #[arg(long)]
         compare: Option<String>,
+
+        /// Second camera to compare firmware with (alternative to --compare)
+        #[arg(value_name = "CAMERA_B")]
+        other: Option<String>,
     },
 }
 
@@ -231,7 +235,7 @@ impl FwCmd {
                 firmware::factory_default(&client, &mode)?;
                 format::ok_msg(&format!("Factory default ({}) initiated", mode));
             }
-            FwCommands::Check { cam, expected, compare } => {
+            FwCommands::Check { cam, expected, compare, other } => {
                 let (creds, resolved_host) = resolve_cam(&cam)?;
                 let client = make_client(&resolved_host, creds, cam.timeout);
                 let resp = firmware::status(&client)?;
@@ -240,6 +244,9 @@ impl FwCmd {
                     .and_then(|v| v.as_str())
                     .unwrap_or("unknown")
                     .to_string();
+
+                // --compare flag takes precedence, positional arg is fallback
+                let compare_target = compare.or(other);
 
                 if let Some(ref expected_ver) = expected {
                     let matches = current == *expected_ver;
@@ -258,7 +265,7 @@ impl FwCmd {
                     } else {
                         format::ok(&result);
                     }
-                } else if let Some(ref other) = compare {
+                } else if let Some(ref other) = compare_target {
                     let (creds_b, host_b) = resolve(
                         other,
                         cam.user.as_deref(),

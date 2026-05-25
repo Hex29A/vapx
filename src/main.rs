@@ -27,6 +27,10 @@ pub struct Cli {
     /// Config profile to use (from cameras.yaml profiles section)
     #[arg(long, global = true)]
     pub profile: Option<String>,
+
+    /// Path to cameras.yaml config file
+    #[arg(long, global = true)]
+    pub config: Option<std::path::PathBuf>,
 }
 
 #[derive(Subcommand)]
@@ -111,6 +115,11 @@ fn main() {
     // Set output format
     if cli.format != "json" {
         output::format::set_output_format(cli.format.clone());
+    }
+
+    // Set explicit config path
+    if let Some(ref config_path) = cli.config {
+        config::cameras::set_config_path(config_path.clone());
     }
 
     // Set active config profile
