@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.14.0
+
+### Added
+- **`hw trigger`**: New subcommand to activate/deactivate I/O output ports via `io/port.cgi`. Supports `--state active|inactive|on|off` and `--pulse <ms>` for timed pulses. Port must be configured as output (`hw set --direction output`) before triggering.
+
 ## v0.13.1
 
 ### Fixed

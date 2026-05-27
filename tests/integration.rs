@@ -1407,6 +1407,102 @@ fn test_hw_show_plain() {
     assert!(stdout.contains("root.IOPort.I0.Direction"));
 }
 
+#[test]
+fn test_hw_trigger() {
+    if skip_if_no_camera() {
+        eprintln!("SKIP: camera not reachable");
+        return;
+    }
+
+    // First set port 0 to output so trigger works
+    let setup = vapx_bin()
+        .args([
+            "hw",
+            "set",
+            &test_host(),
+            "--index",
+            "0",
+            "--direction",
+            "output",
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    if !setup.status.success() {
+        eprintln!("SKIP: cannot set port direction (no I/O ports or no permission)");
+        return;
+    }
+
+    // Trigger port 0 to active
+    let output = vapx_bin()
+        .args([
+            "hw",
+            "trigger",
+            &test_host(),
+            "--index",
+            "0",
+            "--state",
+            "active",
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "Trigger active failed: {}",
+        stdout
+    );
+    assert!(stdout.contains("Port 0 set to active"));
+
+    // Deactivate
+    let output2 = vapx_bin()
+        .args([
+            "hw",
+            "trigger",
+            &test_host(),
+            "--index",
+            "0",
+            "--state",
+            "inactive",
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+        ])
+        .output()
+        .expect("failed to run vapx");
+
+    let stdout2 = String::from_utf8_lossy(&output2.stdout);
+    assert!(output2.status.success(), "Trigger inactive failed: {}", stdout2);
+    assert!(stdout2.contains("Port 0 set to inactive"));
+
+    // Restore port to input
+    let _ = vapx_bin()
+        .args([
+            "hw",
+            "set",
+            &test_host(),
+            "--index",
+            "0",
+            "--direction",
+            "input",
+            "-u",
+            &test_user(),
+            "-p",
+            &test_pass(),
+        ])
+        .output();
+}
+
 // ── Shell completions test ──────────────────────────────────────────
 
 #[test]

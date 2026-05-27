@@ -42,7 +42,7 @@ The `host` argument can be an IP address, hostname, or a camera name defined in 
 | `pass` | Change user password |
 | `net` | Network configuration (show, set) |
 | `time` | Time/NTP configuration (show, set) |
-| `hw` | I/O port management |
+| `hw` | I/O port management (show, set, trigger) |
 | `events` | Stream real-time events via WebSocket |
 | `batch` | Run command on multiple cameras in parallel |
 | `discover` | Discover supported APIs on the camera |
@@ -197,6 +197,9 @@ vapx time set 192.168.7.10 --ntp-server pool.ntp.org -u admin -p secret
 
 # I/O port management
 vapx hw show 192.168.7.10 -u admin -p secret
+vapx hw trigger 192.168.7.10 --index 0 --state active -u admin -p secret
+vapx hw trigger 192.168.7.10 --index 0 --state inactive -u admin -p secret
+vapx hw trigger 192.168.7.10 --index 0 --state active --pulse 500 -u admin -p secret
 
 # Stream real-time events via WebSocket
 vapx events 192.168.7.10 -u admin -p secret

@@ -49,3 +49,20 @@ pub fn set_params(client: &VapixClient, assignments: &[(&str, &str)]) -> anyhow:
     }
     Ok(text)
 }
+
+/// Trigger an I/O output port to active or inactive state.
+/// Uses the legacy io/port.cgi endpoint (works on all firmware).
+/// `port_index` is 0-based (maps to 1-based port number in the API).
+/// `active` true = activate (close), false = deactivate (open).
+pub fn trigger_port(client: &VapixClient, port_index: u8, active: bool) -> anyhow::Result<String> {
+    let port_num = port_index + 1;
+    // The action value uses / for active and \ for inactive.
+    // We pre-encode to avoid over-encoding of : and / by the query builder.
+    let state = if active { "%2F" } else { "%5C" };
+    let path = format!("/axis-cgi/io/port.cgi?action={}:{}", port_num, state);
+    let text = client.get_text(&path, &[])?;
+    if text.contains("Error") {
+        bail!("io/port.cgi: {}", text.trim());
+    }
+    Ok(text)
+}
