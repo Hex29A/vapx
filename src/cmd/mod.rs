@@ -1,5 +1,6 @@
 pub mod acap;
 pub mod audio;
+pub mod clip;
 pub mod audit;
 pub mod backup;
 pub mod batch;

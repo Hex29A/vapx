@@ -1,4 +1,5 @@
 pub mod applications;
+pub mod audio_clip;
 pub mod auth;
 pub mod certs;
 pub mod client;
