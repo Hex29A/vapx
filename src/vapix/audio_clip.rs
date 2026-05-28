@@ -58,11 +58,13 @@ pub fn upload_clip(
     filename: &str,
     clip_name: &str,
 ) -> anyhow::Result<u32> {
-    // field name in multipart = clip name; ?action=upload in path
+    // Pass name= query param so the camera stores the correct display name.
+    // The multipart field name also doubles as the name, but the query param
+    // is authoritative for the MediaClip.M#.Name parameter.
     let resp = client
         .post_multipart_file_with_params(
             MEDIACLIP_PATH,
-            &[("action", "upload")],
+            &[("action", "upload"), ("name", clip_name)],
             data,
             filename,
             clip_name,
@@ -115,10 +117,6 @@ fn resolve_id(client: &VapixClient, name_or_id: &str) -> anyhow::Result<u32> {
 }
 
 fn parse_media_clips(text: &str) -> Vec<MediaClip> {
-    // param.cgi returns lines like:
-    //   root.MediaClip.M0.Name=My clip
-    //   root.MediaClip.M0.Location=/etc/audioclips/...
-    //   root.MediaClip.M0.Type=audio
     let mut map: BTreeMap<u32, (String, String)> = BTreeMap::new();
     for line in text.lines() {
         let line = line.trim();
@@ -162,7 +160,6 @@ fn parse_clip_id_from_response(resp: &str) -> anyhow::Result<u32> {
             }
         }
     }
-    // Response was OK but no ID line — return 0
     if resp.trim().starts_with("OK") || resp.trim().starts_with("ok") {
         return Ok(0);
     }
