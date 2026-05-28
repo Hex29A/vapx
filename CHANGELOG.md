@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.16.0
+
+### Fixed
+- **`clip`**: Rewrote to use the correct VAPIX Media Clip API (`/axis-cgi/mediaclip.cgi` + `param.cgi?group=MediaClip`) instead of the legacy `/axis-cgi/audio/*.cgi` paths. The old paths are not available on cameras running AXIS OS 10+.
+
+### Changed
+- **`clip list`**: Now reads clips from `param.cgi?group=MediaClip`, returning integer ID, name, and location per clip.
+- **`clip play` / `clip delete`**: Accept either a clip name (string) or integer ID. Name is resolved to integer ID via a list lookup before the action.
+- **`clip upload`**: Field name in the multipart body is now the clip display name (as required by the API). Accepts `--name` to override the default (filename stem).
+
+### Added
+- **`clip stop`**: New subcommand to stop any currently playing clip (`action=stop`).
+
 ## v0.15.0
 
 ### Added
