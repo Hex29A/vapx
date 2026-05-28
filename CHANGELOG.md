@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.15.0
+
+### Added
+- **`clip`**: New command for audio clip management on cameras with audio output. Subcommands: `list` (show stored clips), `play` (trigger playback on built-in speaker), `upload` (send a .wav file to the camera via multipart), `delete` (remove a clip by name). Accepts clip names with or without the `clip:` prefix. Gracefully reports errors from cameras that lack audio clip support (older firmware, no speaker hardware). New VAPIX module: `vapix/audio_clip.rs`. New client helper: `post_multipart_file()` in `VapixClient`.
+
 ## v0.14.0
 
 ### Added

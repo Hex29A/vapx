@@ -272,6 +272,61 @@ impl VapixClient {
         Ok(json)
     }
 
+    /// POST a multipart/form-data request with a single file part.
+    /// Used for audio clip upload and similar single-file operations.
+    pub fn post_multipart_file(
+        &self,
+        path: &str,
+        data: &[u8],
+        filename: &str,
+    ) -> anyhow::Result<String> {
+        let url = format!("{}{}", self.base_url, path);
+        let boundary = format!(
+            "vapx-{:016x}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        );
+
+        let mut body = Vec::new();
+        body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+        body.extend_from_slice(
+            format!(
+                "Content-Disposition: form-data; name=\"file\"; filename=\"{}\"\r\n",
+                filename
+            )
+            .as_bytes(),
+        );
+        body.extend_from_slice(b"Content-Type: application/octet-stream\r\n\r\n");
+        body.extend_from_slice(data);
+        body.extend_from_slice(b"\r\n");
+        body.extend_from_slice(format!("--{}--\r\n", boundary).as_bytes());
+
+        let content_type = format!("multipart/form-data; boundary={}", boundary);
+
+        debug!("POST multipart file {} ({} bytes)", url, data.len());
+
+        let resp = request_with_auth(
+            &self.inner,
+            "POST",
+            &url,
+            Some(&body),
+            Some(&content_type),
+            &self.creds.user,
+            &self.creds.pass,
+            self.creds.https,
+        )?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let text = resp.text().unwrap_or_default();
+            bail!("HTTP {}: {}", status.as_u16(), sanitize_error_body(&text));
+        }
+
+        Ok(resp.text().unwrap_or_default())
+    }
+
     #[allow(dead_code)]
     pub fn base_url(&self) -> &str {
         &self.base_url

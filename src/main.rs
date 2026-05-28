@@ -99,6 +99,8 @@ pub enum Commands {
     Vmd(cmd::vmd::VmdCmd),
     /// Audio source configuration
     Audio(cmd::audio::AudioCmd),
+    /// Audio clip management (list, play, upload, delete)
+    Clip(cmd::clip::ClipCmd),
     /// MQTT client management
     Mqtt(cmd::mqtt::MqttCmd),
     /// Stream status and parameters
@@ -199,6 +201,7 @@ fn main() {
         Commands::Light(cmd) => cmd.run(),
         Commands::Vmd(cmd) => cmd.run(),
         Commands::Audio(cmd) => cmd.run(),
+        Commands::Clip(cmd) => cmd.run(),
         Commands::Mqtt(cmd) => cmd.run(),
         Commands::Streamstatus(cmd) => cmd.run(),
         Commands::Selftest(cmd) => cmd.run(),
