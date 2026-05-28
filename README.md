@@ -64,6 +64,7 @@ The `host` argument can be an IP address, hostname, or a camera name defined in 
 | `light` | IR illuminator status and intensity |
 | `vmd` | Video motion detection configuration |
 | `audio` | Audio source configuration |
+| `clip` | Audio clip management (list, play, upload, delete) |
 | `mqtt` | MQTT client management (status, configure, enable, disable, events) |
 | `streamstatus` | Stream status and parameters |
 | `selftest` | Device self-test (preview mode only) |
@@ -146,6 +147,13 @@ vapx vmd 192.168.7.10 -u admin -p secret
 
 # Audio source configuration
 vapx audio 192.168.7.10 -u admin -p secret
+
+# Audio clip management
+vapx clip list 192.168.7.10 -u admin -p secret
+vapx clip play 192.168.7.10 siren -u admin -p secret
+vapx clip upload 192.168.7.10 /path/to/alert.wav -u admin -p secret
+vapx clip upload 192.168.7.10 /path/to/alert.wav --name warning -u admin -p secret
+vapx clip delete 192.168.7.10 siren -u admin -p secret
 
 # MQTT client management
 vapx mqtt status 192.168.7.10 -u admin -p secret
@@ -417,6 +425,7 @@ src/
     light.rs           # vapx light — IR illuminator status
     vmd.rs             # vapx vmd — video motion detection
     audio.rs           # vapx audio — audio source configuration
+    clip.rs            # vapx clip — audio clip management (list/play/upload/delete)
     mqtt.rs            # vapx mqtt — MQTT client management
     streamstatus.rs    # vapx streamstatus — stream status
     selftest.rs        # vapx selftest — device self-test
@@ -444,6 +453,7 @@ src/
     storage.rs         # Disk/storage management
     temperature.rs     # Temperature sensors
     image.rs           # Image params (daynight, imaging, light, vmd, audio)
+    audio_clip.rs      # Audio clip management (list/play/upload/delete)
     mqtt.rs            # MQTT client management
     streamstatus.rs    # Stream status
     selftest.rs        # Device self-test
@@ -485,6 +495,7 @@ tests/
 - [x] Signed Video (`signedvideo.cgi`)
 - [x] ZipStream Compression (`zipstream/*.cgi`)
 - [x] View Area Management (`viewarea/info.cgi`)
+- [x] Audio Clip Management (`/axis-cgi/audio/*.cgi`)
 
 ## License
 
