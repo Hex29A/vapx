@@ -217,29 +217,23 @@ impl VapixClient {
 
         let json_str = serde_json::to_string(json_body)?;
 
-        // Build multipart body manually
         let mut body = Vec::new();
-        // Part 1: JSON
         body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
         body.extend_from_slice(b"Content-Disposition: form-data; name=\"json\"\r\n");
         body.extend_from_slice(b"Content-Type: application/json\r\n\r\n");
         body.extend_from_slice(json_str.as_bytes());
         body.extend_from_slice(b"\r\n");
-        // Part 2: firmware file
         body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
         body.extend_from_slice(b"Content-Disposition: form-data; name=\"file\"; filename=\"firmware.bin\"\r\n");
         body.extend_from_slice(b"Content-Type: application/octet-stream\r\n\r\n");
         body.extend_from_slice(firmware_data);
         body.extend_from_slice(b"\r\n");
-        // Closing boundary
         body.extend_from_slice(format!("--{}--\r\n", boundary).as_bytes());
 
         let content_type = format!("multipart/form-data; boundary={}", boundary);
 
         debug!("POST multipart {} ({} bytes firmware)", url, firmware_data.len());
 
-        // Single attempt (no retry for firmware upload — it's too large and the
-        // camera may already be processing)
         let resp = request_with_auth(
             &self.inner,
             "POST",
@@ -273,14 +267,36 @@ impl VapixClient {
     }
 
     /// POST a multipart/form-data request with a single file part.
-    /// Used for audio clip upload and similar single-file operations.
+    /// Used for simple single-file uploads where the field name is "file".
     pub fn post_multipart_file(
         &self,
         path: &str,
         data: &[u8],
         filename: &str,
     ) -> anyhow::Result<String> {
-        let url = format!("{}{}", self.base_url, path);
+        self.post_multipart_file_with_params(path, &[], data, filename, "file")
+    }
+
+    /// POST a multipart/form-data request with a single file part and optional query params.
+    /// `field_name` becomes the `name` attribute in the Content-Disposition header.
+    /// The Media Clip API requires the field name to be the clip display name.
+    pub fn post_multipart_file_with_params(
+        &self,
+        path: &str,
+        params: &[(&str, &str)],
+        data: &[u8],
+        filename: &str,
+        field_name: &str,
+    ) -> anyhow::Result<String> {
+        let mut url = format!("{}{}", self.base_url, path);
+        if !params.is_empty() {
+            let query: Vec<String> = params
+                .iter()
+                .map(|(k, v)| format!("{}={}", k, encode_value(v)))
+                .collect();
+            url = format!("{}?{}", url, query.join("&"));
+        }
+
         let boundary = format!(
             "vapx-{:016x}",
             std::time::SystemTime::now()
@@ -293,8 +309,8 @@ impl VapixClient {
         body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
         body.extend_from_slice(
             format!(
-                "Content-Disposition: form-data; name=\"file\"; filename=\"{}\"\r\n",
-                filename
+                "Content-Disposition: form-data; name=\"{}\"; filename=\"{}\"\r\n",
+                field_name, filename
             )
             .as_bytes(),
         );
@@ -305,7 +321,7 @@ impl VapixClient {
 
         let content_type = format!("multipart/form-data; boundary={}", boundary);
 
-        debug!("POST multipart file {} ({} bytes)", url, data.len());
+        debug!("POST multipart {} ({} bytes, field={})", url, data.len(), field_name);
 
         let resp = request_with_auth(
             &self.inner,
