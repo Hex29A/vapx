@@ -266,17 +266,6 @@ impl VapixClient {
         Ok(json)
     }
 
-    /// POST a multipart/form-data request with a single file part.
-    /// Used for simple single-file uploads where the field name is "file".
-    pub fn post_multipart_file(
-        &self,
-        path: &str,
-        data: &[u8],
-        filename: &str,
-    ) -> anyhow::Result<String> {
-        self.post_multipart_file_with_params(path, &[], data, filename, "file")
-    }
-
     /// POST a multipart/form-data request with a single file part and optional query params.
     /// `field_name` becomes the `name` attribute in the Content-Disposition header.
     /// The Media Clip API requires the field name to be the clip display name.
