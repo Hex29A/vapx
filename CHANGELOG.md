@@ -1,22 +1,30 @@
 # Changelog
 
+## v0.16.1
+
+### Fixed
+- **`storage recordings`**: Add `maxnumberofrecordings=1000` parameter so all recordings are returned, not just one. New `--max <N>` flag to control the limit.
+
+### Changed
+- **`info`**: Replace useless `WebURL` (always "https://www.axis.com") with `DeviceURL` showing the actual camera URL (e.g. `"http://192.168.7.10"`).
+
 ## v0.16.0
 
 ### Fixed
-- **`clip`**: Rewrote to use the correct VAPIX Media Clip API (`/axis-cgi/mediaclip.cgi` + `param.cgi?group=MediaClip`) instead of the legacy `/axis-cgi/audio/*.cgi` paths. The old paths are not available on cameras running AXIS OS 10+.
+- **`clip`**: Rewrote to use the correct VAPIX Media Clip API.
 
 ### Changed
-- **`clip list`**: Now reads clips from `param.cgi?group=MediaClip`, returning integer ID, name, and location per clip.
-- **`clip play` / `clip delete`**: Accept either a clip name (string) or integer ID. Name is resolved to integer ID via a list lookup before the action.
-- **`clip upload`**: Field name in the multipart body is now the clip display name (as required by the API). Accepts `--name` to override the default (filename stem).
+- **`clip list`**: Now reads clips from `param.cgi?group=MediaClip`.
+- **`clip play` / `clip delete`**: Accept either a clip name or integer ID.
+- **`clip upload`**: Field name is now the clip display name. Accepts `--name` to override.
 
 ### Added
-- **`clip stop`**: New subcommand to stop any currently playing clip (`action=stop`).
+- **`clip stop`**: New subcommand to stop any currently playing clip.
 
 ## v0.15.0
 
 ### Added
-- **`clip`**: New command for audio clip management on cameras with audio output. Subcommands: `list` (show stored clips), `play` (trigger playback on built-in speaker), `upload` (send a .wav file to the camera via multipart), `delete` (remove a clip by name). Accepts clip names with or without the `clip:` prefix. Gracefully reports errors from cameras that lack audio clip support (older firmware, no speaker hardware). New VAPIX module: `vapix/audio_clip.rs`. New client helper: `post_multipart_file()` in `VapixClient`.
+- **`clip`**: Audio clip management (list, play, upload, delete). New VAPIX module: `vapix/audio_clip.rs`.
 
 ## v0.14.0
 

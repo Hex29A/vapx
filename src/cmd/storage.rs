@@ -57,6 +57,10 @@ pub enum StorageCommands {
     Recordings {
         #[command(flatten)]
         cam: CameraArgs,
+
+        /// Maximum number of recordings to return
+        #[arg(long, default_value = "1000")]
+        max: u32,
     },
     /// Show disk health, wear level, and status
     Health {
@@ -95,10 +99,10 @@ impl StorageCmd {
                     format::ok(data);
                 }
             }
-            StorageCommands::Recordings { cam } => {
+            StorageCommands::Recordings { cam, max } => {
                 let (creds, host) = resolve_cam(&cam)?;
                 let client = make_client(&host, creds, cam.timeout);
-                let data = storage::list_recordings(&client)?;
+                let data = storage::list_recordings(&client, max)?;
                 if cam.plain {
                     format::plain(&data);
                 } else {

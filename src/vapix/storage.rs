@@ -83,10 +83,12 @@ pub fn get_disk_properties(client: &VapixClient, disk_id: &str) -> anyhow::Resul
 }
 
 /// List recordings on storage. Parses the XML response into structured JSON.
-pub fn list_recordings(client: &VapixClient) -> anyhow::Result<serde_json::Value> {
+/// `max` controls the maximum number of recordings to fetch (default 1000).
+pub fn list_recordings(client: &VapixClient, max: u32) -> anyhow::Result<serde_json::Value> {
+    let max_str = max.to_string();
     let text = client.get_text(
         "/axis-cgi/record/list.cgi",
-        &[("recordingid", "all")],
+        &[("recordingid", "all"), ("maxnumberofrecordings", &max_str)],
     )?;
     parse_recordings_xml(&text)
 }

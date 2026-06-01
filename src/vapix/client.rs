@@ -81,6 +81,16 @@ impl VapixClient {
         }
     }
 
+    /// Whether this client uses HTTPS.
+    pub fn is_https(&self) -> bool {
+        self.creds.https
+    }
+
+    /// The port this client connects to.
+    pub fn port(&self) -> u16 {
+        self.creds.port
+    }
+
     /// POST JSON to a VAPIX API endpoint. Validates the response body for errors.
     /// Retries on 5xx and connection/timeout errors with exponential backoff.
     pub fn post_json(&self, path: &str, body: &Value) -> anyhow::Result<Value> {

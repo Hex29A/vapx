@@ -60,15 +60,30 @@ impl InfoCmd {
         };
 
         // Extract just the propertyList for cleaner output
-        let output = resp
+        let mut output = resp
             .get("data")
             .and_then(|d| d.get("propertyList"))
-            .unwrap_or(&resp);
+            .unwrap_or(&resp)
+            .clone();
+
+        // Replace useless WebURL (always "https://www.axis.com") with actual device URL
+        if let Some(obj) = output.as_object_mut() {
+            obj.remove("WebURL");
+            let scheme = if client.is_https() { "https" } else { "http" };
+            let port = client.port();
+            let default_port = if client.is_https() { 443 } else { 80 };
+            let device_url = if port == default_port {
+                format!("{}://{}", scheme, resolved_host)
+            } else {
+                format!("{}://{}:{}", scheme, resolved_host, port)
+            };
+            obj.insert("DeviceURL".to_string(), serde_json::json!(device_url));
+        }
 
         if self.plain {
-            format::plain(output);
+            format::plain(&output);
         } else {
-            format::ok(output);
+            format::ok(&output);
         }
 
         Ok(())

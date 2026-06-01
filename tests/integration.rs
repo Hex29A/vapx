@@ -88,6 +88,16 @@ fn test_info_json_output() {
     // Verify known values for our test camera
     assert_eq!(json["Brand"].as_str().unwrap(), "AXIS");
     assert_eq!(json["Architecture"].as_str().unwrap(), "armv7hf");
+
+    // Verify WebURL replaced with DeviceURL
+    assert!(json.get("WebURL").is_none(), "WebURL should be removed");
+    assert!(json.get("DeviceURL").is_some(), "Missing DeviceURL field");
+    let device_url = json["DeviceURL"].as_str().unwrap();
+    assert!(
+        device_url.starts_with("http"),
+        "DeviceURL should start with http: {}",
+        device_url
+    );
 }
 
 #[test]
