@@ -23,4 +23,5 @@ pub mod temperature;
 pub mod time;
 pub mod users;
 pub mod viewarea;
+pub mod ws;
 pub mod zipstream;

@@ -2084,6 +2084,59 @@ fn test_streamstatus_json() {
     assert!(output.status.success(), "streamstatus failed: {}", stdout);
     let data = parse_ok_data(&stdout);
     assert!(data.is_object(), "Expected object data: {}", data);
+    // Every response (live or fallback) must declare its source.
+    assert!(
+        data.get("source").is_some(),
+        "streamstatus response must include a 'source' field: {}",
+        data
+    );
+    // If we ended up on the fallback path, verify the note explicitly warns
+    // the user that "0" means unlimited (the bug fixed in #25).
+    if data["source"] == "param_cgi_fallback" {
+        let note = data["note"].as_str().unwrap_or("");
+        assert!(
+            note.contains("unlimited") || note.contains("not 'no active streams'"),
+            "fallback response is missing the explanatory note: {}",
+            data
+        );
+    }
+}
+
+#[test]
+fn test_stream_nexus_template() {
+    if skip_if_no_camera() { return; }
+    // Template mode does not require network access.
+    let output = vapx_bin()
+        .args(["stream", "nexus", &test_host(), "-u", &test_user(), "-p", &test_pass(), "--no-fetch-token"])
+        .output()
+        .expect("failed to run vapx");
+    assert!(output.status.success(), "stream nexus --no-fetch-token failed: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let data = parse_ok_data(&stdout);
+    let url = data["url"].as_str().unwrap_or("");
+    assert!(url.starts_with("ws://") || url.starts_with("wss://"), "Expected ws:// URL, got: {}", url);
+    assert!(url.contains("/vapix/ws-data-stream"), "Expected ws-data-stream path: {}", url);
+    assert!(url.contains("sources=video"), "Expected sources=video: {}", url);
+    assert!(url.contains("<TOKEN>"), "Template URL should contain <TOKEN> placeholder: {}", url);
+    assert_eq!(data["template"], serde_json::json!(true));
+}
+
+#[test]
+fn test_stream_nexus_live() {
+    if skip_if_no_camera() { return; }
+    let output = vapx_bin()
+        .args(["stream", "nexus", &test_host(), "-u", &test_user(), "-p", &test_pass()])
+        .output()
+        .expect("failed to run vapx");
+    assert!(output.status.success(), "stream nexus failed: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let data = parse_ok_data(&stdout);
+    let url = data["url"].as_str().unwrap_or("");
+    let token = data["wssession"].as_str().unwrap_or("");
+    assert!(!token.is_empty(), "Expected non-empty wssession token");
+    assert!(url.contains(&format!("wssession={}", token)), "URL should contain real token: {}", url);
+    assert!(url.contains("sources=video"));
+    assert_eq!(data["transport"], serde_json::json!("nexus-websocket"));
 }
 
 // ── Self-test tests ─────────────────────────────────────────────────

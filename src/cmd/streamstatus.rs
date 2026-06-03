@@ -35,24 +35,14 @@ impl StreamstatusCmd {
             self.insecure,
         )?;
         let timeout = self.timeout.unwrap_or(creds.timeout);
-        let client = VapixClient::new(&resolved_host, creds.port, creds, timeout);
-        let text = streamstatus::get_stream_status(&client)?;
+        let client = VapixClient::new(&resolved_host, creds.port, creds.clone(), timeout);
+        let resp = streamstatus::get_stream_status(&client, &creds, &resolved_host)?;
+        let data = resp.get("data").unwrap_or(&resp);
 
         if self.plain {
-            println!("{}", text);
+            format::plain(data);
         } else {
-            // Try parsing as JSON first (from streamstatus.cgi)
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
-                if let Some(data) = json.get("data") {
-                    format::ok(data);
-                } else {
-                    format::ok(&json);
-                }
-            } else {
-                // param.cgi key=value format
-                let map = crate::cmd::param_to_json(&text);
-                format::ok(&map);
-            }
+            format::ok(data);
         }
 
         Ok(())

@@ -6,14 +6,7 @@ use tungstenite::{connect, Message};
 
 use crate::config::credentials::Credentials;
 use crate::vapix::client::VapixClient;
-
-/// Get a WebSocket session token via /axis-cgi/wssession.cgi.
-fn get_ws_session(client: &VapixClient) -> anyhow::Result<String> {
-    let text = client.get_text("/axis-cgi/wssession.cgi", &[])?;
-    let token = text.trim().to_string();
-    debug!("Got WS session token: {}", token);
-    Ok(token)
-}
+use crate::vapix::ws::{build_ws_url, get_ws_session};
 
 /// Connect to the event WebSocket and stream events.
 /// Calls `on_event` for each received event notification.
@@ -27,11 +20,7 @@ pub fn stream_events(
 ) -> anyhow::Result<()> {
     let session_token = get_ws_session(client)?;
 
-    let scheme = if creds.https { "wss" } else { "ws" };
-    let ws_url = format!(
-        "{}://{}:{}/vapix/ws-data-stream?wssession={}&sources=events",
-        scheme, host, creds.port, session_token
-    );
+    let ws_url = build_ws_url(creds, host, &session_token, "events");
     debug!("Connecting WebSocket: {}", ws_url);
 
     let uri: Uri = ws_url.parse().context("Invalid WebSocket URL")?;

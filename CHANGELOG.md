@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.17.0
+
+### Added
+- **`stream nexus`**: Generate a Nexus (WebSocket video) stream URL — `vapx stream nexus <camera>` returns `ws://…/vapix/ws-data-stream?wssession=<token>&sources=video` with a fresh session token (closes #26). Use `--no-fetch-token` to emit a URL template with a `<TOKEN>` placeholder (no network call) for scripting and documentation. HTTPS cameras emit `wss://` automatically.
+
+### Fixed
+- **`streamstatus`**: No longer presents `param.cgi` stream-config parameters as if they were live statistics (fixes #25). The command now:
+  1. tries `streamstatus.cgi` over HTTP,
+  2. then `/vapix/ws-data-stream?sources=streamstatus` over WebSocket,
+  3. finally falls back to `param.cgi root.Image.I0.Stream.*` with an explicit `note` clarifying that `0` means *unlimited*, not *no active streams*, and a `source: "param_cgi_fallback"` marker.
+  Every response now includes a `source` field identifying which path produced the data.
+
+### Changed
+- Extracted shared WebSocket helpers (`get_ws_session`, `build_ws_url`, `build_nexus_url`) into `src/vapix/ws.rs`. `vapix events` now uses this helper.
+
 ## v0.16.2
 
 ### Fixed

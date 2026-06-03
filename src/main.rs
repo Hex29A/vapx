@@ -71,7 +71,7 @@ pub enum Commands {
     Overlay(cmd::overlay::OverlayCmd),
     /// View system/access logs
     Log(cmd::log::LogCmd),
-    /// Generate stream URLs (RTSP, MJPEG, snapshot)
+    /// Generate stream URLs (RTSP, MJPEG, snapshot, Nexus)
     Stream(cmd::stream::StreamCmd),
     /// Apply/create parameter templates (desired-state config)
     Template(cmd::template::TemplateCmd),
