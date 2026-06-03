@@ -230,32 +230,38 @@ impl ConfigCmd {
 }
 
 const TEMPLATE_CONFIG: &str = r#"# vapx camera configuration
+# Docs: https://github.com/Hex29A/vapx#camerasyaml
 # Env vars: use ${VAR_NAME} for secrets, loaded from environment.
 # Keyring: use `vapx config set-secret <name>` to store passwords securely.
-# Profiles: define named sets of defaults under profiles:
+# Profiles: define named sets of defaults under profiles:, select with --profile.
 
 defaults:
   user: root
   https: false
   verify_ssl: false
-  timeout: 10
+  timeout: 10          # seconds; increase for WAN cameras (e.g. 30)
 
 cameras:
-  # example:
+  # my-camera:
   #   host: 192.168.1.100
-  #   pass: "${EXAMPLE_PASS}"
+  #   pass: "${MY_CAMERA_PASS}"   # or plain text (not recommended)
+  #   user: root                  # overrides defaults.user
+  #   https: false
+  #   verify_ssl: false
   #   port: 80
+  #   timeout: 30                 # override for slow links
+  #   enabled: true               # set false to skip in batch/watch/health
 
 profiles: {}
+  # wan:
+  #   timeout: 30
   # secure:
   #   https: true
   #   verify_ssl: true
-  # fast:
-  #   timeout: 5
 
 groups: {}
-  # home:
-  #   - example
+  # site-a:
+  #   - my-camera
 "#;
 
 #[cfg(feature = "keyring")]

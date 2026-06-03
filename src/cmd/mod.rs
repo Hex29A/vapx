@@ -64,26 +64,42 @@ pub(crate) fn make_client(
 }
 
 /// Resolve a target string (group name or comma-separated camera names) to a list of camera names.
+/// Cameras with `enabled: false` are filtered out and logged.
 pub(crate) fn resolve_targets(
     config: &crate::config::cameras::CamerasConfig,
     input: &str,
 ) -> anyhow::Result<Vec<String>> {
     // Check if it's a group name
-    if let Some(members) = config.groups.get(input) {
-        return Ok(members.clone());
-    }
+    let raw = if let Some(members) = config.groups.get(input) {
+        members.clone()
+    } else {
+        // Treat as comma-separated camera names/hosts
+        let names: Vec<String> = input.split(',').map(|s| s.trim().to_string()).collect();
 
-    // Treat as comma-separated camera names/hosts
-    let names: Vec<String> = input.split(',').map(|s| s.trim().to_string()).collect();
+        // Validate all names exist in config
+        for name in &names {
+            if config.find(name).is_none() {
+                anyhow::bail!("Camera '{}' not found in cameras.yaml", name);
+            }
+        }
+        names
+    };
 
-    // Validate all names exist in config
-    for name in &names {
-        if config.find(name).is_none() {
-            anyhow::bail!("Camera '{}' not found in cameras.yaml", name);
+    // Filter out disabled cameras
+    let mut enabled = Vec::new();
+    for name in &raw {
+        if let Some((_, entry)) = config.find(name) {
+            if entry.enabled {
+                enabled.push(name.clone());
+            } else {
+                tracing::info!("Skipping '{}': disabled in config", name);
+            }
+        } else {
+            enabled.push(name.clone());
         }
     }
 
-    Ok(names)
+    Ok(enabled)
 }
 
 /// Parse param.cgi key=value text into a JSON map.

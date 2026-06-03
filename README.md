@@ -332,6 +332,28 @@ groups:
     - parking
 ```
 
+#### `defaults` / per-camera fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `user` | string | `root` | VAPIX username |
+| `pass` | string | — | Password. Supports `${ENV_VAR}` substitution |
+| `https` | bool | `false` | Use HTTPS instead of HTTP |
+| `verify_ssl` | bool | `false` | Verify TLS certificate (set `true` for production) |
+| `port` | int | 80 / 443 | Override port (useful for non-standard setups) |
+| `timeout` | int (s) | `10` | Request timeout in seconds |
+| `enabled` | bool | `true` | Set `false` to skip camera in `batch`/`watch`/`health` without removing it |
+
+Per-camera fields override `defaults`. Each camera entry also requires `host`.
+
+#### `profiles`
+
+Named sets of defaults, selectable with `--profile <name>`. Supports the same fields as `defaults`.
+
+#### `groups`
+
+Named lists of camera names for use with `vapx batch`, `vapx watch`, `vapx health`.
+
 ### Secrets
 
 Passwords use `${ENV_VAR}` substitution. Set them via:

@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.17.2
+
+### Added
+- **`enabled` flag**: Cameras in `cameras.yaml` now support `enabled: false` to skip them in `batch`/`watch`/`health` without removing them from the config. Defaults to `true` for backward compatibility (closes #31).
+- **Config reference table**: README now includes a complete field reference table for `cameras.yaml` (`defaults`, per-camera fields, `profiles`, `groups`). The `vapx config init` template has been expanded with all fields commented out and annotated (closes #32).
+
 ## v0.17.1
 
 ### Fixed
