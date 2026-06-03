@@ -69,8 +69,11 @@ fn list_disks_legacy(client: &VapixClient) -> anyhow::Result<serde_json::Value> 
 }
 
 /// Get disk properties (health, usage, etc.).
+/// Tries `disks/properties.cgi` first; on 404 falls back to extracting
+/// available data from `disks/list.cgi` (which returns totalsize, freesize,
+/// status, etc. on cameras where `properties.cgi` is absent).
 pub fn get_disk_properties(client: &VapixClient, disk_id: &str) -> anyhow::Result<serde_json::Value> {
-    client.post_json(
+    match client.post_json(
         "/axis-cgi/disks/properties.cgi",
         &json!({
             "apiVersion": "1.0",
@@ -79,7 +82,50 @@ pub fn get_disk_properties(client: &VapixClient, disk_id: &str) -> anyhow::Resul
                 "diskID": disk_id,
             },
         }),
-    )
+    ) {
+        Ok(resp) => Ok(resp),
+        Err(e) => {
+            let msg = format!("{}", e);
+            if msg.contains("404") {
+                debug!(
+                    "disks/properties.cgi returned 404 for {}, falling back to list.cgi",
+                    disk_id
+                );
+                get_disk_properties_from_list(client, disk_id)
+            } else {
+                Err(e)
+            }
+        }
+    }
+}
+
+/// Fallback: extract properties for a single disk from the `list.cgi` response.
+fn get_disk_properties_from_list(
+    client: &VapixClient,
+    disk_id: &str,
+) -> anyhow::Result<serde_json::Value> {
+    let resp = list_disks(client)?;
+    let disks = resp
+        .pointer("/data/disks")
+        .and_then(|d| d.as_array())
+        .ok_or_else(|| anyhow::anyhow!("No disks found in list response"))?;
+
+    let disk = disks
+        .iter()
+        .find(|d| {
+            d.get("diskID")
+                .or_else(|| d.get("DiskID"))
+                .and_then(|v| v.as_str())
+                == Some(disk_id)
+        })
+        .ok_or_else(|| anyhow::anyhow!("Disk '{}' not found", disk_id))?;
+
+    Ok(json!({
+        "data": {
+            "disks": [disk.clone()],
+            "source": "list_cgi_fallback",
+        }
+    }))
 }
 
 /// List recordings on storage. Parses the XML response into structured JSON.
@@ -158,10 +204,12 @@ fn parse_recordings_xml(xml: &str) -> anyhow::Result<serde_json::Value> {
 }
 
 /// Get disk health information.
+/// Tries `properties.cgi` per disk; on 404 falls back to `list.cgi` data
+/// which includes totalsize, freesize, status, and other health-relevant fields.
 pub fn get_disk_health(client: &VapixClient) -> anyhow::Result<serde_json::Value> {
-    // Try the modern properties API for each disk
     let disks_resp = list_disks(client)?;
     let mut health_info = Vec::new();
+    let mut properties_available = true;
 
     if let Some(disks) = disks_resp.pointer("/data/disks").and_then(|d| d.as_array()) {
         for disk in disks {
@@ -169,7 +217,21 @@ pub fn get_disk_health(client: &VapixClient) -> anyhow::Result<serde_json::Value
                 .or_else(|| disk.get("DiskID"))
                 .and_then(|v| v.as_str())
                 .unwrap_or("unknown");
-            match get_disk_properties(client, disk_id) {
+
+            if !properties_available {
+                // Already know properties.cgi is 404, use list data directly
+                health_info.push(build_health_from_list(disk_id, disk));
+                continue;
+            }
+
+            match client.post_json(
+                "/axis-cgi/disks/properties.cgi",
+                &json!({
+                    "apiVersion": "1.0",
+                    "method": "getDiskProperties",
+                    "params": { "diskID": disk_id },
+                }),
+            ) {
                 Ok(props) => {
                     let mut entry = serde_json::Map::new();
                     entry.insert("id".into(), json!(disk_id));
@@ -187,16 +249,47 @@ pub fn get_disk_health(client: &VapixClient) -> anyhow::Result<serde_json::Value
                     health_info.push(serde_json::Value::Object(entry));
                 }
                 Err(e) => {
-                    debug!("Failed to get properties for disk {}: {}", disk_id, e);
-                    health_info.push(json!({"id": disk_id, "error": format!("{}", e)}));
+                    let msg = format!("{}", e);
+                    if msg.contains("404") {
+                        debug!(
+                            "disks/properties.cgi returned 404, using list.cgi data for health"
+                        );
+                        properties_available = false;
+                        health_info.push(build_health_from_list(disk_id, disk));
+                    } else {
+                        debug!("Failed to get properties for disk {}: {}", disk_id, e);
+                        health_info.push(json!({"id": disk_id, "error": format!("{}", e)}));
+                    }
                 }
             }
         }
     }
 
-    Ok(json!({
-        "disks": health_info,
-    }))
+    let mut result = json!({ "disks": health_info });
+    if !properties_available {
+        result.as_object_mut().unwrap().insert(
+            "note".into(),
+            json!("Health data from list.cgi (properties.cgi not available on this firmware)"),
+        );
+    }
+
+    Ok(result)
+}
+
+/// Build a health entry from list.cgi disk data (fallback when properties.cgi is absent).
+fn build_health_from_list(disk_id: &str, disk: &serde_json::Value) -> serde_json::Value {
+    let mut entry = serde_json::Map::new();
+    entry.insert("id".into(), json!(disk_id));
+    // Copy all available fields from list.cgi
+    if let Some(obj) = disk.as_object() {
+        for (k, v) in obj {
+            if k != "diskID" && k != "DiskID" {
+                entry.insert(k.clone(), v.clone());
+            }
+        }
+    }
+    entry.insert("source".into(), json!("list_cgi_fallback"));
+    serde_json::Value::Object(entry)
 }
 
 /// Get recording storage info via param.cgi.

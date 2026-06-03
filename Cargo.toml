@@ -1,6 +1,6 @@
 [package]
 name = "vapx"
-version = "0.16.1"
+version = "0.16.2"
 edition = "2021"
 description = "Axis camera management CLI via VAPIX"
 license = "MIT"

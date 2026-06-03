@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.16.2
+
+### Fixed
+- **`storage health` / `storage info`**: Fall back to `disks/list.cgi` data when `disks/properties.cgi` returns 404 (fixes #23). Cameras running AXIS OS 12.x (e.g. M3128-LVE) that don't support `properties.cgi` now return disk health data from `list.cgi` instead of errors.
+- **`signedvideo status` / `enable` / `disable`**: Fall back to `param.cgi` (`root.SignedVideo` / `root.Properties.API.SignedVideo`) when `signedvideo.cgi` returns 404 (fixes #24). Cameras where the CGI endpoint is absent but signed video parameters exist now return status via param.cgi.
+
 ## v0.16.1
 
 ### Fixed
