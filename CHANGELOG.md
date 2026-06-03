@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.18.0
+
+### Fixed
+- **Firmware upload: preemptive auth**: Digest authentication now probes with an empty request before sending the firmware body, eliminating the double-upload that caused 50 MB uploads to take ~128s and timeout. Upload time is halved (closes #33).
+
+### Added
+- **`fw_timeout` config field**: Per-camera `fw_timeout` in `cameras.yaml` overrides the general `timeout` for firmware operations. Default firmware timeout increased from 120s to 300s (closes #34).
+- **Firmware upload progress bar**: `vapx fw upgrade` now shows a byte-progress bar with transfer speed instead of a spinner during upload (closes #35).
+- **`--auto-commit` flag**: `vapx fw upgrade --wait --auto-commit` automatically commits firmware after the camera reboots successfully, eliminating the manual `vapx fw commit` step. Requires `--wait` (closes #36).
+
 ## v0.17.2
 
 ### Added

@@ -4,7 +4,7 @@ use std::time::Duration;
 use tracing::{debug, trace, warn};
 
 use crate::config::credentials::Credentials;
-use crate::vapix::auth::request_with_auth;
+use crate::vapix::auth::{probe_auth_header, request_with_auth, request_with_preemptive_auth};
 
 const MAX_RETRIES: u32 = 3;
 const INITIAL_BACKOFF_MS: u64 = 500;
@@ -244,7 +244,7 @@ impl VapixClient {
 
         debug!("POST multipart {} ({} bytes firmware)", url, firmware_data.len());
 
-        let resp = request_with_auth(
+        let resp = request_with_preemptive_auth(
             &self.inner,
             "POST",
             &url,
@@ -254,6 +254,95 @@ impl VapixClient {
             &self.creds.pass,
             self.creds.https,
         )?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let text = resp.text().unwrap_or_default();
+            bail!("HTTP {}: {}", status.as_u16(), text);
+        }
+
+        let json: Value = resp.json().context("Failed to parse JSON response")?;
+        trace!("Response: {}", json);
+
+        if let Some(error) = json.get("error") {
+            let code = error.get("code").and_then(|c| c.as_i64()).unwrap_or(0);
+            let message = error
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("Unknown error");
+            bail!("VAPIX error {}: {}", code, message);
+        }
+
+        Ok(json)
+    }
+
+    /// POST firmware with progress tracking.
+    /// Uses preemptive auth probe, then streams the body through a progress reader.
+    pub fn post_multipart_firmware_with_progress(
+        &self,
+        path: &str,
+        json_body: &Value,
+        firmware_data: &[u8],
+        progress: &indicatif::ProgressBar,
+    ) -> anyhow::Result<Value> {
+        let url = format!("{}{}", self.base_url, path);
+        let boundary = format!("vapx-{:016x}", std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos());
+
+        let json_str = serde_json::to_string(json_body)?;
+
+        let mut body = Vec::new();
+        body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+        body.extend_from_slice(b"Content-Disposition: form-data; name=\"json\"\r\n");
+        body.extend_from_slice(b"Content-Type: application/json\r\n\r\n");
+        body.extend_from_slice(json_str.as_bytes());
+        body.extend_from_slice(b"\r\n");
+        body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+        body.extend_from_slice(b"Content-Disposition: form-data; name=\"file\"; filename=\"firmware.bin\"\r\n");
+        body.extend_from_slice(b"Content-Type: application/octet-stream\r\n\r\n");
+        body.extend_from_slice(firmware_data);
+        body.extend_from_slice(b"\r\n");
+        body.extend_from_slice(format!("--{}--\r\n", boundary).as_bytes());
+
+        let content_type = format!("multipart/form-data; boundary={}", boundary);
+        let body_len = body.len() as u64;
+
+        debug!("POST multipart {} ({} bytes firmware, with progress)", url, firmware_data.len());
+
+        // Probe for auth header
+        let auth_value = probe_auth_header(
+            &self.inner,
+            "POST",
+            &url,
+            Some(&body),
+            &self.creds.user,
+            &self.creds.pass,
+            self.creds.https,
+        )?;
+
+        progress.set_length(body_len);
+        progress.set_position(0);
+
+        // Wrap body in progress reader
+        let reader = ProgressReader {
+            inner: std::io::Cursor::new(body),
+            progress: progress.clone(),
+        };
+
+        let mut req = self.inner.post(&url)
+            .header("Content-Type", content_type)
+            .body(reqwest::blocking::Body::sized(reader, body_len));
+
+        if let Some(ref auth) = auth_value {
+            req = req.header(reqwest::header::AUTHORIZATION, auth);
+        } else if self.creds.https {
+            req = req.basic_auth(&self.creds.user, Some(&self.creds.pass));
+        }
+
+        let resp = req.send()?;
+        progress.finish_and_clear();
 
         let status = resp.status();
         if !status.is_success() {
@@ -322,7 +411,7 @@ impl VapixClient {
 
         debug!("POST multipart {} ({} bytes, field={})", url, data.len(), field_name);
 
-        let resp = request_with_auth(
+        let resp = request_with_preemptive_auth(
             &self.inner,
             "POST",
             &url,
@@ -345,5 +434,21 @@ impl VapixClient {
     #[allow(dead_code)]
     pub fn base_url(&self) -> &str {
         &self.base_url
+    }
+}
+
+/// A reader wrapper that updates an indicatif progress bar as bytes are read.
+struct ProgressReader {
+    inner: std::io::Cursor<Vec<u8>>,
+    progress: indicatif::ProgressBar,
+}
+
+impl std::io::Read for ProgressReader {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.inner.read(buf)?;
+        if n > 0 {
+            self.progress.inc(n as u64);
+        }
+        Ok(n)
     }
 }

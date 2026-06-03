@@ -342,6 +342,7 @@ groups:
 | `verify_ssl` | bool | `false` | Verify TLS certificate (set `true` for production) |
 | `port` | int | 80 / 443 | Override port (useful for non-standard setups) |
 | `timeout` | int (s) | `10` | Request timeout in seconds |
+| `fw_timeout` | int (s) | `300` | Firmware upload timeout in seconds (overrides `timeout` for `fw upgrade`) |
 | `enabled` | bool | `true` | Set `false` to skip camera in `batch`/`watch`/`health` without removing it |
 
 Per-camera fields override `defaults`. Each camera entry also requires `host`.

@@ -53,6 +53,8 @@ pub struct CameraEntry {
     pub port: Option<u16>,
     #[serde(default)]
     pub timeout: Option<u64>,
+    #[serde(default)]
+    pub fw_timeout: Option<u64>,
     #[serde(default = "default_true")]
     pub enabled: bool,
 }

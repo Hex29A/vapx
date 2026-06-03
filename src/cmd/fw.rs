@@ -72,6 +72,10 @@ pub enum FwCommands {
         /// Max seconds to wait for reboot (default: 300)
         #[arg(long, default_value_t = 300)]
         wait_timeout: u64,
+
+        /// Automatically commit firmware after successful reboot (requires --wait)
+        #[arg(long)]
+        auto_commit: bool,
     },
     /// Commit current firmware (prevents auto-rollback)
     Commit {
@@ -138,13 +142,20 @@ impl FwCmd {
                     format::ok(output);
                 }
             }
-            FwCommands::Upgrade { cam, file, factory_default, wait, wait_timeout } => {
+            FwCommands::Upgrade { cam, file, factory_default, wait, wait_timeout, auto_commit } => {
+                if auto_commit && !wait {
+                    anyhow::bail!("--auto-commit requires --wait");
+                }
+
                 if !file.exists() {
                     anyhow::bail!("Firmware file not found: {}", file.display());
                 }
 
                 let (creds, resolved_host) = resolve_cam(&cam)?;
-                let client = crate::cmd::make_client(&resolved_host, creds.clone(), cam.timeout);
+                // Firmware timeout priority: CLI --timeout > fw_timeout from config > timeout from config > 300s
+                let fw_timeout = cam.timeout.or_else(|| resolve_fw_timeout(&cam.host));
+                let client = crate::cmd::make_client(&resolved_host, creds.clone(),
+                    Some(fw_timeout.unwrap_or(300)));
 
                 let file_size = std::fs::metadata(&file)?.len();
                 eprintln!("Reading firmware: {} ({:.1} MB)", file.display(), file_size as f64 / 1_048_576.0);
@@ -163,14 +174,13 @@ impl FwCmd {
                 eprintln!("Uploading firmware...");
                 let upload_start = Instant::now();
 
-                let pb = ProgressBar::new_spinner();
-                pb.set_style(ProgressStyle::default_spinner()
-                    .template("{spinner:.green} {msg}")
-                    .unwrap());
-                pb.set_message("Uploading firmware...");
-                pb.enable_steady_tick(Duration::from_millis(100));
+                let pb = ProgressBar::new(firmware_data.len() as u64);
+                pb.set_style(ProgressStyle::default_bar()
+                    .template("{spinner:.green} [{bar:30.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec})")
+                    .unwrap()
+                    .progress_chars("█▉▊▋▌▍▎▏ "));
 
-                let resp = firmware::upgrade(&client, &firmware_data, fd, None, None)?;
+                let resp = firmware::upgrade_with_progress(&client, &firmware_data, fd, None, None, &pb)?;
                 pb.finish_and_clear();
 
                 let new_version = resp
@@ -181,6 +191,8 @@ impl FwCmd {
                 eprintln!("Upload complete in {:.1}s — new version: {}", upload_start.elapsed().as_secs_f64(), new_version);
                 eprintln!("Camera is rebooting...");
 
+                let mut committed = false;
+
                 if wait {
                     let pb = ProgressBar::new_spinner();
                     pb.set_style(ProgressStyle::default_spinner()
@@ -188,14 +200,22 @@ impl FwCmd {
                         .unwrap());
                     pb.set_message("Waiting for reboot...");
                     pb.enable_steady_tick(Duration::from_millis(100));
-                    wait_for_reboot(&resolved_host, creds.port, creds, wait_timeout)?;
+                    wait_for_reboot(&resolved_host, creds.port, creds.clone(), wait_timeout)?;
                     pb.finish_and_clear();
                     eprintln!("Camera is back online.");
+
+                    if auto_commit {
+                        let commit_client = crate::cmd::make_client(&resolved_host, creds, cam.timeout);
+                        firmware::commit(&commit_client)?;
+                        eprintln!("Firmware committed.");
+                        committed = true;
+                    }
                 }
 
                 format::ok(&serde_json::json!({
                     "previousVersion": old_version,
                     "newVersion": new_version,
+                    "committed": committed,
                 }));
             }
             FwCommands::Commit { cam } => {
@@ -320,6 +340,13 @@ fn resolve_cam(cam: &CameraArgs) -> anyhow::Result<(credentials::Credentials, St
         cam.port,
         cam.insecure,
     )
+}
+
+/// Look up `fw_timeout` from cameras.yaml for this camera.
+fn resolve_fw_timeout(host: &str) -> Option<u64> {
+    let config = crate::config::cameras::load_cameras().ok()??;
+    let (_, entry) = config.find(host)?;
+    entry.fw_timeout
 }
 
 /// Wait for camera to come back online after reboot.

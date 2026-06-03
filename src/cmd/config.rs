@@ -250,6 +250,7 @@ cameras:
   #   verify_ssl: false
   #   port: 80
   #   timeout: 30                 # override for slow links
+  #   fw_timeout: 600              # firmware upload timeout (default: 300s)
   #   enabled: true               # set false to skip in batch/watch/health
 
 profiles: {}
