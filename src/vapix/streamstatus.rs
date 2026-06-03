@@ -142,7 +142,7 @@ fn get_stream_status_from_params(client: &VapixClient) -> anyhow::Result<Value> 
         &[("action", "list"), ("group", "root.Image.I0.Stream")],
     )?;
     if text.starts_with("# Error:") {
-        anyhow::bail!("Stream status not available on this camera: {}", text.trim());
+        anyhow::bail!("Stream status not available on this camera: {}. Use 'vapx discover' to check supported APIs.", text.trim());
     }
 
     let mut cfg = serde_json::Map::new();

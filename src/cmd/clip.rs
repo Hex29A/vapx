@@ -2,7 +2,6 @@ use std::path::PathBuf;
 
 use clap::{Args, Subcommand};
 
-use crate::config::credentials::resolve;
 use crate::output::format;
 use crate::vapix::audio_clip;
 use crate::vapix::client::VapixClient;
@@ -114,7 +113,8 @@ impl ClipCmd {
                 Ok(())
             }
             ClipCommands::Play(cmd) => {
-                let client = make_client(&cmd.host, cmd.user.as_deref(), cmd.pass.as_deref(), cmd.port, cmd.insecure, cmd.timeout)?;
+                let (creds, host) = crate::cmd::resolve_cam(&cmd.host, cmd.user.as_deref(), cmd.pass.as_deref(), cmd.port, cmd.insecure)?;
+                let client = crate::cmd::make_client(&host, creds, cmd.timeout);
                 let id = audio_clip::play_clip(&client, &cmd.name)?;
                 format::ok_msg(&format!("Playing clip {} ({})", id, cmd.name));
                 Ok(())
@@ -139,13 +139,15 @@ impl ClipCmd {
                 let data = std::fs::read(&cmd.file).map_err(|e| {
                     anyhow::anyhow!("Cannot read file {}: {}", cmd.file.display(), e)
                 })?;
-                let client = make_client(&cmd.host, cmd.user.as_deref(), cmd.pass.as_deref(), cmd.port, cmd.insecure, cmd.timeout)?;
+                let (creds, host) = crate::cmd::resolve_cam(&cmd.host, cmd.user.as_deref(), cmd.pass.as_deref(), cmd.port, cmd.insecure)?;
+                let client = crate::cmd::make_client(&host, creds, cmd.timeout);
                 let id = audio_clip::upload_clip(&client, &data, &filename, &clip_name)?;
                 format::ok_msg(&format!("Uploaded clip '{}' as ID {}", clip_name, id));
                 Ok(())
             }
             ClipCommands::Delete(cmd) => {
-                let client = make_client(&cmd.host, cmd.user.as_deref(), cmd.pass.as_deref(), cmd.port, cmd.insecure, cmd.timeout)?;
+                let (creds, host) = crate::cmd::resolve_cam(&cmd.host, cmd.user.as_deref(), cmd.pass.as_deref(), cmd.port, cmd.insecure)?;
+                let client = crate::cmd::make_client(&host, creds, cmd.timeout);
                 let id = audio_clip::delete_clip(&client, &cmd.name)?;
                 format::ok_msg(&format!("Deleted clip {} ({})", id, cmd.name));
                 Ok(())
@@ -161,25 +163,12 @@ impl ClipCmd {
 }
 
 fn make_client_from(args: &CameraArgs) -> anyhow::Result<VapixClient> {
-    make_client(
+    let (creds, resolved_host) = crate::cmd::resolve_cam(
         &args.host,
         args.user.as_deref(),
         args.pass.as_deref(),
         args.port,
         args.insecure,
-        args.timeout,
-    )
-}
-
-fn make_client(
-    host: &str,
-    user: Option<&str>,
-    pass: Option<&str>,
-    port: Option<u16>,
-    insecure: bool,
-    timeout: Option<u64>,
-) -> anyhow::Result<VapixClient> {
-    let (creds, resolved_host) = resolve(host, user, pass, port, insecure)?;
-    let timeout = timeout.unwrap_or(creds.timeout);
-    Ok(VapixClient::new(&resolved_host, creds.port, creds, timeout))
+    )?;
+    Ok(crate::cmd::make_client(&resolved_host, creds, args.timeout))
 }

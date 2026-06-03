@@ -40,7 +40,7 @@ pub fn get_light(client: &VapixClient) -> anyhow::Result<String> {
             &[("action", "list"), ("group", "root.LightControl")],
         )?;
         if text2.starts_with("# Error:") {
-            bail!("Light control parameters not available on this camera");
+            bail!("Light control parameters not available on this camera. Use 'vapx discover' to check supported APIs.");
         }
         return Ok(text2);
     }
@@ -77,7 +77,7 @@ pub fn get_vmd(client: &VapixClient) -> anyhow::Result<String> {
         }
     }
     if result.is_empty() {
-        bail!("Video motion detection parameters not available on this camera");
+        bail!("Video motion detection parameters not available on this camera. Use 'vapx discover' to check supported APIs.");
     }
     Ok(result)
 }
@@ -95,7 +95,7 @@ pub fn get_audio(client: &VapixClient) -> anyhow::Result<String> {
             &[("action", "list"), ("group", "root.Properties.Audio")],
         )?;
         if text2.starts_with("# Error:") {
-            bail!("Audio parameters not available on this camera");
+            bail!("Audio parameters not available on this camera. Use 'vapx discover' to check supported APIs.");
         }
         return Ok(text2);
     }

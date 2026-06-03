@@ -4,7 +4,7 @@ use std::time::Instant;
 use clap::Args;
 use rayon::prelude::*;
 
-use crate::config::cameras::{self, CamerasConfig};
+use crate::config::cameras;
 use crate::config::credentials::resolve;
 use crate::output::format;
 use crate::vapix::client::VapixClient;
@@ -29,7 +29,7 @@ impl HealthCmd {
         let config = cameras::load_cameras()?
             .ok_or_else(|| anyhow::anyhow!("No cameras.yaml found. Run `vapx config init` to create one."))?;
 
-        let targets = resolve_targets(&config, &self.targets)?;
+        let targets = crate::cmd::resolve_targets(&config, &self.targets)?;
         if targets.is_empty() {
             anyhow::bail!("No cameras matched '{}'", self.targets);
         }
@@ -165,15 +165,3 @@ fn check_camera(name: &str, timeout: Option<u64>) -> serde_json::Value {
     result
 }
 
-fn resolve_targets(config: &CamerasConfig, input: &str) -> anyhow::Result<Vec<String>> {
-    if let Some(members) = config.groups.get(input) {
-        return Ok(members.clone());
-    }
-    let names: Vec<String> = input.split(',').map(|s| s.trim().to_string()).collect();
-    for name in &names {
-        if config.find(name).is_none() {
-            anyhow::bail!("Camera '{}' not found in cameras.yaml", name);
-        }
-    }
-    Ok(names)
-}

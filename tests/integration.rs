@@ -2102,43 +2102,6 @@ fn test_streamstatus_json() {
     }
 }
 
-#[test]
-fn test_stream_nexus_template() {
-    if skip_if_no_camera() { return; }
-    // Template mode does not require network access.
-    let output = vapx_bin()
-        .args(["stream", "nexus", &test_host(), "-u", &test_user(), "-p", &test_pass(), "--no-fetch-token"])
-        .output()
-        .expect("failed to run vapx");
-    assert!(output.status.success(), "stream nexus --no-fetch-token failed: {}", String::from_utf8_lossy(&output.stderr));
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let data = parse_ok_data(&stdout);
-    let url = data["url"].as_str().unwrap_or("");
-    assert!(url.starts_with("ws://") || url.starts_with("wss://"), "Expected ws:// URL, got: {}", url);
-    assert!(url.contains("/vapix/ws-data-stream"), "Expected ws-data-stream path: {}", url);
-    assert!(url.contains("sources=video"), "Expected sources=video: {}", url);
-    assert!(url.contains("<TOKEN>"), "Template URL should contain <TOKEN> placeholder: {}", url);
-    assert_eq!(data["template"], serde_json::json!(true));
-}
-
-#[test]
-fn test_stream_nexus_live() {
-    if skip_if_no_camera() { return; }
-    let output = vapx_bin()
-        .args(["stream", "nexus", &test_host(), "-u", &test_user(), "-p", &test_pass()])
-        .output()
-        .expect("failed to run vapx");
-    assert!(output.status.success(), "stream nexus failed: {}", String::from_utf8_lossy(&output.stderr));
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let data = parse_ok_data(&stdout);
-    let url = data["url"].as_str().unwrap_or("");
-    let token = data["wssession"].as_str().unwrap_or("");
-    assert!(!token.is_empty(), "Expected non-empty wssession token");
-    assert!(url.contains(&format!("wssession={}", token)), "URL should contain real token: {}", url);
-    assert!(url.contains("sources=video"));
-    assert_eq!(data["transport"], serde_json::json!("nexus-websocket"));
-}
-
 // ── Self-test tests ─────────────────────────────────────────────────
 
 #[test]
@@ -2152,8 +2115,13 @@ fn test_selftest() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     // Self-test may fail with "preview mode" error on deployed cameras — that's expected
     // Error output goes to stderr in JSON format
-    let json_str = if stdout.trim().is_empty() { &stderr } else { &stdout };
-    let envelope: serde_json::Value = serde_json::from_str(json_str.trim())
+    // Filter out tracing WARN lines from stdout
+    let stdout_clean: String = stdout.lines()
+        .filter(|l| !l.trim_start().starts_with("WARN ") && !l.trim_start().starts_with("INFO "))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let json_str = if stdout_clean.trim().is_empty() { stderr.trim() } else { stdout_clean.trim() };
+    let envelope: serde_json::Value = serde_json::from_str(json_str)
         .unwrap_or_else(|e| panic!("Invalid JSON: {}\nstdout: {}\nstderr: {}", e, stdout, stderr));
     assert!(
         envelope["status"].as_str() == Some("ok") || envelope["status"].as_str() == Some("error"),

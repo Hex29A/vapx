@@ -2,8 +2,6 @@ use clap::{Args, Subcommand};
 
 use crate::config::credentials::resolve;
 use crate::output::format;
-use crate::vapix::client::VapixClient;
-use crate::vapix::ws;
 
 #[derive(Args)]
 pub struct StreamCmd {
@@ -27,16 +25,6 @@ pub enum StreamCommands {
     Snapshot {
         #[command(flatten)]
         cam: CameraArgs,
-    },
-    /// Generate Nexus (WebSocket video) stream URL
-    Nexus {
-        #[command(flatten)]
-        cam: CameraArgs,
-
-        /// Don't fetch a real session token; emit a URL template with <TOKEN> placeholder.
-        /// Useful for scripting and documentation.
-        #[arg(long)]
-        no_fetch_token: bool,
     },
 }
 
@@ -92,7 +80,6 @@ impl StreamCmd {
             StreamCommands::Rtsp { cam } => build_rtsp(&cam),
             StreamCommands::Mjpeg { cam } => build_mjpeg(&cam),
             StreamCommands::Snapshot { cam } => build_snapshot(&cam),
-            StreamCommands::Nexus { cam, no_fetch_token } => build_nexus(&cam, no_fetch_token),
         }
     }
 }
@@ -197,46 +184,4 @@ fn output_url(cam: &CameraArgs, url: &str, stream_type: &str) {
             "url": url,
         }));
     }
-}
-
-fn build_nexus(cam: &CameraArgs, no_fetch_token: bool) -> anyhow::Result<()> {
-    let (creds, resolved_host) = resolve(
-        &cam.host, cam.user.as_deref(), cam.pass.as_deref(),
-        cam.port, cam.insecure,
-    )?;
-
-    if no_fetch_token {
-        // Template mode: emit URL with <TOKEN> placeholder, no network call.
-        let url = ws::build_nexus_url(&creds, &resolved_host, "<TOKEN>");
-        if cam.plain {
-            println!("{}", url);
-        } else {
-            format::ok(&serde_json::json!({
-                "type": "nexus",
-                "transport": "nexus-websocket",
-                "url": url,
-                "template": true,
-                "note": "Template URL. Obtain a real token via GET /axis-cgi/wssession.cgi and substitute <TOKEN>.",
-            }));
-        }
-        return Ok(());
-    }
-
-    let timeout = creds.timeout;
-    let client = VapixClient::new(&resolved_host, creds.port, creds.clone(), timeout);
-    let token = ws::get_ws_session(&client)?;
-    let url = ws::build_nexus_url(&creds, &resolved_host, &token);
-
-    if cam.plain {
-        println!("{}", url);
-    } else {
-        format::ok(&serde_json::json!({
-            "type": "nexus",
-            "transport": "nexus-websocket",
-            "url": url,
-            "wssession": token,
-            "note": "Token is single-use and short-lived. Connect immediately.",
-        }));
-    }
-    Ok(())
 }

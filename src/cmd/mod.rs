@@ -39,6 +39,53 @@ pub mod vmd;
 pub mod watch;
 pub mod zipstream;
 
+use crate::config::credentials::{self, Credentials};
+use crate::vapix::client::VapixClient;
+
+/// Resolve camera credentials and host from CLI args or cameras.yaml.
+pub(crate) fn resolve_cam(
+    host: &str,
+    user: Option<&str>,
+    pass: Option<&str>,
+    port: Option<u16>,
+    insecure: bool,
+) -> anyhow::Result<(Credentials, String)> {
+    credentials::resolve(host, user, pass, port, insecure)
+}
+
+/// Create a VapixClient from resolved credentials.
+pub(crate) fn make_client(
+    host: &str,
+    creds: Credentials,
+    timeout: Option<u64>,
+) -> VapixClient {
+    let t = timeout.unwrap_or(creds.timeout);
+    VapixClient::new(host, creds.port, creds, t)
+}
+
+/// Resolve a target string (group name or comma-separated camera names) to a list of camera names.
+pub(crate) fn resolve_targets(
+    config: &crate::config::cameras::CamerasConfig,
+    input: &str,
+) -> anyhow::Result<Vec<String>> {
+    // Check if it's a group name
+    if let Some(members) = config.groups.get(input) {
+        return Ok(members.clone());
+    }
+
+    // Treat as comma-separated camera names/hosts
+    let names: Vec<String> = input.split(',').map(|s| s.trim().to_string()).collect();
+
+    // Validate all names exist in config
+    for name in &names {
+        if config.find(name).is_none() {
+            anyhow::bail!("Camera '{}' not found in cameras.yaml", name);
+        }
+    }
+
+    Ok(names)
+}
+
 /// Parse param.cgi key=value text into a JSON map.
 pub fn param_to_json(text: &str) -> serde_json::Map<String, serde_json::Value> {
     let mut map = serde_json::Map::new();

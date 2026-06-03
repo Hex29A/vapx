@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.17.1
+
+### Fixed
+- **`stream nexus` removed**: The `vapx stream nexus` subcommand has been removed. Device Data Hub (`ws-data-stream`) is a pub/sub data system, not a video streaming endpoint — the URL always returned HTTP 400 (closes #29).
+- **`selftest` test**: Fixed integration test to handle tracing output (WARN lines) that could pollute stdout and cause JSON parse failures.
+
+### Changed
+- **Shared helpers**: Extracted `resolve_cam` and `make_client` into `cmd/mod.rs`, replacing 8 duplicate implementations across storage, cert, rule, fw, overlay, clip, mqtt, and signedvideo modules (closes #27).
+- **Shared `resolve_targets`**: Extracted duplicated group/camera resolution logic from batch, watch, and health into `cmd/mod.rs` (closes #28).
+- **Discover hints**: All "not available on this camera" error messages now suggest `vapx discover` to check supported APIs (closes #30).
+
 ## v0.17.0
 
 ### Added

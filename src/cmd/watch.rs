@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use clap::Args;
 
-use crate::config::cameras::{self, CamerasConfig};
+use crate::config::cameras;
 use crate::config::credentials::resolve;
 use crate::vapix::client::VapixClient;
 use crate::vapix::events;
@@ -31,7 +31,7 @@ impl WatchCmd {
         let config = cameras::load_cameras()?
             .ok_or_else(|| anyhow::anyhow!("No cameras.yaml found. Run `vapx config init` to create one."))?;
 
-        let targets = resolve_targets(&config, &self.targets)?;
+        let targets = crate::cmd::resolve_targets(&config, &self.targets)?;
         if targets.is_empty() {
             anyhow::bail!("No cameras matched '{}'", self.targets);
         }
@@ -120,15 +120,3 @@ impl WatchCmd {
     }
 }
 
-fn resolve_targets(config: &CamerasConfig, input: &str) -> anyhow::Result<Vec<String>> {
-    if let Some(members) = config.groups.get(input) {
-        return Ok(members.clone());
-    }
-    let names: Vec<String> = input.split(',').map(|s| s.trim().to_string()).collect();
-    for name in &names {
-        if config.find(name).is_none() {
-            anyhow::bail!("Camera '{}' not found in cameras.yaml", name);
-        }
-    }
-    Ok(names)
-}

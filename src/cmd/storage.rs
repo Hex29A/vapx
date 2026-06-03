@@ -1,8 +1,6 @@
 use clap::{Args, Subcommand};
 
-use crate::config::credentials::resolve;
 use crate::output::format;
-use crate::vapix::client::VapixClient;
 use crate::vapix::storage;
 
 #[derive(Args)]
@@ -79,7 +77,7 @@ impl StorageCmd {
         match self.command {
             StorageCommands::List { cam } => {
                 let (creds, host) = resolve_cam(&cam)?;
-                let client = make_client(&host, creds, cam.timeout);
+                let client = crate::cmd::make_client(&host, creds, cam.timeout);
                 let resp = storage::list_disks(&client)?;
                 let data = resp.get("data").unwrap_or(&resp);
                 if cam.plain {
@@ -90,7 +88,7 @@ impl StorageCmd {
             }
             StorageCommands::Info { cam, disk } => {
                 let (creds, host) = resolve_cam(&cam)?;
-                let client = make_client(&host, creds, cam.timeout);
+                let client = crate::cmd::make_client(&host, creds, cam.timeout);
                 let resp = storage::get_disk_properties(&client, &disk)?;
                 let data = resp.get("data").unwrap_or(&resp);
                 if cam.plain {
@@ -101,7 +99,7 @@ impl StorageCmd {
             }
             StorageCommands::Recordings { cam, max } => {
                 let (creds, host) = resolve_cam(&cam)?;
-                let client = make_client(&host, creds, cam.timeout);
+                let client = crate::cmd::make_client(&host, creds, cam.timeout);
                 let data = storage::list_recordings(&client, max)?;
                 if cam.plain {
                     format::plain(&data);
@@ -111,7 +109,7 @@ impl StorageCmd {
             }
             StorageCommands::Health { cam } => {
                 let (creds, host) = resolve_cam(&cam)?;
-                let client = make_client(&host, creds, cam.timeout);
+                let client = crate::cmd::make_client(&host, creds, cam.timeout);
                 let data = storage::get_disk_health(&client)?;
                 if cam.plain {
                     format::plain(&data);
@@ -121,7 +119,7 @@ impl StorageCmd {
             }
             StorageCommands::Params { cam } => {
                 let (creds, host) = resolve_cam(&cam)?;
-                let client = make_client(&host, creds, cam.timeout);
+                let client = crate::cmd::make_client(&host, creds, cam.timeout);
                 let text = storage::get_storage_params(&client)?;
                 if cam.plain {
                     println!("{}", text);
@@ -145,16 +143,11 @@ impl StorageCmd {
 }
 
 fn resolve_cam(cam: &CameraArgs) -> anyhow::Result<(crate::config::credentials::Credentials, String)> {
-    resolve(
+    crate::cmd::resolve_cam(
         &cam.host,
         cam.user.as_deref(),
         cam.pass.as_deref(),
         cam.port,
         cam.insecure,
     )
-}
-
-fn make_client(host: &str, creds: crate::config::credentials::Credentials, timeout: Option<u64>) -> VapixClient {
-    let t = timeout.unwrap_or(creds.timeout);
-    VapixClient::new(host, creds.port, creds, t)
 }

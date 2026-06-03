@@ -31,7 +31,7 @@ pub fn get_ports(client: &VapixClient) -> anyhow::Result<String> {
         Err(e) => {
             let msg = format!("{}", e);
             if msg.contains("404") {
-                bail!("I/O port configuration not available on this camera (neither param.cgi root.IOPort nor portmanagement.cgi)")
+                bail!("I/O port configuration not available on this camera (neither param.cgi root.IOPort nor portmanagement.cgi). Use 'vapx discover' to check supported APIs.")
             } else {
                 Err(e)
             }

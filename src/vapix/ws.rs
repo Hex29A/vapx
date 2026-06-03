@@ -1,5 +1,5 @@
 //! Shared WebSocket helpers for VAPIX data-stream endpoints
-//! (events, streamstatus, nexus, …).
+//! (events, streamstatus, …).
 
 use anyhow::{Context, Result};
 use tracing::debug;
@@ -29,9 +29,4 @@ pub fn build_ws_url(creds: &Credentials, host: &str, token: &str, sources: &str)
         "{}://{}:{}/vapix/ws-data-stream?wssession={}&sources={}",
         scheme, host, creds.port, token, sources
     )
-}
-
-/// Build a Nexus video-stream URL (sources=video).
-pub fn build_nexus_url(creds: &Credentials, host: &str, token: &str) -> String {
-    build_ws_url(creds, host, token, "video")
 }

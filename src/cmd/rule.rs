@@ -1,8 +1,6 @@
 use clap::{Args, Subcommand};
 
-use crate::config::credentials::resolve;
 use crate::output::format;
-use crate::vapix::client::VapixClient;
 use crate::vapix::rules;
 
 #[derive(Args)]
@@ -97,7 +95,7 @@ impl RuleCmd {
         match self.command {
             RuleCommands::List { cam } => {
                 let (creds, host) = resolve_cam(&cam)?;
-                let client = make_client(&host, creds, cam.timeout);
+                let client = crate::cmd::make_client(&host, creds, cam.timeout);
                 let resp = rules::list_rules(&client)?;
                 let data = resp.get("data").unwrap_or(&resp);
                 if cam.plain {
@@ -108,7 +106,7 @@ impl RuleCmd {
             }
             RuleCommands::Info { cam, id } => {
                 let (creds, host) = resolve_cam(&cam)?;
-                let client = make_client(&host, creds, cam.timeout);
+                let client = crate::cmd::make_client(&host, creds, cam.timeout);
                 let resp = rules::get_rule(&client, &id)?;
                 let data = resp.get("data").unwrap_or(&resp);
                 if cam.plain {
@@ -119,25 +117,25 @@ impl RuleCmd {
             }
             RuleCommands::Remove { cam, id } => {
                 let (creds, host) = resolve_cam(&cam)?;
-                let client = make_client(&host, creds, cam.timeout);
+                let client = crate::cmd::make_client(&host, creds, cam.timeout);
                 rules::remove_rule(&client, &id)?;
                 format::ok_msg(&format!("Rule {} removed", id));
             }
             RuleCommands::Enable { cam, id } => {
                 let (creds, host) = resolve_cam(&cam)?;
-                let client = make_client(&host, creds, cam.timeout);
+                let client = crate::cmd::make_client(&host, creds, cam.timeout);
                 rules::set_rule_enabled(&client, &id, true)?;
                 format::ok_msg(&format!("Rule {} enabled", id));
             }
             RuleCommands::Disable { cam, id } => {
                 let (creds, host) = resolve_cam(&cam)?;
-                let client = make_client(&host, creds, cam.timeout);
+                let client = crate::cmd::make_client(&host, creds, cam.timeout);
                 rules::set_rule_enabled(&client, &id, false)?;
                 format::ok_msg(&format!("Rule {} disabled", id));
             }
             RuleCommands::Templates { cam } => {
                 let (creds, host) = resolve_cam(&cam)?;
-                let client = make_client(&host, creds, cam.timeout);
+                let client = crate::cmd::make_client(&host, creds, cam.timeout);
                 let resp = rules::list_templates(&client)?;
                 let data = resp.get("data").unwrap_or(&resp);
                 if cam.plain {
@@ -148,7 +146,7 @@ impl RuleCmd {
             }
             RuleCommands::Recipients { cam } => {
                 let (creds, host) = resolve_cam(&cam)?;
-                let client = make_client(&host, creds, cam.timeout);
+                let client = crate::cmd::make_client(&host, creds, cam.timeout);
                 let resp = rules::list_recipients(&client)?;
                 let data = resp.get("data").unwrap_or(&resp);
                 if cam.plain {
@@ -163,16 +161,11 @@ impl RuleCmd {
 }
 
 fn resolve_cam(cam: &CameraArgs) -> anyhow::Result<(crate::config::credentials::Credentials, String)> {
-    resolve(
+    crate::cmd::resolve_cam(
         &cam.host,
         cam.user.as_deref(),
         cam.pass.as_deref(),
         cam.port,
         cam.insecure,
     )
-}
-
-fn make_client(host: &str, creds: crate::config::credentials::Credentials, timeout: Option<u64>) -> VapixClient {
-    let t = timeout.unwrap_or(creds.timeout);
-    VapixClient::new(host, creds.port, creds, t)
 }

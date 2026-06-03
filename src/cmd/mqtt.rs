@@ -148,13 +148,12 @@ impl MqttConfigureCmd {
 }
 
 fn make_client(args: &MqttCameraArgs) -> anyhow::Result<VapixClient> {
-    let (creds, resolved_host) = resolve(
+    let (creds, resolved_host) = crate::cmd::resolve_cam(
         &args.host,
         args.user.as_deref(),
         args.pass.as_deref(),
         args.port,
         args.insecure,
     )?;
-    let timeout = args.timeout.unwrap_or(creds.timeout);
-    Ok(VapixClient::new(&resolved_host, creds.port, creds, timeout))
+    Ok(crate::cmd::make_client(&resolved_host, creds, args.timeout))
 }

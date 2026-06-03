@@ -129,7 +129,7 @@ impl FwCmd {
         match self.command {
             FwCommands::Status { cam } => {
                 let (creds, resolved_host) = resolve_cam(&cam)?;
-                let client = make_client(&resolved_host, creds, cam.timeout);
+                let client = crate::cmd::make_client(&resolved_host, creds, cam.timeout);
                 let resp = firmware::status(&client)?;
                 let output = resp.get("data").unwrap_or(&resp);
                 if cam.plain {
@@ -144,7 +144,7 @@ impl FwCmd {
                 }
 
                 let (creds, resolved_host) = resolve_cam(&cam)?;
-                let client = make_client(&resolved_host, creds.clone(), cam.timeout);
+                let client = crate::cmd::make_client(&resolved_host, creds.clone(), cam.timeout);
 
                 let file_size = std::fs::metadata(&file)?.len();
                 eprintln!("Reading firmware: {} ({:.1} MB)", file.display(), file_size as f64 / 1_048_576.0);
@@ -200,7 +200,7 @@ impl FwCmd {
             }
             FwCommands::Commit { cam } => {
                 let (creds, resolved_host) = resolve_cam(&cam)?;
-                let client = make_client(&resolved_host, creds, cam.timeout);
+                let client = crate::cmd::make_client(&resolved_host, creds, cam.timeout);
                 let resp = firmware::commit(&client)?;
                 let version = resp
                     .pointer("/data/firmwareVersion")
@@ -210,14 +210,14 @@ impl FwCmd {
             }
             FwCommands::Rollback { cam } => {
                 let (creds, resolved_host) = resolve_cam(&cam)?;
-                let client = make_client(&resolved_host, creds, cam.timeout);
+                let client = crate::cmd::make_client(&resolved_host, creds, cam.timeout);
                 eprintln!("Rolling back firmware...");
                 firmware::rollback(&client)?;
                 format::ok_msg("Rollback initiated — camera is rebooting");
             }
             FwCommands::Reboot { cam, wait, wait_timeout } => {
                 let (creds, resolved_host) = resolve_cam(&cam)?;
-                let client = make_client(&resolved_host, creds.clone(), cam.timeout);
+                let client = crate::cmd::make_client(&resolved_host, creds.clone(), cam.timeout);
                 eprintln!("Rebooting camera...");
                 firmware::reboot(&client)?;
 
@@ -230,14 +230,14 @@ impl FwCmd {
             }
             FwCommands::FactoryDefault { cam, mode } => {
                 let (creds, resolved_host) = resolve_cam(&cam)?;
-                let client = make_client(&resolved_host, creds, cam.timeout);
+                let client = crate::cmd::make_client(&resolved_host, creds, cam.timeout);
                 eprintln!("Factory defaulting camera (mode: {})...", mode);
                 firmware::factory_default(&client, &mode)?;
                 format::ok_msg(&format!("Factory default ({}) initiated", mode));
             }
             FwCommands::Check { cam, expected, compare, other } => {
                 let (creds, resolved_host) = resolve_cam(&cam)?;
-                let client = make_client(&resolved_host, creds, cam.timeout);
+                let client = crate::cmd::make_client(&resolved_host, creds, cam.timeout);
                 let resp = firmware::status(&client)?;
                 let current = resp
                     .pointer("/data/activeFirmwareVersion")
@@ -273,7 +273,7 @@ impl FwCmd {
                         cam.port,
                         cam.insecure,
                     )?;
-                    let client_b = make_client(&host_b, creds_b, cam.timeout);
+                    let client_b = crate::cmd::make_client(&host_b, creds_b, cam.timeout);
                     let resp_b = firmware::status(&client_b)?;
                     let other_ver = resp_b
                         .pointer("/data/activeFirmwareVersion")
@@ -313,18 +313,13 @@ impl FwCmd {
 }
 
 fn resolve_cam(cam: &CameraArgs) -> anyhow::Result<(credentials::Credentials, String)> {
-    resolve(
+    crate::cmd::resolve_cam(
         &cam.host,
         cam.user.as_deref(),
         cam.pass.as_deref(),
         cam.port,
         cam.insecure,
     )
-}
-
-fn make_client(host: &str, creds: credentials::Credentials, timeout: Option<u64>) -> VapixClient {
-    let t = timeout.unwrap_or(120);
-    VapixClient::new(host, creds.port, creds, t)
 }
 
 /// Wait for camera to come back online after reboot.
