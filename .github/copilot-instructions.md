@@ -22,7 +22,7 @@
 | Serialization | `serde` + `serde_json` + `serde_yaml` |
 | Config | `cameras.yaml` with env var substitution, XDG paths |
 | Auth | Digest (HTTP) / Basic (HTTPS) auto-negotiation via `digest_auth` crate |
-| Error handling | `thiserror` in lib, `anyhow` in cmd/ |
+| Error handling | `anyhow` throughout (lib + cmd/) |
 | Logging | `tracing` + `tracing-subscriber` with `-v`/`-vv`/`-vvv` |
 | XML parsing | `roxmltree` for ACAP responses |
 

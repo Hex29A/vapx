@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.20.0
+
+### Changed
+- **Centralized `CameraArgs`**: All camera-connection flags (`host`, `-u`, `-p`, `-k`, `--port`, `--plain`, `--timeout`) now come from one shared `clap::Args` struct in `cmd/mod.rs`. As a side effect, `clip`, `viewarea`, `signedvideo`, and `mqtt` now support `--plain` output.
+- **Output consolidation**: Introduced `format::output(data, plain)` to replace repeated plain/JSON branches across `storage`, `rule`, `cert`, `overlay`, `fw`, `info`, and `streamstatus`.
+- **Parameter parsing reuse**: `storage` and `param list` now share the `param_to_json()` parser.
+- **Internal cleanup**: Extracted multipart-body helpers in `client.rs` (deduplicating three upload methods); decomposed the large `fw` and `audit` command handlers into focused functions.
+- **Removed unused `thiserror` dependency** (the codebase uses `anyhow` throughout).
+
+### Added
+- Offline unit-test coverage for error sanitization, value encoding, parameter parsing, and TLS-default behavior.
+
 ## v0.19.0
 
 ### Security
