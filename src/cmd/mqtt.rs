@@ -1,5 +1,6 @@
 use clap::{Args, Subcommand};
 
+use crate::cmd::CameraArgs as MqttCameraArgs;
 use crate::config::credentials::resolve;
 use crate::output::format;
 use crate::vapix::client::VapixClient;
@@ -23,23 +24,6 @@ pub enum MqttCommands {
     Enable(MqttCameraArgs),
     /// Disable (deactivate) MQTT client
     Disable(MqttCameraArgs),
-}
-
-#[derive(Args)]
-pub struct MqttCameraArgs {
-    /// Camera IP, hostname, or name from cameras.yaml
-    pub host: String,
-    #[arg(short, long, env = "VAPX_USER")]
-    pub user: Option<String>,
-    #[arg(short, long, env = "VAPX_PASS")]
-    pub pass: Option<String>,
-    #[arg(short = 'k', long)]
-    pub insecure: bool,
-    #[arg(long)]
-    pub port: Option<u16>,
-    /// Request timeout in seconds
-    #[arg(long)]
-    pub timeout: Option<u64>,
 }
 
 #[derive(Args)]

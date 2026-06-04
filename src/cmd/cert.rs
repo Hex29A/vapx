@@ -1,5 +1,6 @@
 use clap::{Args, Subcommand};
 
+use crate::cmd::CameraArgs;
 use crate::output::format;
 use crate::vapix::certs;
 
@@ -7,32 +8,6 @@ use crate::vapix::certs;
 pub struct CertCmd {
     #[command(subcommand)]
     pub command: CertCommands,
-}
-
-#[derive(Args, Clone)]
-pub struct CameraArgs {
-    /// Camera IP, hostname, or name from cameras.yaml
-    pub host: String,
-
-    #[arg(short, long, env = "VAPX_USER")]
-    pub user: Option<String>,
-
-    #[arg(short, long, env = "VAPX_PASS")]
-    pub pass: Option<String>,
-
-    #[arg(short = 'k', long)]
-    pub insecure: bool,
-
-    #[arg(long)]
-    pub port: Option<u16>,
-
-    /// Output as plain text instead of JSON
-    #[arg(long)]
-    pub plain: bool,
-
-    /// Request timeout in seconds
-    #[arg(long)]
-    pub timeout: Option<u64>,
 }
 
 #[derive(Subcommand)]

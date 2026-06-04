@@ -1,5 +1,6 @@
 use clap::{Args, Subcommand};
 
+use crate::cmd::CameraArgs as ZipstreamCameraArgs;
 use crate::config::credentials::resolve;
 use crate::output::format;
 use crate::vapix::client::VapixClient;
@@ -17,26 +18,6 @@ pub enum ZipstreamCommands {
     Status(ZipstreamCameraArgs),
     /// Set ZipStream profile level
     Set(ZipstreamSetCmd),
-}
-
-#[derive(Args)]
-pub struct ZipstreamCameraArgs {
-    /// Camera IP, hostname, or name from cameras.yaml
-    pub host: String,
-    #[arg(short, long, env = "VAPX_USER")]
-    pub user: Option<String>,
-    #[arg(short, long, env = "VAPX_PASS")]
-    pub pass: Option<String>,
-    #[arg(short = 'k', long)]
-    pub insecure: bool,
-    #[arg(long)]
-    pub port: Option<u16>,
-    /// Output as plain text instead of JSON
-    #[arg(long)]
-    pub plain: bool,
-    /// Request timeout in seconds
-    #[arg(long)]
-    pub timeout: Option<u64>,
 }
 
 #[derive(Args)]

@@ -42,6 +42,53 @@ pub mod zipstream;
 use crate::config::credentials::{self, Credentials};
 use crate::vapix::client::VapixClient;
 
+/// Shared camera connection arguments, flattened into subcommands via
+/// `#[command(flatten)] cam: CameraArgs`.
+#[derive(clap::Args, Clone)]
+pub struct CameraArgs {
+    /// Camera IP, hostname, or name from cameras.yaml
+    pub host: String,
+
+    #[arg(short, long, env = "VAPX_USER")]
+    pub user: Option<String>,
+
+    #[arg(short, long, env = "VAPX_PASS")]
+    pub pass: Option<String>,
+
+    #[arg(short = 'k', long)]
+    pub insecure: bool,
+
+    #[arg(long)]
+    pub port: Option<u16>,
+
+    /// Output as plain text instead of JSON
+    #[arg(long)]
+    pub plain: bool,
+
+    /// Request timeout in seconds
+    #[arg(long)]
+    pub timeout: Option<u64>,
+}
+
+impl CameraArgs {
+    /// Resolve credentials and the effective host for this camera.
+    pub fn resolve(&self) -> anyhow::Result<(Credentials, String)> {
+        resolve_cam(
+            &self.host,
+            self.user.as_deref(),
+            self.pass.as_deref(),
+            self.port,
+            self.insecure,
+        )
+    }
+
+    /// Resolve credentials and build a ready-to-use client.
+    pub fn client(&self) -> anyhow::Result<VapixClient> {
+        let (creds, host) = self.resolve()?;
+        Ok(make_client(&host, creds, self.timeout))
+    }
+}
+
 /// Resolve camera credentials and host from CLI args or cameras.yaml.
 pub(crate) fn resolve_cam(
     host: &str,

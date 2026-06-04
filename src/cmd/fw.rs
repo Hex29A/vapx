@@ -9,40 +9,12 @@ use crate::output::format;
 use crate::vapix::client::VapixClient;
 use crate::vapix::firmware;
 
+use crate::cmd::CameraArgs;
+
 #[derive(Args)]
 pub struct FwCmd {
     #[command(subcommand)]
     pub command: FwCommands,
-}
-
-#[derive(Args, Clone)]
-pub struct CameraArgs {
-    /// Camera IP, hostname, or name from cameras.yaml
-    pub host: String,
-
-    /// Username
-    #[arg(short, long, env = "VAPX_USER")]
-    pub user: Option<String>,
-
-    /// Password
-    #[arg(short, long, env = "VAPX_PASS")]
-    pub pass: Option<String>,
-
-    /// Skip TLS certificate verification
-    #[arg(short = 'k', long)]
-    pub insecure: bool,
-
-    /// Port number
-    #[arg(long)]
-    pub port: Option<u16>,
-
-    /// Output as plain text instead of JSON
-    #[arg(long)]
-    pub plain: bool,
-
-    /// Request timeout in seconds (default: 120 for firmware operations)
-    #[arg(long)]
-    pub timeout: Option<u64>,
 }
 
 #[derive(Subcommand)]
