@@ -75,22 +75,14 @@ impl CertCmd {
                 let client = crate::cmd::make_client(&host, creds, cam.timeout);
                 let resp = certs::list(&client)?;
                 let data = resp.get("data").unwrap_or(&resp);
-                if cam.plain {
-                    format::plain(data);
-                } else {
-                    format::ok(data);
-                }
+                format::output(data, cam.plain);
             }
             CertCommands::Info { cam, id } => {
                 let (creds, host) = resolve_cam(&cam)?;
                 let client = crate::cmd::make_client(&host, creds, cam.timeout);
                 let resp = certs::info(&client, &id)?;
                 let data = resp.get("data").unwrap_or(&resp);
-                if cam.plain {
-                    format::plain(data);
-                } else {
-                    format::ok(data);
-                }
+                format::output(data, cam.plain);
             }
             CertCommands::SelfSign { cam, cn, days } => {
                 let (creds, host) = resolve_cam(&cam)?;

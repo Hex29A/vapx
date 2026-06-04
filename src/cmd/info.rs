@@ -80,11 +80,7 @@ impl InfoCmd {
             obj.insert("DeviceURL".to_string(), serde_json::json!(device_url));
         }
 
-        if self.plain {
-            format::plain(&output);
-        } else {
-            format::ok(&output);
-        }
+        format::output(&output, self.plain);
 
         Ok(())
     }

@@ -99,11 +99,7 @@ impl OverlayCmd {
                 let client = make_client(&cam)?;
                 let resp = overlay::list(&client)?;
                 let data = resp.get("data").unwrap_or(&resp);
-                if cam.plain {
-                    format::plain(data);
-                } else {
-                    format::ok(data);
-                }
+                format::output(data, cam.plain);
             }
             OverlayCommands::Add { cam, text, position, camera, font_size, color, bg_color } => {
                 let client = make_client(&cam)?;
@@ -141,11 +137,7 @@ impl OverlayCmd {
                 let client = make_client(&cam)?;
                 let resp = overlay::get_capabilities(&client)?;
                 let data = resp.get("data").unwrap_or(&resp);
-                if cam.plain {
-                    format::plain(data);
-                } else {
-                    format::ok(data);
-                }
+                format::output(data, cam.plain);
             }
         }
 

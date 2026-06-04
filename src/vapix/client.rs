@@ -65,6 +65,37 @@ fn encode_value(v: &str) -> String {
         .collect()
 }
 
+/// Generate a unique multipart boundary string.
+fn gen_boundary() -> String {
+    format!(
+        "vapx-{:016x}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    )
+}
+
+/// Build a firmware multipart body: a JSON metadata part followed by an
+/// octet-stream file part.
+fn build_firmware_multipart(boundary: &str, json_str: &str, firmware_data: &[u8]) -> Vec<u8> {
+    let mut body = Vec::new();
+    body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+    body.extend_from_slice(b"Content-Disposition: form-data; name=\"json\"\r\n");
+    body.extend_from_slice(b"Content-Type: application/json\r\n\r\n");
+    body.extend_from_slice(json_str.as_bytes());
+    body.extend_from_slice(b"\r\n");
+    body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+    body.extend_from_slice(
+        b"Content-Disposition: form-data; name=\"file\"; filename=\"firmware.bin\"\r\n",
+    );
+    body.extend_from_slice(b"Content-Type: application/octet-stream\r\n\r\n");
+    body.extend_from_slice(firmware_data);
+    body.extend_from_slice(b"\r\n");
+    body.extend_from_slice(format!("--{}--\r\n", boundary).as_bytes());
+    body
+}
+
 impl VapixClient {
     pub fn new(host: &str, port: u16, creds: Credentials, timeout_secs: u64) -> Self {
         let scheme = if creds.https { "https" } else { "http" };
@@ -226,25 +257,11 @@ impl VapixClient {
         firmware_data: &[u8],
     ) -> anyhow::Result<Value> {
         let url = format!("{}{}", self.base_url, path);
-        let boundary = format!("vapx-{:016x}", std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos());
+        let boundary = gen_boundary();
 
         let json_str = serde_json::to_string(json_body)?;
 
-        let mut body = Vec::new();
-        body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
-        body.extend_from_slice(b"Content-Disposition: form-data; name=\"json\"\r\n");
-        body.extend_from_slice(b"Content-Type: application/json\r\n\r\n");
-        body.extend_from_slice(json_str.as_bytes());
-        body.extend_from_slice(b"\r\n");
-        body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
-        body.extend_from_slice(b"Content-Disposition: form-data; name=\"file\"; filename=\"firmware.bin\"\r\n");
-        body.extend_from_slice(b"Content-Type: application/octet-stream\r\n\r\n");
-        body.extend_from_slice(firmware_data);
-        body.extend_from_slice(b"\r\n");
-        body.extend_from_slice(format!("--{}--\r\n", boundary).as_bytes());
+        let body = build_firmware_multipart(&boundary, &json_str, firmware_data);
 
         let content_type = format!("multipart/form-data; boundary={}", boundary);
 
@@ -292,25 +309,11 @@ impl VapixClient {
         progress: &indicatif::ProgressBar,
     ) -> anyhow::Result<Value> {
         let url = format!("{}{}", self.base_url, path);
-        let boundary = format!("vapx-{:016x}", std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos());
+        let boundary = gen_boundary();
 
         let json_str = serde_json::to_string(json_body)?;
 
-        let mut body = Vec::new();
-        body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
-        body.extend_from_slice(b"Content-Disposition: form-data; name=\"json\"\r\n");
-        body.extend_from_slice(b"Content-Type: application/json\r\n\r\n");
-        body.extend_from_slice(json_str.as_bytes());
-        body.extend_from_slice(b"\r\n");
-        body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
-        body.extend_from_slice(b"Content-Disposition: form-data; name=\"file\"; filename=\"firmware.bin\"\r\n");
-        body.extend_from_slice(b"Content-Type: application/octet-stream\r\n\r\n");
-        body.extend_from_slice(firmware_data);
-        body.extend_from_slice(b"\r\n");
-        body.extend_from_slice(format!("--{}--\r\n", boundary).as_bytes());
+        let body = build_firmware_multipart(&boundary, &json_str, firmware_data);
 
         let content_type = format!("multipart/form-data; boundary={}", boundary);
         let body_len = body.len() as u64;
@@ -391,13 +394,7 @@ impl VapixClient {
             url = format!("{}?{}", url, query.join("&"));
         }
 
-        let boundary = format!(
-            "vapx-{:016x}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos()
-        );
+        let boundary = gen_boundary();
 
         let mut body = Vec::new();
         body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());

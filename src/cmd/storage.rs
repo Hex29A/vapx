@@ -54,39 +54,23 @@ impl StorageCmd {
                 let client = cam.client()?;
                 let resp = storage::list_disks(&client)?;
                 let data = resp.get("data").unwrap_or(&resp);
-                if cam.plain {
-                    format::plain(data);
-                } else {
-                    format::ok(data);
-                }
+                format::output(data, cam.plain);
             }
             StorageCommands::Info { cam, disk } => {
                 let client = cam.client()?;
                 let resp = storage::get_disk_properties(&client, &disk)?;
                 let data = resp.get("data").unwrap_or(&resp);
-                if cam.plain {
-                    format::plain(data);
-                } else {
-                    format::ok(data);
-                }
+                format::output(data, cam.plain);
             }
             StorageCommands::Recordings { cam, max } => {
                 let client = cam.client()?;
                 let data = storage::list_recordings(&client, max)?;
-                if cam.plain {
-                    format::plain(&data);
-                } else {
-                    format::ok(&data);
-                }
+                format::output(&data, cam.plain);
             }
             StorageCommands::Health { cam } => {
                 let client = cam.client()?;
                 let data = storage::get_disk_health(&client)?;
-                if cam.plain {
-                    format::plain(&data);
-                } else {
-                    format::ok(&data);
-                }
+                format::output(&data, cam.plain);
             }
             StorageCommands::Params { cam } => {
                 let client = cam.client()?;
@@ -94,16 +78,7 @@ impl StorageCmd {
                 if cam.plain {
                     println!("{}", text);
                 } else {
-                    let mut params = serde_json::Map::new();
-                    for line in text.lines() {
-                        let line = line.trim();
-                        if line.is_empty() || line.starts_with('#') {
-                            continue;
-                        }
-                        if let Some((k, v)) = line.split_once('=') {
-                            params.insert(k.to_string(), serde_json::json!(v));
-                        }
-                    }
+                    let params = crate::cmd::param_to_json(&text);
                     format::ok(&serde_json::Value::Object(params));
                 }
             }

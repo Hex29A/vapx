@@ -103,6 +103,18 @@ pub fn err_json(code: &str, message: &str) -> ! {
     std::process::exit(1);
 }
 
+/// Output `data` as plain text when `plain` is set, otherwise as a JSON
+/// status envelope. Consolidates the `if cam.plain { plain } else { ok }`
+/// pattern used across subcommands.
+pub fn output(data: &impl Serialize, plain_flag: bool) {
+    if plain_flag {
+        let v = serde_json::to_value(data).unwrap_or(Value::Null);
+        plain(&v);
+    } else {
+        ok(data);
+    }
+}
+
 pub fn plain(value: &Value) {
     match value {
         Value::Object(map) => {

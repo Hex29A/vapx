@@ -73,22 +73,14 @@ impl RuleCmd {
                 let client = crate::cmd::make_client(&host, creds, cam.timeout);
                 let resp = rules::list_rules(&client)?;
                 let data = resp.get("data").unwrap_or(&resp);
-                if cam.plain {
-                    format::plain(data);
-                } else {
-                    format::ok(data);
-                }
+                format::output(data, cam.plain);
             }
             RuleCommands::Info { cam, id } => {
                 let (creds, host) = resolve_cam(&cam)?;
                 let client = crate::cmd::make_client(&host, creds, cam.timeout);
                 let resp = rules::get_rule(&client, &id)?;
                 let data = resp.get("data").unwrap_or(&resp);
-                if cam.plain {
-                    format::plain(data);
-                } else {
-                    format::ok(data);
-                }
+                format::output(data, cam.plain);
             }
             RuleCommands::Remove { cam, id } => {
                 let (creds, host) = resolve_cam(&cam)?;
@@ -113,22 +105,14 @@ impl RuleCmd {
                 let client = crate::cmd::make_client(&host, creds, cam.timeout);
                 let resp = rules::list_templates(&client)?;
                 let data = resp.get("data").unwrap_or(&resp);
-                if cam.plain {
-                    format::plain(data);
-                } else {
-                    format::ok(data);
-                }
+                format::output(data, cam.plain);
             }
             RuleCommands::Recipients { cam } => {
                 let (creds, host) = resolve_cam(&cam)?;
                 let client = crate::cmd::make_client(&host, creds, cam.timeout);
                 let resp = rules::list_recipients(&client)?;
                 let data = resp.get("data").unwrap_or(&resp);
-                if cam.plain {
-                    format::plain(data);
-                } else {
-                    format::ok(data);
-                }
+                format::output(data, cam.plain);
             }
         }
         Ok(())

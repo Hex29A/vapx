@@ -107,16 +107,7 @@ impl ParamListCmd {
         if self.plain {
             print!("{}", text);
         } else {
-            let mut map = serde_json::Map::new();
-            for line in text.lines() {
-                let line = line.trim();
-                if line.is_empty() || line.starts_with('#') {
-                    continue;
-                }
-                if let Some((k, v)) = line.split_once('=') {
-                    map.insert(k.to_string(), serde_json::Value::String(v.to_string()));
-                }
-            }
+            let map = crate::cmd::param_to_json(&text);
             crate::output::format::ok(&map);
         }
 

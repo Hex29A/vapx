@@ -108,11 +108,7 @@ impl FwCmd {
                 let client = crate::cmd::make_client(&resolved_host, creds, cam.timeout);
                 let resp = firmware::status(&client)?;
                 let output = resp.get("data").unwrap_or(&resp);
-                if cam.plain {
-                    format::plain(output);
-                } else {
-                    format::ok(output);
-                }
+                format::output(output, cam.plain);
             }
             FwCommands::Upgrade { cam, file, factory_default, wait, wait_timeout, auto_commit } => {
                 if auto_commit && !wait {

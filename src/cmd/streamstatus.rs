@@ -39,11 +39,7 @@ impl StreamstatusCmd {
         let resp = streamstatus::get_stream_status(&client, &creds, &resolved_host)?;
         let data = resp.get("data").unwrap_or(&resp);
 
-        if self.plain {
-            format::plain(data);
-        } else {
-            format::ok(data);
-        }
+        format::output(data, self.plain);
 
         Ok(())
     }
