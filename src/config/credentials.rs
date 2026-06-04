@@ -1,4 +1,5 @@
 use anyhow::Context;
+use std::io::IsTerminal;
 use tracing::debug;
 
 use crate::config::cameras::load_cameras;
@@ -70,7 +71,7 @@ pub fn resolve(
     }
 
     // Interactive prompt as fallback (only if TTY)
-    if !atty::is(atty::Stream::Stdin) {
+    if !std::io::stdin().is_terminal() {
         anyhow::bail!("No credentials provided and stdin is not a terminal. Use -u/-p flags or cameras.yaml.");
     }
 

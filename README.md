@@ -310,7 +310,7 @@ Config file search order:
 defaults:
   user: root
   https: false
-  verify_ssl: false
+  verify_ssl: true
   timeout: 10
 
 cameras:
@@ -339,7 +339,7 @@ groups:
 | `user` | string | `root` | VAPIX username |
 | `pass` | string | — | Password. Supports `${ENV_VAR}` substitution |
 | `https` | bool | `false` | Use HTTPS instead of HTTP |
-| `verify_ssl` | bool | `false` | Verify TLS certificate (set `true` for production) |
+| `verify_ssl` | bool | `true` | Verify TLS certificate (only applies when `https: true`; use `-k`/`--insecure` to disable per-command) |
 | `port` | int | 80 / 443 | Override port (useful for non-standard setups) |
 | `timeout` | int (s) | `10` | Request timeout in seconds |
 | `fw_timeout` | int (s) | `300` | Firmware upload timeout in seconds (overrides `timeout` for `fw upgrade`) |

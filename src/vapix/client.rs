@@ -68,6 +68,12 @@ fn encode_value(v: &str) -> String {
 impl VapixClient {
     pub fn new(host: &str, port: u16, creds: Credentials, timeout_secs: u64) -> Self {
         let scheme = if creds.https { "https" } else { "http" };
+        if creds.https && !creds.verify_ssl {
+            warn!(
+                "TLS certificate verification is DISABLED for {} \u{2014} connection is vulnerable to man-in-the-middle attacks",
+                host
+            );
+        }
         let inner = reqwest::blocking::ClientBuilder::new()
             .danger_accept_invalid_certs(!creds.verify_ssl)
             .timeout(Duration::from_secs(timeout_secs))
@@ -258,7 +264,7 @@ impl VapixClient {
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().unwrap_or_default();
-            bail!("HTTP {}: {}", status.as_u16(), text);
+            bail!("HTTP {}: {}", status.as_u16(), sanitize_error_body(&text));
         }
 
         let json: Value = resp.json().context("Failed to parse JSON response")?;
@@ -347,7 +353,7 @@ impl VapixClient {
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().unwrap_or_default();
-            bail!("HTTP {}: {}", status.as_u16(), text);
+            bail!("HTTP {}: {}", status.as_u16(), sanitize_error_body(&text));
         }
 
         let json: Value = resp.json().context("Failed to parse JSON response")?;

@@ -108,13 +108,13 @@ impl CamerasConfig {
             .unwrap_or(false)
     }
 
-    /// Get the effective verify_ssl setting
+    /// Get the effective verify_ssl setting (secure by default).
     pub fn effective_verify_ssl(&self, entry: &CameraEntry) -> bool {
         entry
             .verify_ssl
             .or_else(|| self.profile_defaults().and_then(|p| p.verify_ssl))
             .or_else(|| self.defaults.as_ref().and_then(|d| d.verify_ssl))
-            .unwrap_or(false)
+            .unwrap_or(true)
     }
 
     /// Get the effective timeout
@@ -199,7 +199,13 @@ fn substitute_env_vars(input: &str) -> String {
         let after_start = start + 2;
         if let Some(end) = result[after_start..].find('}') {
             let var_name = &result[after_start..after_start + end];
-            let replacement = std::env::var(var_name).unwrap_or_default();
+            let replacement = std::env::var(var_name).unwrap_or_else(|_| {
+                tracing::warn!(
+                    "Environment variable '{}' referenced in config is not set; substituting empty string",
+                    var_name
+                );
+                String::new()
+            });
             result = format!(
                 "{}{}{}",
                 &result[..start],

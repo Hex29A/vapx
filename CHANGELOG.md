@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.19.0
+
+### Security
+- **TLS verification secure by default**: `verify_ssl` now defaults to `true` for HTTPS connections (previously `false`). A warning is printed when certificate verification is disabled. Use `-k`/`--insecure` per command, or `verify_ssl: false` in `cameras.yaml`, to opt out. **Behavior change**: HTTPS cameras with self-signed certificates now require `-k`/`--insecure` or `verify_ssl: false`.
+- **Sanitized firmware/clip error responses**: Error bodies from multipart upload endpoints (`fw upgrade`, `clip upload`) are now passed through `sanitize_error_body()` like all other endpoints, stripping raw HTML/server internals from error output.
+- **Missing env-var warning**: Unset `${VAR}` references in `cameras.yaml` now log a warning instead of silently substituting an empty string (which could create empty passwords).
+
+### Changed
+- **Replaced unmaintained `atty` dependency** with `std::io::IsTerminal` (Rust standard library), resolving RUSTSEC-2021-0145.
+
 ## v0.18.0
 
 ### Fixed

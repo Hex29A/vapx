@@ -1,6 +1,6 @@
 [package]
 name = "vapx"
-version = "0.18.0"
+version = "0.19.0"
 edition = "2021"
 description = "Axis camera management CLI via VAPIX"
 license = "MIT"
@@ -26,7 +26,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 indicatif = "0.17"
 rayon = "1"
 dirs = "6"
-atty = "0.2"
 clap_complete = "4"
 clap_mangen = "0.2"
 tungstenite = "0.26"

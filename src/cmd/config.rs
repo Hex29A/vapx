@@ -238,7 +238,7 @@ const TEMPLATE_CONFIG: &str = r#"# vapx camera configuration
 defaults:
   user: root
   https: false
-  verify_ssl: false
+  verify_ssl: true     # TLS cert verification (only applies when https: true)
   timeout: 10          # seconds; increase for WAN cameras (e.g. 30)
 
 cameras:
@@ -247,7 +247,7 @@ cameras:
   #   pass: "${MY_CAMERA_PASS}"   # or plain text (not recommended)
   #   user: root                  # overrides defaults.user
   #   https: false
-  #   verify_ssl: false
+  #   verify_ssl: true
   #   port: 80
   #   timeout: 30                 # override for slow links
   #   fw_timeout: 600              # firmware upload timeout (default: 300s)
