@@ -116,3 +116,44 @@ pub fn param_to_json(text: &str) -> serde_json::Map<String, serde_json::Value> {
     }
     map
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_param_to_json_basic() {
+        let text = "root.Brand.Brand=AXIS\nroot.Brand.ProdNbr=Q1615";
+        let map = param_to_json(text);
+        assert_eq!(map["root.Brand.Brand"], serde_json::Value::String("AXIS".into()));
+        assert_eq!(map["root.Brand.ProdNbr"], serde_json::Value::String("Q1615".into()));
+        assert_eq!(map.len(), 2);
+    }
+
+    #[test]
+    fn test_param_to_json_skips_comments_and_blanks() {
+        let text = "# a comment\n\nroot.Foo=bar\n  \n# another";
+        let map = param_to_json(text);
+        assert_eq!(map.len(), 1);
+        assert_eq!(map["root.Foo"], serde_json::Value::String("bar".into()));
+    }
+
+    #[test]
+    fn test_param_to_json_value_with_equals() {
+        // Only the first '=' splits; remainder is the value.
+        let text = "root.Url=http://x/?a=1&b=2";
+        let map = param_to_json(text);
+        assert_eq!(
+            map["root.Url"],
+            serde_json::Value::String("http://x/?a=1&b=2".into())
+        );
+    }
+
+    #[test]
+    fn test_param_to_json_ignores_lines_without_equals() {
+        let text = "not a param line\nroot.Ok=yes";
+        let map = param_to_json(text);
+        assert_eq!(map.len(), 1);
+        assert!(map.contains_key("root.Ok"));
+    }
+}

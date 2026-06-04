@@ -458,3 +458,45 @@ impl std::io::Read for ProgressReader {
         Ok(n)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sanitize_html_extracts_title() {
+        let body = "<!DOCTYPE html><html><head><title>401 Unauthorized</title></head><body>x</body></html>";
+        assert_eq!(sanitize_error_body(body), "401 Unauthorized");
+    }
+
+    #[test]
+    fn test_sanitize_html_without_title() {
+        let body = "<html><body>no title here</body></html>";
+        assert_eq!(sanitize_error_body(body), "HTML error page (no details)");
+    }
+
+    #[test]
+    fn test_sanitize_plain_passthrough() {
+        let body = "  Bad Request: invalid parameter  ";
+        assert_eq!(sanitize_error_body(body), "Bad Request: invalid parameter");
+    }
+
+    #[test]
+    fn test_sanitize_truncates_long_body() {
+        let body = "x".repeat(300);
+        let result = sanitize_error_body(&body);
+        assert!(result.ends_with("..."));
+        assert_eq!(result.len(), 203); // 200 chars + "..."
+    }
+
+    #[test]
+    fn test_encode_value_passes_unreserved() {
+        assert_eq!(encode_value("abcXYZ-._~09"), "abcXYZ-._~09");
+    }
+
+    #[test]
+    fn test_encode_value_escapes_reserved() {
+        assert_eq!(encode_value("a b&c=d"), "a%20b%26c%3Dd");
+    }
+}
+

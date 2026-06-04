@@ -286,4 +286,36 @@ cameras:
         assert!(config.find("10.0.0.5").is_some());
         assert!(config.find("unknown").is_none());
     }
+
+    #[test]
+    fn test_verify_ssl_defaults_to_true() {
+        let yaml = r#"
+cameras:
+  mycam:
+    host: 10.0.0.5
+    pass: "pw"
+"#;
+        let config: CamerasConfig = serde_yaml::from_str(yaml).unwrap();
+        // No verify_ssl set anywhere -> secure by default.
+        assert!(config.effective_verify_ssl(&config.cameras["mycam"]));
+    }
+
+    #[test]
+    fn test_verify_ssl_explicit_false_respected() {
+        let yaml = r#"
+defaults:
+  verify_ssl: false
+cameras:
+  mycam:
+    host: 10.0.0.5
+    pass: "pw"
+  override:
+    host: 10.0.0.6
+    pass: "pw"
+    verify_ssl: true
+"#;
+        let config: CamerasConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(!config.effective_verify_ssl(&config.cameras["mycam"]));
+        assert!(config.effective_verify_ssl(&config.cameras["override"]));
+    }
 }
