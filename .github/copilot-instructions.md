@@ -215,10 +215,8 @@ The `host` argument resolves through config: if it matches a camera name, use th
 | Linux x86_64 | `x86_64-unknown-linux-musl` | `cargo build` with musl-tools |
 | Linux ARM64 (RPi 4/5) | `aarch64-unknown-linux-musl` | `cross build` |
 | Linux ARMv7 (RPi 3/Zero2) | `armv7-unknown-linux-musleabihf` | `cross build` |
-| macOS Intel | `x86_64-apple-darwin` | native `cargo build` |
-| macOS Apple Silicon | `aarch64-apple-darwin` | native `cargo build` |
 
-CI builds all targets on push to main via GitHub Actions.
+CI builds the three Linux targets above on `ubuntu-latest` runners. The `build-matrix` and `tagged-release` jobs run only on `v*` tags; pushes to `main` run the `test` job (unit tests, build, clippy) only. No macOS targets are built (avoids the cost of macOS runners) — to build for macOS, compile natively with `cargo build --release` on a Mac.
 
 ---
 
