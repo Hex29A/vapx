@@ -65,7 +65,7 @@ The `host` argument can be an IP address, hostname, or a camera name defined in 
 | `vmd` | Video motion detection configuration |
 | `audio` | Audio source configuration |
 | `clip` | Audio clip management (list, play, upload, delete) |
-| `mqtt` | MQTT client management (status, configure, enable, disable, events) |
+| `mqtt` | MQTT client management (status, configure, enable, disable, event publication filters) |
 | `streamstatus` | Stream status and parameters |
 | `selftest` | Device self-test (preview mode only) |
 | `signedvideo` | Signed video management (status, enable, disable) |
@@ -161,6 +161,12 @@ vapx mqtt enable 192.168.7.10 -u admin -p secret
 vapx mqtt disable 192.168.7.10 -u admin -p secret
 vapx mqtt configure 192.168.7.10 --broker mqtt.example.com --broker-port 1883 -u admin -p secret
 vapx mqtt events 192.168.7.10 -u admin -p secret
+# Set event publication filters (read-modify-write; only eventFilterList is changed).
+# Axis only starts publishing once at least one filter is set.
+vapx mqtt events 192.168.7.10 --add "tnsaxis:CameraApplicationPlatform/ObjectAnalytics/Device1Scenario1" -u admin -p secret
+vapx mqtt events 192.168.7.10 --add "<topic>" --qos 0 --retain none -u admin -p secret
+vapx mqtt events 192.168.7.10 --remove "<topic>" -u admin -p secret
+vapx mqtt events 192.168.7.10 --clear -u admin -p secret
 
 # Stream status
 vapx streamstatus 192.168.7.10 -u admin -p secret
