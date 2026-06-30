@@ -41,3 +41,20 @@ pub fn get_event_config(client: &VapixClient) -> anyhow::Result<Value> {
         "method": "getEventPublicationConfig",
     }))
 }
+
+/// Set event publication configuration on the MQTT event bridge.
+///
+/// `config` is the full `eventPublicationConfig` object. Callers should read the
+/// current config via [`get_event_config`], modify only the field(s) they care
+/// about (typically `eventFilterList`), and pass the whole object back so that
+/// unrelated fields are preserved. Axis only enables event publication once the
+/// filter list is non-empty.
+pub fn set_event_config(client: &VapixClient, config: &Value) -> anyhow::Result<Value> {
+    client.post_json("/axis-cgi/mqtt/event.cgi", &json!({
+        "apiVersion": "1.2",
+        "method": "setEventPublicationConfig",
+        "params": {
+            "eventPublicationConfig": config,
+        },
+    }))
+}

@@ -10,6 +10,7 @@
 - **Removed unused `thiserror` dependency** (the codebase uses `anyhow` throughout).
 
 ### Added
+- **`vapx mqtt events` filter management**: `vapx mqtt events <host>` still shows the event publication config; passing `--add <topic>` (repeatable), `--remove <topic>`, and/or `--clear` now performs a read-modify-write that changes only `eventFilterList` (other fields like `topicPrefix`/`appendEventTopic` are preserved). `--add` is idempotent on `topicFilter`, with `--qos` (0-2) and `--retain` (none|property|all). Backed by a new `setEventPublicationConfig` call in `vapix/mqtt.rs`. Enables Axis Object Analytics events to actually be published to MQTT (Axis only starts publishing once a filter is set).
 - Offline unit-test coverage for error sanitization, value encoding, parameter parsing, and TLS-default behavior.
 
 ## v0.19.0
