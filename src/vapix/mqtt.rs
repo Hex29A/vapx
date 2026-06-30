@@ -49,10 +49,13 @@ pub fn get_event_config(client: &VapixClient) -> anyhow::Result<Value> {
 /// about (typically `eventFilterList`), and pass the whole object back so that
 /// unrelated fields are preserved. Axis only enables event publication once the
 /// filter list is non-empty.
+///
+/// The VAPIX method is `configureEventPublication` (the read counterpart is
+/// `getEventPublicationConfig`).
 pub fn set_event_config(client: &VapixClient, config: &Value) -> anyhow::Result<Value> {
     client.post_json("/axis-cgi/mqtt/event.cgi", &json!({
         "apiVersion": "1.2",
-        "method": "setEventPublicationConfig",
+        "method": "configureEventPublication",
         "params": {
             "eventPublicationConfig": config,
         },

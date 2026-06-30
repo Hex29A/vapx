@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.21.1
+
+### Fixed
+- **MQTT event publication used the wrong VAPIX method**: `vapx mqtt events <host> --add/--remove/--clear` POSTed `method: "setEventPublicationConfig"`, which all cameras reject with `VAPIX error 2102: Method not supported`. The correct method is `configureEventPublication` (same endpoint/params; the read method `getEventPublicationConfig` was already correct and is unchanged).
+
 ## v0.20.0
 
 ### Changed
