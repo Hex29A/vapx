@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.21.2
+
+### Fixed
+- **MQTT event publication sent the wrong params shape**: `configureEventPublication` expects `eventFilterList` (and the other config fields) directly under `params`, but v0.21.1 wrapped them in a `params.eventPublicationConfig` object, so cameras responded `VAPIX error 2103: Required parameter missing: params.eventFilterList`. The config object is now passed directly as `params`. Verified end-to-end against a live AXIS camera: `--add` / `--clear` succeed and the filter round-trips through `getEventPublicationConfig`. (Note the API asymmetry: the read method nests the config under `eventPublicationConfig`, the write method does not.)
+
 ## v0.21.1
 
 ### Fixed
