@@ -83,7 +83,12 @@ impl LogCmd {
                     &cam.host, cam.user.as_deref(), cam.pass.as_deref(),
                     cam.port, cam.insecure,
                 )?;
-                let timeout = cam.timeout.unwrap_or(creds.timeout);
+                // Server reports are several hundred KB and take 30-35s to
+                // generate and download over a typical WAN link — the
+                // general 10s default times out here almost every time.
+                // --timeout still overrides if the caller wants something
+                // else (issue #38).
+                let timeout = cam.timeout.unwrap_or(120);
                 let client = VapixClient::new(&resolved_host, creds.port, creds, timeout);
                 let text = client.get_text("/axis-cgi/serverreport.cgi", &[])?;
                 output_log(&text, cam.tail);
