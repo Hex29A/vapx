@@ -181,13 +181,25 @@ pub fn load_cameras() -> anyhow::Result<Option<CamerasConfig>> {
     let content = fs::read_to_string(&path)
         .with_context(|| format!("Failed to read {}", path.display()))?;
 
-    // Substitute ${ENV_VAR} patterns
-    let content = substitute_env_vars(&content);
-
-    let config: CamerasConfig =
-        serde_yaml::from_str(&content).with_context(|| format!("Failed to parse {}", path.display()))?;
+    let config =
+        parse_config_str(&content).with_context(|| format!("Failed to parse {}", path.display()))?;
 
     Ok(Some(config))
+}
+
+/// Parse config content (substituting env vars first). An empty document yields
+/// an empty config rather than an error, so a fresh file can be written into.
+pub fn parse_config_str(content: &str) -> anyhow::Result<CamerasConfig> {
+    let content = substitute_env_vars(content);
+    if content.trim().is_empty() {
+        return Ok(CamerasConfig {
+            defaults: None,
+            cameras: HashMap::new(),
+            groups: HashMap::new(),
+            profiles: HashMap::new(),
+        });
+    }
+    Ok(serde_yaml::from_str(&content)?)
 }
 
 /// Replace ${VAR_NAME} with environment variable values.

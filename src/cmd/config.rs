@@ -2,6 +2,7 @@ use clap::{Args, Subcommand};
 
 use crate::config::cameras;
 use crate::config::credentials;
+use crate::config::writer;
 use crate::output::format;
 use crate::vapix::client::VapixClient;
 use crate::vapix::device;
@@ -169,34 +170,21 @@ impl ConfigCmd {
                     eprintln!("Verified: {} ({})", host, model);
                 }
 
-                // Build YAML entry and append to config file
                 let config_path = cameras::config_path()
                     .or_else(|| dirs::config_dir().map(|d| d.join("vapx").join("cameras.yaml")))
                     .unwrap_or_else(|| std::path::PathBuf::from("cameras.yaml"));
 
-                // Load existing to check for duplicates
-                if let Some(config) = cameras::load_cameras()? {
-                    if config.cameras.contains_key(&name) {
-                        anyhow::bail!("Camera '{}' already exists in config", name);
-                    }
+                // A camera without a password is unusable, and the vapx-mcp
+                // server rejects the whole config over one such entry.
+                if pass.is_none() {
+                    eprintln!(
+                        "Warning: no password set for '{}'. Add `pass:` to the entry, or store one with `vapx config set-secret {}`.",
+                        name, name
+                    );
                 }
 
-                // Build the entry lines
-                let mut entry = format!("\n  {}:\n    host: {}\n", name, host);
-                if let Some(ref u) = user {
-                    entry.push_str(&format!("    user: {}\n", u));
-                }
-                if let Some(ref p) = pass {
-                    entry.push_str(&format!("    pass: \"{}\"\n", p));
-                }
-                if https {
-                    entry.push_str("    https: true\n");
-                }
-                if let Some(p) = port {
-                    entry.push_str(&format!("    port: {}\n", p));
-                }
-
-                // Ensure the config file exists
+                // Seed a fresh file with the commented template so the result
+                // is a config a human wants to keep editing.
                 if !config_path.exists() {
                     if let Some(parent) = config_path.parent() {
                         std::fs::create_dir_all(parent)?;
@@ -204,16 +192,19 @@ impl ConfigCmd {
                     std::fs::write(&config_path, TEMPLATE_CONFIG)?;
                 }
 
-                // Insert entry into cameras: section (before groups: line, or at end)
-                let content = std::fs::read_to_string(&config_path)?;
-                let new_content = if let Some(pos) = content.find("\ngroups:") {
-                    format!("{}{}{}", &content[..pos + 1], entry, &content[pos + 1..])
-                } else {
-                    format!("{}{}", content, entry)
-                };
-                std::fs::write(&config_path, new_content)?;
+                writer::add_camera(
+                    &config_path,
+                    &writer::NewCamera {
+                        name: name.clone(),
+                        host: host.clone(),
+                        user,
+                        pass,
+                        https,
+                        port,
+                    },
+                )?;
 
-                format::ok_msg(&format!("Added camera '{}' ({})", name, host));
+                format::ok_msg(&format!("Added camera '{}' ({}) to {}", name, host, config_path.display()));
             }
             ConfigCommands::SetSecret { name } => {
                 set_keyring_secret(&name)?;

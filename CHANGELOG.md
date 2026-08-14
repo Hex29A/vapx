@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.21.4
+
+### Fixed
+- **`vapx config add` wrote the camera into the wrong section and corrupted the config**: the entry was inserted immediately before the `groups:` line, but the template written by `vapx config init` has a `profiles:` section between `cameras:` and `groups:`. The new camera therefore landed inside the `profiles:` block, directly after a flow mapping, and the file stopped parsing — `vapx config check` reported `CONFIG_INVALID` and every subsequent command lost all cameras. Configs without a `profiles:` section happened to escape this.
+
+### Changed
+- **Config writes are now safe by construction** (`src/config/writer.rs`): the entry is placed at the end of the `cameras:` block, the edited document is re-parsed *before* it replaces anything (an edit that would not parse, or that would drop an existing camera, is refused and the file is left untouched), the write lands atomically via a temp file in the same directory, the original is kept as `cameras.yaml.bak`, and the config is chmod 600 — it holds passwords in plain text. Comments and camera order are preserved, so hand-maintained notes in the file survive.
+- **`config add` warns when no password is given**: such an entry is unusable, and the vapx-mcp server treats it as a hard error for the whole config.
+
 ## v0.21.2
 
 ### Fixed
