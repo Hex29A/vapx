@@ -407,11 +407,11 @@ groups: {}
         let yaml = r#"cameras:
   # Added 2026-07-06, replaces the old unit.
   west:
-    host: "192.168.8.20"
+    host: "192.168.1.20"
     pass: "a"
 
   entren:
-    host: "192.168.8.21"
+    host: "192.168.1.21"
     pass: "b"
 
 groups:
@@ -481,7 +481,7 @@ groups:
         let c = NewCamera {
             name: "full".into(),
             host: "1.2.3.4".into(),
-            user: Some("martincr".into()),
+            user: Some("operator".into()),
             pass: Some("pw".into()),
             https: true,
             port: Some(8443),
@@ -489,7 +489,7 @@ groups:
         let out = insert_camera("cameras:\n", &c).unwrap();
         let parsed = parse_config_str(&out).unwrap();
         let e = &parsed.cameras["full"];
-        assert_eq!(e.user.as_deref(), Some("martincr"));
+        assert_eq!(e.user.as_deref(), Some("operator"));
         assert_eq!(e.pass.as_deref(), Some("pw"));
         assert_eq!(e.https, Some(true));
         assert_eq!(e.port, Some(8443));
@@ -583,7 +583,7 @@ mod group_tests {
 
     const CFG: &str = r#"cameras:
   west:
-    host: "192.168.8.20"
+    host: "192.168.1.20"
     pass: "a"
   nykamera:
     host: "192.168.8.99"
@@ -624,7 +624,7 @@ groups:
         let out = insert_group_member(CFG, "alphyddan", "nykamera").unwrap();
         let p = parse_config_str(&out).unwrap();
         assert_eq!(p.cameras.len(), 2);
-        assert_eq!(p.cameras["west"].host, "192.168.8.20");
+        assert_eq!(p.cameras["west"].host, "192.168.1.20");
     }
 
     #[test]

@@ -105,7 +105,7 @@ vapx/
     config/
       mod.rs
       cameras.rs         # cameras.yaml loading, env var substitution
-      credentials.rs     # Credential resolution (flags > yaml > prompt)
+      credentials.rs     # Credential resolution (yaml > keyring > flags > prompt)
     output/
       mod.rs
       format.rs          # JSON and plain text formatters
@@ -199,9 +199,11 @@ Features:
 ## Credential Resolution (config/credentials.rs)
 
 Priority order:
-1. Explicit `-u`/`-p` CLI flags
-2. `cameras.yaml` lookup by name or host
-3. OS keyring lookup by camera name (if `--features keyring`)
+1. `cameras.yaml` lookup by camera name or host. `-u`/`-p` override the stored
+   username and password, but the entry still supplies host, port and TLS
+   settings — the flags override the credentials, not the address.
+2. OS keyring lookup, for a configured camera with no `pass` (`--features keyring`)
+3. `-u`/`-p` flags, for a host that is not in the config at all
 4. Interactive prompt (if TTY)
 
 The `host` argument resolves through config: if it matches a camera name, use that entry's host/credentials.
@@ -224,16 +226,17 @@ CI builds the three Linux targets above on `ubuntu-latest` runners. The `build-m
 
 ```sh
 # Unit tests only (no camera)
-cargo test --lib
+cargo test --bin vapx
 
 # Full suite including integration (needs camera)
-VAPX_TEST_HOST=192.168.7.10 VAPX_TEST_USER=martincr VAPX_TEST_PASS=avhsroot cargo test
+VAPX_TEST_HOST=192.168.1.100 VAPX_TEST_USER=<user> VAPX_TEST_PASS=<password> cargo test
 
 # Integration tests skip gracefully if camera unreachable
 cargo test --test integration
 ```
 
-Test camera: AXIS Q1615 Mk III (192.168.7.10), firmware 12.9.57, armv7hf, Artpec-7
+Reference test hardware: AXIS Q1615 Mk III (armv7hf, Artpec-7) and M1137 Mk II (AXIS OS 12.11).
+Set VAPX_TEST_HOST / VAPX_TEST_USER / VAPX_TEST_PASS to point at your own camera.
 
 ---
 

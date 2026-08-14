@@ -1,9 +1,9 @@
 //! Integration tests for vapx against a live Axis camera.
 //!
 //! These tests require a reachable camera. Set environment variables:
-//!   VAPX_TEST_HOST=192.168.7.10
-//!   VAPX_TEST_USER=martincr
-//!   VAPX_TEST_PASS=avhsroot
+//!   VAPX_TEST_HOST=192.168.1.100
+//!   VAPX_TEST_USER=<user>
+//!   VAPX_TEST_PASS=<password>
 //!
 //! Run with: cargo test --test integration -- --nocapture
 
@@ -36,11 +36,11 @@ fn test_host() -> String {
 }
 
 fn test_user() -> String {
-    std::env::var("VAPX_TEST_USER").unwrap_or_else(|_| "martincr".into())
+    std::env::var("VAPX_TEST_USER").unwrap_or_else(|_| "root".into())
 }
 
 fn test_pass() -> String {
-    std::env::var("VAPX_TEST_PASS").unwrap_or_else(|_| "avhsroot".into())
+    std::env::var("VAPX_TEST_PASS").unwrap_or_default()
 }
 
 fn skip_if_no_camera() -> bool {

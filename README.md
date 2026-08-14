@@ -81,112 +81,116 @@ The `host` argument can be an IP address, hostname, or a camera name defined in 
 
 ```sh
 # Get device info as JSON
-vapx info 192.168.7.10 -u martincr -p secret
+vapx info 192.168.1.100 -u root -p <password>
 
 # Plain text output
-vapx info 192.168.7.10 -u martincr -p secret --plain
+vapx info 192.168.1.100 -u root -p <password> --plain
 
 # Specific properties only
-vapx info 192.168.7.10 -u martincr -p secret --props Brand,Version,Architecture
+vapx info 192.168.1.100 -u root -p <password> --props Brand,Version,Architecture
 
 # Take a snapshot
-vapx snap 192.168.7.10 -u martincr -p secret -o photo.jpg
-vapx snap 192.168.7.10 -u martincr -p secret --resolution 1920x1080 --compression 25
+vapx snap 192.168.1.100 -u root -p <password> -o photo.jpg
+vapx snap 192.168.1.100 -u root -p <password> --resolution 1920x1080 --compression 25
 
 # Check firmware status
-vapx fw 192.168.7.10 -u martincr -p secret
-vapx fw 192.168.7.10 -u martincr -p secret --plain
+vapx fw 192.168.1.100 -u root -p <password>
+vapx fw 192.168.1.100 -u root -p <password> --plain
 
 # List installed ACAP applications
-vapx acap list 192.168.7.10 -u martincr -p secret
-vapx acap list 192.168.7.10 -u martincr -p secret --plain
+vapx acap list 192.168.1.100 -u root -p <password>
+vapx acap list 192.168.1.100 -u root -p <password> --plain
 
 # Control ACAP applications (package name is positional)
-vapx acap start 192.168.7.10 vdo_larod -u martincr -p secret
-vapx acap stop 192.168.7.10 vdo_larod -u martincr -p secret
-vapx acap restart 192.168.7.10 vdo_larod -u martincr -p secret
-vapx acap remove 192.168.7.10 vdo_larod -u martincr -p secret
+vapx acap start 192.168.1.100 vdo_larod -u root -p <password>
+vapx acap stop 192.168.1.100 vdo_larod -u root -p <password>
+vapx acap restart 192.168.1.100 vdo_larod -u root -p <password>
+vapx acap remove 192.168.1.100 vdo_larod -u root -p <password>
 
 # PTZ control
-vapx ptz move 192.168.7.10 home -u martincr -p secret
-vapx ptz goto 192.168.7.10 --pan 90.0 --tilt -20.0 --zoom 5000 -u martincr -p secret
-vapx ptz goto 192.168.7.10 --rpan 10.0 --speed 50 -u martincr -p secret
-vapx ptz preset 192.168.7.10 "Door" -u martincr -p secret
-vapx ptz query 192.168.7.10 position -u martincr -p secret
-vapx ptz query 192.168.7.10 limits --plain -u martincr -p secret
-vapx ptz info 192.168.7.10 -u martincr -p secret
+vapx ptz move 192.168.1.100 home -u root -p <password>
+vapx ptz goto 192.168.1.100 --pan 90.0 --tilt -20.0 --zoom 5000 -u root -p <password>
+vapx ptz goto 192.168.1.100 --rpan 10.0 --speed 50 -u root -p <password>
+vapx ptz preset 192.168.1.100 "Door" -u root -p <password>
+vapx ptz query 192.168.1.100 position -u root -p <password>
+vapx ptz query 192.168.1.100 limits --plain -u root -p <password>
+vapx ptz info 192.168.1.100 -u root -p <password>
 
 # Parameter management
-vapx param list 192.168.7.10 --group root.Brand -u martincr -p secret
-vapx param get 192.168.7.10 root.Brand.Brand -u martincr -p secret
-vapx param set 192.168.7.10 root.Network.HostName=myaxis -u martincr -p secret
+vapx param list 192.168.1.100 --group root.Brand -u root -p <password>
+vapx param get 192.168.1.100 root.Brand.Brand -u root -p <password>
+vapx param set 192.168.1.100 root.Network.HostName=myaxis -u root -p <password>
 
 # User management
-vapx user list 192.168.7.10 -u martincr -p secret
-vapx user add 192.168.7.10 --name viewer1 --pwd secret --role viewer -u martincr -p secret
-vapx user add 192.168.7.10 --name op1 --pwd secret --role operator --ptz -u martincr -p secret
-vapx user update 192.168.7.10 --name viewer1 --pwd newpass -u martincr -p secret
-vapx user remove 192.168.7.10 --name viewer1 -u martincr -p secret
+vapx user list 192.168.1.100 -u root -p <password>
+vapx user add 192.168.1.100 --name viewer1 --pwd secret --role viewer -u root -p <password>
+vapx user add 192.168.1.100 --name op1 --pwd secret --role operator --ptz -u root -p <password>
+vapx user update 192.168.1.100 --name viewer1 --pwd newpass -u root -p <password>
+vapx user remove 192.168.1.100 --name viewer1 -u root -p <password>
 
 # Use camera name from config
 vapx info entrance
 
 # Temperature sensor readings
-vapx temp 192.168.7.10 -u admin -p secret
+vapx temp 192.168.1.100 -u admin -p secret
 vapx temp entrance --format table
 
 # Day/night mode
-vapx daynight 192.168.7.10 -u admin -p secret
+vapx daynight 192.168.1.100 -u admin -p secret
 
 # Image sensor settings
-vapx imaging 192.168.7.10 -u admin -p secret
+vapx imaging 192.168.1.100 -u admin -p secret
 
 # IR illuminator status
-vapx light 192.168.7.10 -u admin -p secret
+vapx light 192.168.1.100 -u admin -p secret
 
 # Video motion detection config
-vapx vmd 192.168.7.10 -u admin -p secret
+vapx vmd 192.168.1.100 -u admin -p secret
 
 # Audio source configuration
-vapx audio 192.168.7.10 -u admin -p secret
+vapx audio 192.168.1.100 -u admin -p secret
 
 # Audio clip management
-vapx clip list 192.168.7.10 -u admin -p secret
-vapx clip play 192.168.7.10 siren -u admin -p secret
-vapx clip upload 192.168.7.10 /path/to/alert.wav -u admin -p secret
-vapx clip upload 192.168.7.10 /path/to/alert.wav --name warning -u admin -p secret
-vapx clip delete 192.168.7.10 siren -u admin -p secret
+vapx clip list 192.168.1.100 -u admin -p secret
+vapx clip play 192.168.1.100 siren -u admin -p secret
+vapx clip upload 192.168.1.100 /path/to/alert.wav -u admin -p secret
+vapx clip upload 192.168.1.100 /path/to/alert.wav --name warning -u admin -p secret
+vapx clip delete 192.168.1.100 siren -u admin -p secret
 
 # MQTT client management
-vapx mqtt status 192.168.7.10 -u admin -p secret
-vapx mqtt enable 192.168.7.10 -u admin -p secret
-vapx mqtt disable 192.168.7.10 -u admin -p secret
-vapx mqtt configure 192.168.7.10 --broker mqtt.example.com --broker-port 1883 -u admin -p secret
-vapx mqtt events 192.168.7.10 -u admin -p secret
+vapx mqtt status 192.168.1.100 -u admin -p secret
+vapx mqtt enable 192.168.1.100 -u admin -p secret
+vapx mqtt disable 192.168.1.100 -u admin -p secret
+vapx mqtt configure 192.168.1.100 --broker mqtt.example.com --broker-port 1883 -u admin -p secret
+vapx mqtt events 192.168.1.100 -u admin -p secret
 # Set event publication filters (read-modify-write; only eventFilterList is changed).
 # Axis only starts publishing once at least one filter is set.
-vapx mqtt events 192.168.7.10 --add "tnsaxis:CameraApplicationPlatform/ObjectAnalytics/Device1Scenario1" -u admin -p secret
-vapx mqtt events 192.168.7.10 --add "<topic>" --qos 0 --retain none -u admin -p secret
-vapx mqtt events 192.168.7.10 --remove "<topic>" -u admin -p secret
-vapx mqtt events 192.168.7.10 --clear -u admin -p secret
+vapx mqtt events 192.168.1.100 --add "tnsaxis:CameraApplicationPlatform/ObjectAnalytics/Device1Scenario1" -u admin -p secret
+vapx mqtt events 192.168.1.100 --add "<topic>" --qos 0 --retain none -u admin -p secret
+vapx mqtt events 192.168.1.100 --remove "<topic>" -u admin -p secret
+vapx mqtt events 192.168.1.100 --clear -u admin -p secret
 
 # Stream status
-vapx streamstatus 192.168.7.10 -u admin -p secret
+vapx streamstatus 192.168.1.100 -u admin -p secret
 
 # Device self-test (requires preview mode)
-vapx selftest 192.168.7.10 -u admin -p secret
+vapx selftest 192.168.1.100 -u admin -p secret
 
 # Signed video
-vapx signedvideo status 192.168.7.10 -u admin -p secret
-vapx signedvideo enable 192.168.7.10 -u admin -p secret
+vapx signedvideo status 192.168.1.100 -u admin -p secret
+vapx signedvideo enable 192.168.1.100 -u admin -p secret
 
 # ZipStream compression
-vapx zipstream status 192.168.7.10 -u admin -p secret
-vapx zipstream set 192.168.7.10 --profile classic --level 1 -u admin -p secret
+vapx zipstream status 192.168.1.100 -u admin -p secret
+vapx zipstream set 192.168.1.100 --profile classic --level 1 -u admin -p secret
 
 # View areas
-vapx viewarea list 192.168.7.10 -u admin -p secret
-vapx viewarea get 192.168.7.10 --id 1000001 -u admin -p secret
+vapx viewarea list 192.168.1.100 -u admin -p secret
+vapx viewarea get 192.168.1.100 --id 1000001 -u admin -p secret
+
+# --- enroll: factory-default camera setup ---
+# Verified against AXIS OS 12.11. See the firmware note below before using
+# this on a device older than AXIS OS 11.5.
 
 # Enroll a factory-default camera: creates the initial account, verifies the
 # login, derives a name from model and serial, and writes cameras.yaml.
@@ -225,74 +229,74 @@ vapx config list
 vapx config init
 
 # Change password
-vapx pass 192.168.7.10 -u root -p oldpass --name root --pwd newpass
+vapx pass 192.168.1.100 -u root -p oldpass --name root --pwd newpass
 
 # Network configuration
-vapx net show 192.168.7.10 -u admin -p secret
-vapx net set 192.168.7.10 root.Network.HostName=myaxis -u admin -p secret
+vapx net show 192.168.1.100 -u admin -p secret
+vapx net set 192.168.1.100 root.Network.HostName=myaxis -u admin -p secret
 
 # Time/NTP configuration
-vapx time show 192.168.7.10 -u admin -p secret
-vapx time set 192.168.7.10 --ntp-server pool.ntp.org -u admin -p secret
+vapx time show 192.168.1.100 -u admin -p secret
+vapx time set 192.168.1.100 --ntp-server pool.ntp.org -u admin -p secret
 
 # I/O port management
-vapx hw show 192.168.7.10 -u admin -p secret
-vapx hw trigger 192.168.7.10 --index 0 --state active -u admin -p secret
-vapx hw trigger 192.168.7.10 --index 0 --state inactive -u admin -p secret
-vapx hw trigger 192.168.7.10 --index 0 --state active --pulse 500 -u admin -p secret
+vapx hw show 192.168.1.100 -u admin -p secret
+vapx hw trigger 192.168.1.100 --index 0 --state active -u admin -p secret
+vapx hw trigger 192.168.1.100 --index 0 --state inactive -u admin -p secret
+vapx hw trigger 192.168.1.100 --index 0 --state active --pulse 500 -u admin -p secret
 
 # Stream real-time events via WebSocket
-vapx events 192.168.7.10 -u admin -p secret
+vapx events 192.168.1.100 -u admin -p secret
 
 # Run a command on multiple cameras in parallel
 vapx batch info cam1 cam2 cam3 -u admin -p secret
 vapx batch fw building_a -u admin -p secret
 
 # Discover supported APIs
-vapx discover 192.168.7.10 -u admin -p secret
+vapx discover 192.168.1.100 -u admin -p secret
 
 # Compare parameters between two cameras
-vapx diff 192.168.7.10 192.168.7.11 -u admin -p secret
-vapx diff 192.168.7.10 --group-diff building_a -u admin -p secret
+vapx diff 192.168.1.100 192.168.1.101 -u admin -p <password>
+vapx diff 192.168.1.100 --group-diff building_a -u admin -p secret
 
 # Backup/restore parameters
-vapx backup save 192.168.7.10 -u admin -p secret -o backup.json
-vapx backup restore 192.168.7.10 -u admin -p secret -i backup.json --dry-run
+vapx backup save 192.168.1.100 -u admin -p secret -o backup.json
+vapx backup restore 192.168.1.100 -u admin -p secret -i backup.json --dry-run
 
 # Overlay management
-vapx overlay list 192.168.7.10 -u admin -p secret
+vapx overlay list 192.168.1.100 -u admin -p secret
 
 # View system/access logs
-vapx log system 192.168.7.10 -u admin -p secret
-vapx log access 192.168.7.10 -u admin -p secret
+vapx log system 192.168.1.100 -u admin -p secret
+vapx log access 192.168.1.100 -u admin -p secret
 
 # Generate stream URLs
-vapx stream rtsp 192.168.7.10
-vapx stream mjpeg 192.168.7.10 --resolution 1920x1080
+vapx stream rtsp 192.168.1.100
+vapx stream mjpeg 192.168.1.100 --resolution 1920x1080
 
 # Parameter templates (desired-state config)
-vapx template create 192.168.7.10 --groups root.Network,root.Time -u admin -p secret -o template.json
-vapx template apply 192.168.7.10 -u admin -p secret -i template.json --dry-run
-vapx template diff 192.168.7.10 -u admin -p secret -i template.json
+vapx template create 192.168.1.100 --groups root.Network,root.Time -u admin -p secret -o template.json
+vapx template apply 192.168.1.100 -u admin -p secret -i template.json --dry-run
+vapx template diff 192.168.1.100 -u admin -p secret -i template.json
 
 # Security audit
-vapx audit 192.168.7.10 -u admin -p secret
-vapx audit 192.168.7.10 -u admin -p secret --plain
+vapx audit 192.168.1.100 -u admin -p secret
+vapx audit 192.168.1.100 -u admin -p secret --plain
 
 # Certificate management
-vapx cert list 192.168.7.10 -u admin -p secret
+vapx cert list 192.168.1.100 -u admin -p secret
 
 # Watch events from multiple cameras
 vapx watch cam1 cam2 cam3 -u admin -p secret
 
 # Action rule management
-vapx rule list 192.168.7.10 -u admin -p secret
-vapx rule templates 192.168.7.10 -u admin -p secret
+vapx rule list 192.168.1.100 -u admin -p secret
+vapx rule templates 192.168.1.100 -u admin -p secret
 
 # Storage/SD card management
-vapx storage list 192.168.7.10 -u admin -p secret
-vapx storage recordings 192.168.7.10 -u admin -p secret
-vapx storage health 192.168.7.10 -u admin -p secret
+vapx storage list 192.168.1.100 -u admin -p secret
+vapx storage recordings 192.168.1.100 -u admin -p secret
+vapx storage health 192.168.1.100 -u admin -p secret
 
 # Fleet health check
 vapx health cam1 cam2 cam3 -u admin -p secret
@@ -328,13 +332,39 @@ vapx mangen /usr/local/share/man/man1/
 | `--timeout` | Request timeout in seconds |
 | `--plain` | Output plain text instead of JSON |
 
+## Enroll: firmware support
+
+`vapx enroll` has been verified end-to-end against **AXIS OS 12.11** (M1137
+Mk II), repeatedly factory-defaulted and enrolled from scratch.
+
+**It has not been tested on AXIS OS older than 11.5.** On those versions Axis
+documents stricter rules for the very first account, which vapx follows but
+has not confirmed against hardware:
+
+| AXIS OS | Rules for the initial account (per Axis docs) |
+|---------|-----------------------------------------------|
+| 11.5 and later | Must be Administrator with PTZ. Name is free. **Verified on 12.11.** |
+| Older than 11.5 | Must be named `root`, Administrator with PTZ, and `comment` must be empty or omitted. Can be created once and cannot be deleted. **Untested.** |
+
+This is why `--account` defaults to `root`: it is the only name accepted
+across every generation, and the firmware version cannot be read beforehand —
+a factory-default camera answers 401 on `basicdeviceinfo.cgi` and `param.cgi`.
+`--role` always includes PTZ for the same reason.
+
+If you enroll an older device, `vapx systemready <host>` first will at least
+confirm `needsetup` and the passphrase policy, both of which work without
+credentials on AXIS OS 9.50 and later.
+
 ## Configuration
 
 Config file search order:
 
-1. `$VAPX_CONFIG` environment variable
-2. `./cameras.yaml` (current directory)
-3. `~/.config/vapx/cameras.yaml` (Linux/macOS XDG)
+1. `--config <path>` flag
+2. `$VAPX_CONFIG` environment variable
+3. `~/.config/vapx/cameras.yaml` (XDG config directory)
+
+There is no lookup in the current working directory — use `--config` or
+`VAPX_CONFIG` to point at a config elsewhere.
 
 ### cameras.yaml
 
@@ -397,10 +427,18 @@ Passwords use `${ENV_VAR}` substitution. Set them via:
 
 ### Credential Resolution Order
 
-1. CLI flags (`-u`, `-p`)
-2. `cameras.yaml` lookup (by name or host)
-3. OS keyring lookup (if built with `--features keyring`)
+1. `cameras.yaml` lookup (by camera name or host). `-u`/`-p` override the
+   stored username and password, but the entry still supplies the host,
+   port, and TLS settings.
+2. OS keyring lookup, for a camera in the config with no `pass` (requires
+   `--features keyring`; the published release binaries do not include it)
+3. `-u`/`-p` flags, for a host that is not in the config at all
 4. Interactive prompt (TTY only)
+
+The config is consulted first so that a configured camera *name* always
+resolves to its real address, even when credentials are given on the command
+line. Before v0.22.0 the flags short-circuited this, and `vapx info mycam -u
+x -p y` tried to resolve "mycam" as a DNS hostname.
 
 ## Authentication
 
@@ -432,15 +470,18 @@ Binaries are optimized for size: LTO, single codegen unit, stripped, panic=abort
 ## Testing
 
 ```sh
-# Unit tests (no camera needed)
-cargo test --lib
+# Unit tests (no camera needed) — this is what CI runs
+cargo test --bin vapx
 
-# Full integration tests (requires reachable camera)
-VAPX_TEST_HOST=192.168.7.10 VAPX_TEST_USER=martincr VAPX_TEST_PASS=secret cargo test
+# Full integration tests (requires a reachable camera)
+VAPX_TEST_HOST=192.168.1.100 VAPX_TEST_USER=root VAPX_TEST_PASS=secret cargo test
 
-# Integration tests skip gracefully if camera is unreachable
+# Integration tests skip gracefully if the camera is unreachable
 cargo test --test integration
 ```
+
+`cargo test --lib` does not work: vapx is a single binary crate with no
+library target.
 
 ## Architecture
 
@@ -488,6 +529,8 @@ src/
     zipstream.rs       # vapx zipstream — ZipStream compression
     viewarea.rs        # vapx viewarea — view area management
     config.rs          # vapx config — config management
+    enroll.rs          # vapx enroll — factory-default camera setup
+    systemready.rs     # vapx systemready — readiness / needs-setup state
   vapix/
     auth.rs            # Digest/Basic auth negotiation
     client.rs          # VapixClient (HTTP with auth, retry, error sanitization)
@@ -515,13 +558,18 @@ src/
     signedvideo.rs     # Signed video
     zipstream.rs       # ZipStream compression
     viewarea.rs        # View area management
+    systemready.rs     # Systemready API (unauthenticated readiness probe)
+  enroll/
+    naming.rs          # Config-key derivation from model + serial
+    password.rs        # Policy-aware password generation
   config/
     cameras.rs         # cameras.yaml loading, env substitution, name resolution
-    credentials.rs     # Credential resolution (flags > yaml > keyring > prompt)
+    credentials.rs     # Credential resolution (yaml > keyring > flags > prompt)
+    writer.rs          # Safe cameras.yaml edits (validated, atomic, comment-preserving)
   output/
     format.rs          # JSON, table, CSV, YAML formatters
 tests/
-  integration.rs       # Live camera integration tests (75 tests)
+  integration.rs       # Live camera integration tests (76 tests)
 ```
 
 ## VAPIX API Coverage
@@ -551,6 +599,7 @@ tests/
 - [x] ZipStream Compression (`zipstream/*.cgi`)
 - [x] View Area Management (`viewarea/info.cgi`)
 - [x] Audio Clip Management (`/axis-cgi/audio/*.cgi`)
+- [x] Systemready (`systemready.cgi`) — unauthenticated readiness and needs-setup state
 
 ## License
 
