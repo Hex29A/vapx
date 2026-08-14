@@ -3,6 +3,7 @@ use clap_complete::{generate, Shell};
 
 mod cmd;
 mod config;
+mod enroll;
 mod output;
 mod vapix;
 
@@ -113,6 +114,10 @@ pub enum Commands {
     Zipstream(cmd::zipstream::ZipstreamCmd),
     /// View area management
     Viewarea(cmd::viewarea::ViewareaCmd),
+    /// Set up a factory-default camera: create an account and add it to cameras.yaml
+    Enroll(cmd::enroll::EnrollCmd),
+    /// Device readiness and factory-default state (works without credentials)
+    Systemready(cmd::systemready::SystemreadyCmd),
     /// Configuration management
     Config(cmd::config::ConfigCmd),
     /// Generate shell completions
@@ -208,6 +213,8 @@ fn main() {
         Commands::Signedvideo(cmd) => cmd.run(),
         Commands::Zipstream(cmd) => cmd.run(),
         Commands::Viewarea(cmd) => cmd.run(),
+        Commands::Enroll(cmd) => cmd.run(),
+        Commands::Systemready(cmd) => cmd.run(),
         Commands::Config(cmd) => cmd.run(),
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();

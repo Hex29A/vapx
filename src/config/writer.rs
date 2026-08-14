@@ -206,6 +206,106 @@ pub fn add_camera(path: &Path, cam: &NewCamera) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Add an existing camera to a group in cameras.yaml.
+///
+/// Same guarantees as `add_camera`: the result is re-parsed before it replaces
+/// the original, and the write is atomic. The group must already exist —
+/// creating one silently is how a camera ends up in a batch run nobody
+/// intended.
+pub fn add_to_group(path: &Path, group: &str, camera: &str) -> anyhow::Result<()> {
+    let original = fs::read_to_string(path)
+        .with_context(|| format!("Failed to read {}", path.display()))?;
+
+    let config = parse_config_str(&original)?;
+    let Some(members) = config.groups.get(group) else {
+        bail!(
+            "Group '{}' does not exist in {}. Existing groups: {}",
+            group,
+            path.display(),
+            if config.groups.is_empty() {
+                "(none)".to_string()
+            } else {
+                let mut g: Vec<_> = config.groups.keys().cloned().collect();
+                g.sort();
+                g.join(", ")
+            }
+        );
+    };
+    if members.iter().any(|m| m == camera) {
+        return Ok(()); // already a member
+    }
+
+    let updated = insert_group_member(&original, group, camera)?;
+
+    let parsed = parse_config_str(&updated)
+        .with_context(|| "Refusing to write: the edited config would not parse")?;
+    if !parsed
+        .groups
+        .get(group)
+        .map(|m| m.iter().any(|x| x == camera))
+        .unwrap_or(false)
+    {
+        bail!("Refusing to write: '{}' did not end up in group '{}'", camera, group);
+    }
+
+    write_atomic(path, &updated)
+}
+
+/// Append a member line at the end of a group's list.
+fn insert_group_member(content: &str, group: &str, camera: &str) -> anyhow::Result<String> {
+    let lines: Vec<&str> = content.lines().collect();
+
+    // Find `<indent><group>:` inside the groups block.
+    let groups_start = lines
+        .iter()
+        .position(|l| l.trim_end() == "groups:" || l.trim_end() == "groups: {}")
+        .ok_or_else(|| anyhow::anyhow!("No groups: section found"))?;
+
+    let mut group_line = None;
+    for (i, line) in lines.iter().enumerate().skip(groups_start + 1) {
+        if !line.trim().is_empty() && !line.starts_with(' ') && !line.starts_with('\t') {
+            break; // left the groups block
+        }
+        if line.trim_start().starts_with(&format!("{}:", group)) {
+            group_line = Some(i);
+            break;
+        }
+    }
+    let group_line = group_line
+        .ok_or_else(|| anyhow::anyhow!("Group '{}' not found under groups:", group))?;
+
+    // Last list item belonging to this group.
+    let mut last = group_line;
+    for (i, line) in lines.iter().enumerate().skip(group_line + 1) {
+        if line.trim().is_empty() {
+            continue;
+        }
+        if line.trim_start().starts_with('-') {
+            last = i;
+        } else {
+            break;
+        }
+    }
+
+    // Match the indentation of the existing items, or indent one level in.
+    let indent = if last > group_line {
+        lines[last].len() - lines[last].trim_start().len()
+    } else {
+        let g = lines[group_line].len() - lines[group_line].trim_start().len();
+        g + 2
+    };
+
+    let mut out = String::new();
+    for (i, line) in lines.iter().enumerate() {
+        out.push_str(line);
+        out.push('\n');
+        if i == last {
+            out.push_str(&format!("{}- {}\n", " ".repeat(indent), camera));
+        }
+    }
+    Ok(out)
+}
+
 /// Write `content` to `path` atomically: temp file in the same directory,
 /// permissions tightened, then renamed over the target.
 fn write_atomic(path: &Path, content: &str) -> anyhow::Result<()> {
@@ -474,5 +574,98 @@ groups:
         assert_eq!(fs::read_to_string(&path).unwrap(), broken);
 
         let _ = fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod group_tests {
+    use super::*;
+
+    const CFG: &str = r#"cameras:
+  west:
+    host: "192.168.8.20"
+    pass: "a"
+  nykamera:
+    host: "192.168.8.99"
+    pass: "b"
+
+groups:
+  alphyddan:
+    - west
+  hemma:
+    - west
+"#;
+
+    fn tmpdir(tag: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("vapx-grp-{}-{}", tag, std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn appends_to_the_right_group() {
+        let out = insert_group_member(CFG, "alphyddan", "nykamera").unwrap();
+        let p = parse_config_str(&out).unwrap();
+        assert_eq!(p.groups["alphyddan"], vec!["west", "nykamera"]);
+        assert_eq!(p.groups["hemma"], vec!["west"], "other group must be untouched");
+    }
+
+    #[test]
+    fn appends_to_the_last_group_in_the_file() {
+        let out = insert_group_member(CFG, "hemma", "nykamera").unwrap();
+        let p = parse_config_str(&out).unwrap();
+        assert_eq!(p.groups["hemma"], vec!["west", "nykamera"]);
+        assert_eq!(p.groups["alphyddan"], vec!["west"]);
+    }
+
+    #[test]
+    fn cameras_section_is_untouched() {
+        let out = insert_group_member(CFG, "alphyddan", "nykamera").unwrap();
+        let p = parse_config_str(&out).unwrap();
+        assert_eq!(p.cameras.len(), 2);
+        assert_eq!(p.cameras["west"].host, "192.168.8.20");
+    }
+
+    #[test]
+    fn unknown_group_is_refused_not_created() {
+        let d = tmpdir("unknown");
+        let path = d.join("cameras.yaml");
+        fs::write(&path, CFG).unwrap();
+
+        let err = add_to_group(&path, "hittepa", "nykamera").unwrap_err().to_string();
+        assert!(err.contains("does not exist"), "unexpected error: {}", err);
+        assert!(err.contains("alphyddan"), "should list existing groups: {}", err);
+        assert_eq!(fs::read_to_string(&path).unwrap(), CFG, "file must be untouched");
+
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn adding_twice_is_a_no_op() {
+        let d = tmpdir("twice");
+        let path = d.join("cameras.yaml");
+        fs::write(&path, CFG).unwrap();
+
+        add_to_group(&path, "alphyddan", "nykamera").unwrap();
+        let after_first = fs::read_to_string(&path).unwrap();
+        add_to_group(&path, "alphyddan", "nykamera").unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), after_first);
+
+        let p = parse_config_str(&after_first).unwrap();
+        assert_eq!(p.groups["alphyddan"], vec!["west", "nykamera"]);
+
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn write_is_atomic_and_permissions_are_tightened() {
+        let d = tmpdir("perm");
+        let path = d.join("cameras.yaml");
+        fs::write(&path, CFG).unwrap();
+        add_to_group(&path, "alphyddan", "nykamera").unwrap();
+        let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+        let _ = fs::remove_dir_all(&d);
     }
 }

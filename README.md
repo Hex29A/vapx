@@ -72,6 +72,8 @@ The `host` argument can be an IP address, hostname, or a camera name defined in 
 | `zipstream` | ZipStream compression profiles (status, set) |
 | `viewarea` | View area management (list, get, set geometry) |
 | `config` | Manage cameras.yaml (path, check, list, init, add) |
+| `enroll` | Set up a factory-default camera: create the initial account and add it to cameras.yaml |
+| `systemready` | Device readiness and factory-default state (works without credentials) |
 | `completions` | Generate shell completions (bash, zsh, fish) |
 | `mangen` | Generate man pages |
 
@@ -185,6 +187,30 @@ vapx zipstream set 192.168.7.10 --profile classic --level 1 -u admin -p secret
 # View areas
 vapx viewarea list 192.168.7.10 -u admin -p secret
 vapx viewarea get 192.168.7.10 --id 1000001 -u admin -p secret
+
+# Enroll a factory-default camera: creates the initial account, verifies the
+# login, derives a name from model and serial, and writes cameras.yaml.
+# The password is generated to match the device's own passphrase policy.
+vapx enroll 192.168.0.90
+vapx enroll 192.168.0.90 --name entren --to-group alphyddan
+vapx enroll 192.168.0.90 --dry-run            # plan only, touches nothing
+vapx enroll 192.168.0.90 --out creds.json     # full result to a 0600 file
+
+# The password is masked in the output by default:
+#   "password": "@6… (20 chars)"
+# Use --reveal to print it, or --out to write it to a file. If the config
+# write fails the credentials are still reported, so they are never lost.
+
+# Readiness and factory-default state — the one endpoint that needs no login.
+# needsetup=true means the camera has no account yet and can be enrolled.
+vapx systemready 192.168.0.90
+vapx systemready mycam --until-ready 240      # poll while the camera boots
+
+# After a reboot or factory default, wait for the *new* boot: a camera that
+# has been told to restart keeps answering "ready" until it actually goes down.
+BOOT=$(vapx systemready mycam | jq -r .data.bootid)
+vapx fw factory-default mycam --mode soft
+vapx systemready mycam --until-ready 300 --after-bootid "$BOOT"
 
 # Show config file location
 vapx config path

@@ -241,6 +241,46 @@ impl VapixClient {
         Ok(self.get(path, params)?.text()?)
     }
 
+    /// POST form-encoded parameters, returning the response as text.
+    ///
+    /// Used where the parameters carry secrets: a query string ends up in the
+    /// camera's access log and in any error message that echoes the URL, which
+    /// Axis explicitly warns against for pwdgrp.cgi.
+    pub fn post_form_text(
+        &self,
+        path: &str,
+        params: &[(&str, &str)],
+    ) -> anyhow::Result<String> {
+        let url = format!("{}{}", self.base_url, path);
+        let body: String = params
+            .iter()
+            .map(|(k, v)| format!("{}={}", k, encode_value(v)))
+            .collect::<Vec<_>>()
+            .join("&");
+
+        // Log the keys only — never the values.
+        debug!(
+            "POST {} (form fields: {})",
+            url,
+            params.iter().map(|(k, _)| *k).collect::<Vec<_>>().join(",")
+        );
+
+        let resp = self.request_with_retry(
+            "POST",
+            &url,
+            Some(body.as_bytes()),
+            Some("application/x-www-form-urlencoded"),
+        )?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let text = resp.text().unwrap_or_default();
+            bail!("HTTP {}: {}", status.as_u16(), sanitize_error_body(&text));
+        }
+
+        Ok(resp.text()?)
+    }
+
     /// GET and return response as raw bytes.
     pub fn get_bytes(&self, path: &str, params: &[(&str, &str)]) -> anyhow::Result<Vec<u8>> {
         let bytes = self.get(path, params)?.bytes()?.to_vec();

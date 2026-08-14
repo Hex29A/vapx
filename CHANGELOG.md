@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.22.0
+
+### Added
+- **`vapx enroll <host>`**: set up a factory-default camera in one step — detect that it needs setup, generate a password that satisfies the device's own policy, create the initial administrator account, verify the login works, derive a config name from model and serial, and write the entry to `cameras.yaml`. Verified end-to-end against a factory-defaulted M1137 Mk II (AXIS OS 12.11.77).
+  - `--name` to choose the config key, otherwise derived as model plus serial tail (`m1137-mk-ii-f09697`), with collision fallback to the full serial.
+  - `--to-group` to file the camera in an existing group. Without it the camera joins no group: a group is a target for `vapx batch`, and a freshly enrolled camera is usually still on the bench. A non-existent group is refused *before* the camera is touched, since the account cannot be created twice.
+  - `--role` (default `admin`) always includes PTZ — the initial account is documented as requiring Administrator with PTZ on every generation.
+  - `--account` (default `root`): AXIS OS older than 11.5 accepts no other name for the first account, and the version cannot be read before that account exists.
+  - The password is **masked by default**. Use `--reveal` to print it, or `--out <file>` to write the full result to a 0600 file. If the config write fails, the credentials are still reported — the camera is never left with a password nobody has.
+  - `--dry-run` reports the device state, policy and plan without touching camera or config.
+- **`vapx systemready <host>`**: readiness and factory-default state, over the one VAPIX endpoint that answers **without credentials**. Reports `needsetup` (no initial account yet) and `passphrasepolicy`. `--until-ready` polls while a camera boots; `--after-bootid` waits for a *different* boot, because a camera told to reboot keeps answering "ready" for several seconds before it goes down.
+- **`vapx user add --initial`** (primary group `root`, for the first account on a factory-default device) and **`--strict-pwd`** (enforce the VAPIX password standard).
+
+### Fixed
+- **`-u`/`-p` bypassed the `cameras.yaml` lookup**: supplying credentials made `credentials::resolve` return before the config was consulted, so a configured camera *name* was resolved as a DNS hostname instead of its host. `vapx info m1137 -u x -p y` failed with a DNS error. The config is now consulted first; explicit flags still override the stored user and password — they override the credentials, not the address.
+
+### Security
+- **`pwdgrp.cgi` writes now go in the request body, not the URL.** Creating or updating an account put the password in the query string, where it lands in the camera's access log and in any error message that echoes the URL. Axis documents this explicitly: "It is not advisable to create user access data in the URL." `add` and `update` now POST form-encoded; only the field *names* are logged.
+
 ## v0.21.4
 
 ### Fixed

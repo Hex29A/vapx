@@ -15,9 +15,16 @@ pub struct Credentials {
     pub timeout: u64,
 }
 
-/// Resolve credentials in priority order:
-/// 1. Explicit -u/-p flags
-/// 2. cameras.yaml lookup by host/name
+/// Resolve credentials and the effective host.
+///
+/// cameras.yaml is consulted first so that a configured camera *name* always
+/// resolves to its real host, even when credentials are supplied on the command
+/// line. Explicit -u/-p still win over the stored user and password — they
+/// override the credentials, not the address.
+///
+/// Order:
+/// 1. cameras.yaml lookup by name/host (with -u/-p as credential overrides)
+/// 2. Explicit -u/-p flags for a host that is not in the config
 /// 3. Interactive prompt (if TTY)
 pub fn resolve(
     host: &str,
@@ -26,23 +33,8 @@ pub fn resolve(
     port: Option<u16>,
     insecure: bool,
 ) -> anyhow::Result<(Credentials, String)> {
-    // If both user and pass are given, use them directly
-    if let (Some(u), Some(p)) = (user, pass) {
-        debug!("Using credentials from CLI flags");
-        return Ok((
-            Credentials {
-                user: u.to_string(),
-                pass: p.to_string(),
-                https: false,
-                verify_ssl: !insecure,
-                port: port.unwrap_or(80),
-                timeout: 10,
-            },
-            host.to_string(),
-        ));
-    }
-
-    // Try cameras.yaml
+    // Try cameras.yaml first — the name must map to the configured host even
+    // when the caller brings its own credentials.
     if let Some(config) = load_cameras()? {
         if let Some((name, entry)) = config.find(host) {
             debug!("Found camera '{}' in config (host: {})", host, entry.host);
@@ -68,6 +60,22 @@ pub fn resolve(
                 ));
             }
         }
+    }
+
+    // Not in the config — use the flags directly against the host as given.
+    if let (Some(u), Some(p)) = (user, pass) {
+        debug!("Using credentials from CLI flags");
+        return Ok((
+            Credentials {
+                user: u.to_string(),
+                pass: p.to_string(),
+                https: false,
+                verify_ssl: !insecure,
+                port: port.unwrap_or(80),
+                timeout: 10,
+            },
+            host.to_string(),
+        ));
     }
 
     // Interactive prompt as fallback (only if TTY)

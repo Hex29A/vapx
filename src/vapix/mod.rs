@@ -19,6 +19,7 @@ pub mod selftest;
 pub mod signedvideo;
 pub mod storage;
 pub mod streamstatus;
+pub mod systemready;
 pub mod temperature;
 pub mod time;
 pub mod users;

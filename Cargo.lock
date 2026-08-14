@@ -1633,7 +1633,7 @@ checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
 
 [[package]]
 name = "vapx"
-version = "0.21.4"
+version = "0.22.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1643,6 +1643,7 @@ dependencies = [
  "dirs",
  "indicatif",
  "keyring",
+ "rand 0.8.6",
  "rayon",
  "reqwest",
  "roxmltree",

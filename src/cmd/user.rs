@@ -86,6 +86,13 @@ pub struct UserAddCmd {
     /// Account description
     #[arg(long, default_value = "")]
     pub comment: String,
+    /// Create as the device's initial account (primary group root).
+    /// Only valid on a factory-default device that has no account yet.
+    #[arg(long)]
+    pub initial: bool,
+    /// Enforce the VAPIX password standard (ASCII 0x20-0x7E, max 64 chars)
+    #[arg(long)]
+    pub strict_pwd: bool,
     #[arg(short, long, env = "VAPX_USER")]
     pub user: Option<String>,
     #[arg(short, long, env = "VAPX_PASS")]
@@ -204,7 +211,19 @@ impl UserAddCmd {
         let timeout = self.timeout.unwrap_or(creds.timeout);
         let client = VapixClient::new(&resolved_host, creds.port, creds, timeout);
         let sgrp = self.role.to_sgrp(self.ptz);
-        let result = users::add(&client, &self.name, &self.pwd, &sgrp, &self.comment)?;
+        let result = users::add(
+            &client,
+            &self.name,
+            &self.pwd,
+            &sgrp,
+            &self.comment,
+            if self.initial {
+                users::PrimaryGroup::Root
+            } else {
+                users::PrimaryGroup::Users
+            },
+            self.strict_pwd,
+        )?;
         crate::output::format::ok_msg(result.trim());
         Ok(())
     }
