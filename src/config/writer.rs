@@ -306,6 +306,89 @@ fn insert_group_member(content: &str, group: &str, camera: &str) -> anyhow::Resu
     Ok(out)
 }
 
+/// Rename a camera, updating its group memberships too.
+///
+/// A name derived by `enroll` (`m2035-le-55808f`) is always provisional — the
+/// names people actually use describe where the camera is. Renaming used to
+/// mean hand-editing the file, which is exactly the kind of chore that gets
+/// skipped.
+pub fn rename_camera(path: &Path, old: &str, new: &str) -> anyhow::Result<()> {
+    validate_name(new)?;
+
+    let original = fs::read_to_string(path)
+        .with_context(|| format!("Failed to read {}", path.display()))?;
+    let config = parse_config_str(&original)?;
+
+    if !config.cameras.contains_key(old) {
+        bail!("Camera '{}' not found in {}", old, path.display());
+    }
+    if config.cameras.contains_key(new) {
+        bail!("Camera '{}' already exists in {}", new, path.display());
+    }
+
+    let updated = rename_in_text(&original, old, new);
+
+    // Validate before replacing: same camera count, new name present, old gone,
+    // and every group keeps exactly the members it had.
+    let parsed = parse_config_str(&updated)
+        .with_context(|| "Refusing to write: the edited config would not parse")?;
+    if parsed.cameras.len() != config.cameras.len() {
+        bail!("Refusing to write: camera count changed");
+    }
+    if !parsed.cameras.contains_key(new) || parsed.cameras.contains_key(old) {
+        bail!("Refusing to write: rename did not take effect cleanly");
+    }
+    for (group, members) in &config.groups {
+        let after = parsed
+            .groups
+            .get(group)
+            .ok_or_else(|| anyhow::anyhow!("Refusing to write: group '{}' disappeared", group))?;
+        if after.len() != members.len() {
+            bail!("Refusing to write: group '{}' changed size", group);
+        }
+        let expected: Vec<&str> = members
+            .iter()
+            .map(|m| if m == old { new } else { m.as_str() })
+            .collect();
+        if after.iter().map(|s| s.as_str()).collect::<Vec<_>>() != expected {
+            bail!("Refusing to write: group '{}' members changed unexpectedly", group);
+        }
+    }
+
+    let backup = path.with_extension("yaml.bak");
+    fs::write(&backup, &original)
+        .with_context(|| format!("Failed to write backup {}", backup.display()))?;
+    restrict_permissions(&backup)?;
+
+    write_atomic(path, &updated)
+}
+
+/// Replace the camera key and any group memberships, leaving everything else —
+/// including a camera whose name merely *contains* the old one — untouched.
+fn rename_in_text(content: &str, old: &str, new: &str) -> String {
+    let mut out = String::with_capacity(content.len());
+    for line in content.lines() {
+        let trimmed = line.trim_start();
+        let indent = &line[..line.len() - trimmed.len()];
+
+        // The camera's own key: `  <old>:`
+        if !indent.is_empty() && trimmed == format!("{}:", old) {
+            out.push_str(&format!("{}{}:\n", indent, new));
+            continue;
+        }
+        // A group member: `    - <old>`
+        if let Some(rest) = trimmed.strip_prefix("- ") {
+            if rest.trim() == old {
+                out.push_str(&format!("{}- {}\n", indent, new));
+                continue;
+            }
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
 /// Write `content` to `path` atomically: temp file in the same directory,
 /// permissions tightened, then renamed over the target.
 fn write_atomic(path: &Path, content: &str) -> anyhow::Result<()> {
@@ -667,5 +750,105 @@ groups:
         let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);
         let _ = fs::remove_dir_all(&d);
+    }
+}
+
+#[cfg(test)]
+mod rename_tests {
+    use super::*;
+
+    const CFG: &str = r#"# Kameror
+cameras:
+  # Enrollad 2026-08-17
+  p1447-le-9c57f2:
+    host: "10.0.0.1"
+    pass: "a"
+
+  p1447-le-9c57f2-old:
+    host: "10.0.0.2"
+    pass: "b"
+
+groups:
+  work:
+    - p1447-le-9c57f2
+    - p1447-le-9c57f2-old
+  hemma:
+    - p1447-le-9c57f2-old
+"#;
+
+    fn tmpdir(tag: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("vapx-ren-{}-{}", tag, std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn renames_key_and_group_memberships() {
+        let out = rename_in_text(CFG, "p1447-le-9c57f2", "entren");
+        let p = parse_config_str(&out).unwrap();
+        assert!(p.cameras.contains_key("entren"));
+        assert!(!p.cameras.contains_key("p1447-le-9c57f2"));
+        assert_eq!(p.groups["work"], vec!["entren", "p1447-le-9c57f2-old"]);
+    }
+
+    #[test]
+    fn a_name_that_merely_contains_the_old_one_is_untouched() {
+        // The whole reason this is not a string replace.
+        let out = rename_in_text(CFG, "p1447-le-9c57f2", "entren");
+        let p = parse_config_str(&out).unwrap();
+        assert!(p.cameras.contains_key("p1447-le-9c57f2-old"), "prefix match got renamed");
+        assert_eq!(p.groups["hemma"], vec!["p1447-le-9c57f2-old"]);
+        assert_eq!(p.cameras["p1447-le-9c57f2-old"].host, "10.0.0.2");
+    }
+
+    #[test]
+    fn comments_and_other_fields_survive() {
+        let out = rename_in_text(CFG, "p1447-le-9c57f2", "entren");
+        assert!(out.contains("# Kameror"));
+        assert!(out.contains("# Enrollad 2026-08-17"));
+        let p = parse_config_str(&out).unwrap();
+        assert_eq!(p.cameras["entren"].host, "10.0.0.1");
+        assert_eq!(p.cameras["entren"].pass.as_deref(), Some("a"));
+    }
+
+    #[test]
+    fn end_to_end_write_with_backup_and_permissions() {
+        let d = tmpdir("ok");
+        let path = d.join("cameras.yaml");
+        fs::write(&path, CFG).unwrap();
+
+        rename_camera(&path, "p1447-le-9c57f2", "entren").unwrap();
+
+        let p = parse_config_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert!(p.cameras.contains_key("entren"));
+        assert_eq!(p.cameras.len(), 2);
+        assert_eq!(p.groups["work"], vec!["entren", "p1447-le-9c57f2-old"]);
+        assert_eq!(fs::read_to_string(d.join("cameras.yaml.bak")).unwrap(), CFG);
+        assert_eq!(fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn refuses_unknown_source_and_taken_target() {
+        let d = tmpdir("refuse");
+        let path = d.join("cameras.yaml");
+        fs::write(&path, CFG).unwrap();
+
+        assert!(rename_camera(&path, "finns-inte", "x").is_err());
+        assert!(rename_camera(&path, "p1447-le-9c57f2", "p1447-le-9c57f2-old").is_err());
+        assert!(rename_camera(&path, "p1447-le-9c57f2", "bad name").is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), CFG, "file must be untouched");
+
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn camera_in_no_group_renames_fine() {
+        let yaml = "cameras:\n  solo:\n    host: \"1.1.1.1\"\n    pass: \"a\"\ngroups: {}\n";
+        let out = rename_in_text(yaml, "solo", "entren");
+        let p = parse_config_str(&out).unwrap();
+        assert!(p.cameras.contains_key("entren"));
     }
 }

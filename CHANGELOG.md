@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.23.0
+
+### Added
+- **`vapx config rename <from> <to>`**: rename a camera and update every group that references it, in one step. The name `enroll` derives (`p1447-le-9c57f2`) is always provisional — real names describe where a camera is — and renaming previously meant hand-editing YAML. Same guarantees as the other config writes: validated by re-parsing (camera count, group membership and ordering must be preserved), atomic, backed up, chmod 600, comments intact. A camera whose name merely *contains* the old one is left alone.
+- **`vapx user list --all`**, and role-group filtering by default: AXIS OS 10.x and older return all ~169 system groups, which buried the five that describe access. The default output now shows only role groups, with a note on stderr; `--all` restores the full listing. Newer firmware is unaffected.
+
+### Fixed
+- **A camera older than AXIS OS 9.50 now says so.** `systemready.cgi` does not exist below 9.50, and the resulting 404 surfaced as "Could not reach \<host\> — HTTP 404", which blames the network for what is really firmware age. The error now names the 9.50 requirement and points at `vapx user add --initial` as the manual path. Genuine connection failures are unchanged.
+
 ## v0.22.0
 
 ### Added
@@ -15,7 +24,6 @@
 - **`vapx user add --initial`** (primary group `root`, for the first account on a factory-default device) and **`--strict-pwd`** (enforce the VAPIX password standard).
 
 ### Fixed
-- **A camera older than AXIS OS 9.50 now says so.** `systemready.cgi` does not exist below 9.50, and the resulting 404 surfaced as "Could not reach \<host\> — HTTP 404", which blames the network for what is really firmware age. The error now names the 9.50 requirement and points at `vapx user add --initial` as the manual path. Genuine connection failures are unchanged.
 - **`-u`/`-p` bypassed the `cameras.yaml` lookup**: supplying credentials made `credentials::resolve` return before the config was consulted, so a configured camera *name* was resolved as a DNS hostname instead of its host. `vapx info m1137 -u x -p y` failed with a DNS error. The config is now consulted first; explicit flags still override the stored user and password — they override the credentials, not the address.
 
 ### Security

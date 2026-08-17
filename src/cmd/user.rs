@@ -65,7 +65,18 @@ pub struct UserListCmd {
     /// Request timeout in seconds
     #[arg(long)]
     pub timeout: Option<u64>,
+    /// Show every group the device reports, not just the role groups.
+    ///
+    /// AXIS OS 10.x and older answer with all ~169 system groups; newer
+    /// firmware returns only the roles. Without this flag the output is
+    /// narrowed to the groups that describe access.
+    #[arg(long)]
+    pub all: bool,
 }
+
+/// The groups that say what an account may do. Everything else on older
+/// firmware is a Unix system group that happens to be in the same listing.
+const ROLE_GROUPS: [&str; 6] = ["admin", "operator", "viewer", "ptz", "users", "digusers"];
 
 #[derive(Args)]
 pub struct UserAddCmd {
@@ -177,12 +188,17 @@ impl UserListCmd {
             print!("{}", text);
         } else {
             let mut map = serde_json::Map::new();
+            let mut hidden = 0usize;
             for line in text.lines() {
                 let line = line.trim();
                 if line.is_empty() {
                     continue;
                 }
                 if let Some((k, v)) = line.split_once('=') {
+                    if !self.all && !ROLE_GROUPS.contains(&k) {
+                        hidden += 1;
+                        continue;
+                    }
                     let users_str = v.trim_matches('"');
                     let user_list: Vec<serde_json::Value> = users_str
                         .split(',')
@@ -191,6 +207,12 @@ impl UserListCmd {
                         .collect();
                     map.insert(k.to_string(), serde_json::Value::Array(user_list));
                 }
+            }
+            if hidden > 0 {
+                eprintln!(
+                    "Note: {} non-role groups hidden (older AXIS OS lists all system groups). Use --all to see them.",
+                    hidden
+                );
             }
             crate::output::format::ok(&map);
         }

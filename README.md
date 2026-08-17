@@ -71,7 +71,7 @@ The `host` argument can be an IP address, hostname, or a camera name defined in 
 | `signedvideo` | Signed video management (status, enable, disable) |
 | `zipstream` | ZipStream compression profiles (status, set) |
 | `viewarea` | View area management (list, get, set geometry) |
-| `config` | Manage cameras.yaml (path, check, list, init, add) |
+| `config` | Manage cameras.yaml (path, check, list, init, add, rename) |
 | `enroll` | Set up a factory-default camera: create the initial account and add it to cameras.yaml |
 | `systemready` | Device readiness and factory-default state (works without credentials) |
 | `completions` | Generate shell completions (bash, zsh, fish) |
@@ -216,6 +216,10 @@ BOOT=$(vapx systemready mycam | jq -r .data.bootid)
 vapx fw factory-default mycam --mode soft
 vapx systemready mycam --until-ready 300 --after-bootid "$BOOT"
 
+# Rename a camera, updating its group memberships too. The name enroll
+# derives is provisional; real names describe where the camera is.
+vapx config rename p1447-le-9c57f2 entren
+
 # Show config file location
 vapx config path
 
@@ -353,9 +357,11 @@ Two things worth knowing when testing this yourself:
   factoryDefault=hard is set`. `--factory-default hard` also resets the network
   settings, so confirm the device will come back on DHCP before doing it
   remotely.
-- **`vapx user list` is unwieldy on AXIS OS 10.x**, which returns all 169 system
-  groups rather than the five role groups newer firmware reports. The account's
-  roles are in there, just buried.
+- **`vapx user list` narrows its output on AXIS OS 10.x and older**, which
+  answer with all ~169 system groups rather than the five role groups newer
+  firmware reports. Only the role groups (admin, operator, viewer, ptz, users,
+  digusers) are shown, with a note on stderr saying how many were hidden; pass
+  `--all` for the raw listing.
 
 This is why `--account` defaults to `root`: it is the only name accepted
 across every generation, and the firmware version cannot be read beforehand —

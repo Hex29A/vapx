@@ -47,6 +47,13 @@ pub enum ConfigCommands {
         #[arg(long)]
         no_verify: bool,
     },
+    /// Rename a camera, updating its group memberships too
+    Rename {
+        /// Current name in cameras.yaml
+        from: String,
+        /// New name
+        to: String,
+    },
     /// Store a camera password in the OS keyring
     SetSecret {
         /// Camera name (as defined in cameras.yaml)
@@ -205,6 +212,12 @@ impl ConfigCmd {
                 )?;
 
                 format::ok_msg(&format!("Added camera '{}' ({}) to {}", name, host, config_path.display()));
+            }
+            ConfigCommands::Rename { from, to } => {
+                let config_path = cameras::config_path()
+                    .ok_or_else(|| anyhow::anyhow!("No config file found"))?;
+                writer::rename_camera(&config_path, &from, &to)?;
+                format::ok_msg(&format!("Renamed '{}' to '{}' in {}", from, to, config_path.display()));
             }
             ConfigCommands::SetSecret { name } => {
                 set_keyring_secret(&name)?;
