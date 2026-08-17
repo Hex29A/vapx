@@ -93,8 +93,10 @@ impl EnrollCmd {
         // 1. Probe without credentials — the only thing that works on a
         //    factory-default camera.
         let anon = self.anonymous_client();
+        // Name the host but do not assert *why* it failed — the error may
+        // already say the endpoint is missing rather than unreachable.
         let state = systemready::query(&anon, 10)
-            .map_err(|e| anyhow::anyhow!("Could not reach {} — {}", self.host, e))?;
+            .map_err(|e| anyhow::anyhow!("{}: {}", self.host, e))?;
 
         if !state.systemready {
             anyhow::bail!(

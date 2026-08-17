@@ -100,9 +100,29 @@ pub fn query(client: &VapixClient, wait: u64) -> anyhow::Result<SystemReady> {
         "method": "systemready",
         "params": { "timeout": wait },
     });
-    let resp = client.post_json("/axis-cgi/systemready.cgi", &body)?;
+    let resp = client
+        .post_json("/axis-cgi/systemready.cgi", &body)
+        .map_err(explain_missing_endpoint)?;
     let data = resp.get("data").unwrap_or(&resp);
     Ok(SystemReady::from_data(data))
+}
+
+/// A 404 here means the device answered — it simply predates the API.
+///
+/// Left alone this surfaces as "Could not reach <host> — HTTP 404", which
+/// points at the network when the real cause is firmware age. Say so instead,
+/// and name the way forward.
+fn explain_missing_endpoint(e: anyhow::Error) -> anyhow::Error {
+    if e.to_string().contains("HTTP 404") {
+        return anyhow::anyhow!(
+            "systemready.cgi is not available on this device. The API exists from \
+             AXIS OS 9.50 onward, so this camera is almost certainly older — vapx \
+             cannot tell whether it still needs its initial account. If you know it \
+             is factory-default, create the account directly:\n  \
+             vapx user add <host> --name root --pwd <password> --role admin --ptz --initial"
+        );
+    }
+    e
 }
 
 #[cfg(test)]
@@ -171,5 +191,27 @@ mod tests {
         assert_eq!(PassphrasePolicy::from_str(Some("complex")), PassphrasePolicy::Complex);
         assert_eq!(PassphrasePolicy::from_str(None), PassphrasePolicy::Unknown);
         assert_eq!(PassphrasePolicy::Complex.as_str(), "complex");
+    }
+}
+
+#[cfg(test)]
+mod endpoint_tests {
+    use super::*;
+
+    #[test]
+    fn a_404_is_explained_as_firmware_age_not_a_network_problem() {
+        let e = explain_missing_endpoint(anyhow::anyhow!("HTTP 404: 404 Not Found"));
+        let msg = e.to_string();
+        assert!(msg.contains("9.50"), "should name the firmware requirement: {}", msg);
+        assert!(msg.contains("--initial"), "should point at the manual path: {}", msg);
+        assert!(!msg.contains("Could not reach"), "should not blame the network: {}", msg);
+    }
+
+    #[test]
+    fn other_errors_pass_through_untouched() {
+        let e = explain_missing_endpoint(anyhow::anyhow!("connection refused"));
+        assert_eq!(e.to_string(), "connection refused");
+        let e = explain_missing_endpoint(anyhow::anyhow!("HTTP 401: Unauthorized"));
+        assert_eq!(e.to_string(), "HTTP 401: Unauthorized");
     }
 }

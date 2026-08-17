@@ -15,6 +15,7 @@
 - **`vapx user add --initial`** (primary group `root`, for the first account on a factory-default device) and **`--strict-pwd`** (enforce the VAPIX password standard).
 
 ### Fixed
+- **A camera older than AXIS OS 9.50 now says so.** `systemready.cgi` does not exist below 9.50, and the resulting 404 surfaced as "Could not reach \<host\> — HTTP 404", which blames the network for what is really firmware age. The error now names the 9.50 requirement and points at `vapx user add --initial` as the manual path. Genuine connection failures are unchanged.
 - **`-u`/`-p` bypassed the `cameras.yaml` lookup**: supplying credentials made `credentials::resolve` return before the config was consulted, so a configured camera *name* was resolved as a DNS hostname instead of its host. `vapx info m1137 -u x -p y` failed with a DNS error. The config is now consulted first; explicit flags still override the stored user and password — they override the credentials, not the address.
 
 ### Security
