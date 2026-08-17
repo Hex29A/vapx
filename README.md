@@ -334,17 +334,28 @@ vapx mangen /usr/local/share/man/man1/
 
 ## Enroll: firmware support
 
-`vapx enroll` has been verified end-to-end against **AXIS OS 12.11** (M1137
-Mk II), repeatedly factory-defaulted and enrolled from scratch.
+`vapx enroll` has been verified end-to-end on both sides of the 11.5 boundary,
+each time by factory-defaulting a camera and enrolling it from scratch:
 
-**It has not been tested on AXIS OS older than 11.5.** On those versions Axis
-documents stricter rules for the very first account, which vapx follows but
-has not confirmed against hardware:
+| AXIS OS | Rules for the initial account (per Axis docs) | Status |
+|---------|-----------------------------------------------|--------|
+| 11.5 and later | Must be Administrator with PTZ. Name is free. | **Verified** on 12.11 (M1137 Mk II) and 11.11 (P1447-LE) |
+| Older than 11.5 | Must be named `root`, Administrator with PTZ, and `comment` must be empty or omitted. Can be created once and cannot be deleted. | **Verified** on 10.12 (P1447-LE) |
 
-| AXIS OS | Rules for the initial account (per Axis docs) |
-|---------|-----------------------------------------------|
-| 11.5 and later | Must be Administrator with PTZ. Name is free. **Verified on 12.11.** |
-| Older than 11.5 | Must be named `root`, Administrator with PTZ, and `comment` must be empty or omitted. Can be created once and cannot be deleted. **Untested.** |
+The oldest tested release is 10.12.338. Below AXIS OS 9.50 enroll cannot work
+at all: `systemready.cgi` does not exist there, so there is no way to detect
+that a camera needs setup.
+
+Two things worth knowing when testing this yourself:
+
+- **Downgrading requires a hard factory default.** A camera on 11.11 refuses a
+  downgrade with `VAPIX error 409: Downgrade is only allowed if
+  factoryDefault=hard is set`. `--factory-default hard` also resets the network
+  settings, so confirm the device will come back on DHCP before doing it
+  remotely.
+- **`vapx user list` is unwieldy on AXIS OS 10.x**, which returns all 169 system
+  groups rather than the five role groups newer firmware reports. The account's
+  roles are in there, just buried.
 
 This is why `--account` defaults to `root`: it is the only name accepted
 across every generation, and the firmware version cannot be read beforehand —
