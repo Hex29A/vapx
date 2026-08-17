@@ -58,6 +58,9 @@ vapx/
       template.rs        # vapx template — desired-state parameter templates
       audit.rs           # vapx audit — security posture audit
       cert.rs            # vapx cert — certificate management
+      clip.rs            # vapx clip — audio clip management
+      enroll.rs          # vapx enroll — factory-default camera setup
+      systemready.rs     # vapx systemready — readiness / needs-setup (no auth)
       watch.rs           # vapx watch — multi-camera event monitoring
       rule.rs            # vapx rule — action rule management
       storage.rs         # vapx storage — SD card/edge storage management
@@ -84,7 +87,10 @@ vapx/
       applications.rs    # ACAP application list/control (XML)
       ptz.rs             # PTZ control (com/ptz.cgi)
       params.rs          # Parameter management (param.cgi)
-      users.rs           # User management (pwdgrp.cgi)
+      users.rs           # User management (pwdgrp.cgi, POST form — never the URL)
+      systemready.rs     # Systemready API — the one endpoint that needs no auth
+      audio_clip.rs      # Audio clip management
+      ws.rs              # WebSocket helper for event streaming
       time.rs            # Time/NTP configuration (param.cgi root.Time)
       io.rs              # I/O port configuration (param.cgi root.IOPort)
       network.rs         # Network configuration (param.cgi root.Network)
@@ -106,6 +112,10 @@ vapx/
       mod.rs
       cameras.rs         # cameras.yaml loading, env var substitution
       credentials.rs     # Credential resolution (yaml > keyring > flags > prompt)
+      writer.rs          # Safe cameras.yaml edits — validated, atomic, comment-preserving
+    enroll/
+      naming.rs          # Config-key derivation from model + serial
+      password.rs        # Policy-aware password generation
     output/
       mod.rs
       format.rs          # JSON and plain text formatters
@@ -337,3 +347,19 @@ impl XxxCmd {
 - [x] `vapx light` — IR illuminator status and intensity (LightControl params)
 - [x] `vapx vmd` — video motion detection configuration (Motion params)
 - [x] `vapx audio` — audio source configuration (AudioSource params)
+
+### Priority 8 — Onboarding factory-default cameras
+- [x] `vapx systemready` — readiness and `needsetup` over the one VAPIX endpoint that answers **without credentials** (AXIS OS 9.50+). `--until-ready` polls a booting camera; `--after-bootid` waits for a *different* boot, because a camera keeps answering "ready" for seconds after being told to reboot.
+- [x] `vapx enroll` — take a factory-default camera to a working `cameras.yaml` entry: detect `needsetup`, generate a password matching the device's own `passphrasepolicy`, create the initial admin account unauthenticated, verify the login, derive a name from model + serial, write the config. Verified on AXIS OS 10.12, 11.11 and 12.11.
+- [x] `vapx user add --initial` (primary group `root`) and `--strict-pwd` (enforce the VAPIX password standard)
+- [x] `vapx config rename` — rename a camera and every group reference
+- [x] `vapx config group list|add|remove` — group membership from the CLI
+- [x] `vapx user list --all` — role-group filtering by default (AXIS OS 10.x returns ~169 system groups)
+
+### Constraints worth knowing before changing enroll
+
+- On a factory-default camera **only `systemready.cgi` answers without auth**. `basicdeviceinfo.cgi` and `param.cgi` return 401, so model, serial and firmware version cannot be read until the account exists. That is why the name is derived *after* account creation and why `--account` defaults to `root` (the only name accepted below AXIS OS 11.5).
+- The unauthenticated window **closes as soon as the initial account exists** — the next `pwdgrp` call returns 401. The account cannot be created twice, so anything that could fail the run (unknown group, name collision) is checked *before* the camera is touched.
+- Below AXIS OS 9.50 `systemready.cgi` does not exist; enroll cannot detect setup state at all and says so explicitly rather than reporting a network error.
+- `passphrasepolicy` is only sent by AXIS OS 12.x. 10.12 and 11.11 omit it, so the unknown-policy fallback (strictest interpretation) is the common path, not the exception.
+- All `cameras.yaml` writes go through `config/writer.rs`: re-parse and validate before replacing, atomic rename, `.bak` copy, chmod 600, comments and ordering preserved. Never round-trip the file through serde — it would drop comments and reorder the camera map.

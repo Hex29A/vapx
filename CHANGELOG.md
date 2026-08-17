@@ -43,6 +43,12 @@
 - **Config writes are now safe by construction** (`src/config/writer.rs`): the entry is placed at the end of the `cameras:` block, the edited document is re-parsed *before* it replaces anything (an edit that would not parse, or that would drop an existing camera, is refused and the file is left untouched), the write lands atomically via a temp file in the same directory, the original is kept as `cameras.yaml.bak`, and the config is chmod 600 — it holds passwords in plain text. Comments and camera order are preserved, so hand-maintained notes in the file survive.
 - **`config add` warns when no password is given**: such an entry is unusable, and the vapx-mcp server treats it as a hard error for the whole config.
 
+## v0.21.3
+
+### Fixed
+- **Storage health/info fell back to a method that omits sizes** (#37): when `disks/properties.cgi` returned 404, both fallback paths used the modern JSON `listDisks`, which drops `totalsize`/`freesize` on some AXIS OS 12.x firmware — so the fields were silently missing. They now use the classic `disks/list.cgi` XML endpoint, which does carry them. Verified against two cameras on AXIS OS 12.11.37.
+- **`log report` timed out over WAN links** (#38): a server report runs to several hundred KB and took 30-35s to generate and download, against the general 10s timeout. The default for `Report` is now 120s; `--timeout` still overrides.
+
 ## v0.21.2
 
 ### Fixed
