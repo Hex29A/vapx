@@ -225,6 +225,12 @@ vapx config group list
 vapx config group add work p1447
 vapx config group remove work p1447
 
+# Decommission a camera: entry, group memberships, its own comments and its
+# keyring secret, in one step. Asks for the name back before it writes.
+vapx config remove nyckelboxen          # aliases: delete, rm
+vapx config remove nyckelboxen -y       # no prompt (required when not a TTY)
+vapx config remove nyckelboxen --keep-secret
+
 # Show config file location
 vapx config path
 

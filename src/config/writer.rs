@@ -380,6 +380,213 @@ fn remove_group_member(content: &str, group: &str, camera: &str, last_member: bo
     out
 }
 
+/// What `remove_camera` took out, for the caller to report.
+pub struct Removed {
+    /// Groups the camera was a member of.
+    pub groups: Vec<String>,
+    /// Comment lines directly above the entry that went with it.
+    pub comment_lines: usize,
+}
+
+/// Remove a camera: its entry, its group memberships, and the comment lines
+/// that belong to it.
+///
+/// A decommissioned camera should leave nothing behind. Comments sitting
+/// directly above an entry describe *that* camera ("ny 2026-07-06, flyttas till
+/// .22 vid driftsättning") — left in place they document something that no
+/// longer exists, which is worse than no comment at all. Only an unbroken run
+/// of comment lines immediately above the key is taken; a comment separated by
+/// a blank line reads as a heading for the section and stays.
+///
+/// Same guarantees as the other writes: re-parsed before replacing the
+/// original, backed up, atomic.
+pub fn remove_camera(path: &Path, name: &str) -> anyhow::Result<Removed> {
+    let original = fs::read_to_string(path)
+        .with_context(|| format!("Failed to read {}", path.display()))?;
+    let config = parse_config_str(&original)?;
+
+    if !config.cameras.contains_key(name) {
+        bail!("Camera '{}' not found in {}", name, path.display());
+    }
+
+    let groups: Vec<String> = {
+        let mut g: Vec<String> = config
+            .groups
+            .iter()
+            .filter(|(_, members)| members.iter().any(|m| m == name))
+            .map(|(group, _)| group.clone())
+            .collect();
+        g.sort();
+        g
+    };
+
+    let (updated, comment_lines) = remove_camera_text(&original, name, &config.groups);
+
+    // Validate before replacing: exactly this camera gone, everything else kept,
+    // and no group lost a member other than this one.
+    let parsed = parse_config_str(&updated)
+        .with_context(|| "Refusing to write: the edited config would not parse")?;
+    if parsed.cameras.contains_key(name) {
+        bail!("Refusing to write: '{}' is still in the config", name);
+    }
+    if parsed.cameras.len() + 1 != config.cameras.len() {
+        bail!(
+            "Refusing to write: camera count went from {} to {}, expected {}",
+            config.cameras.len(),
+            parsed.cameras.len(),
+            config.cameras.len() - 1
+        );
+    }
+    for other in config.cameras.keys().filter(|k| k.as_str() != name) {
+        if !parsed.cameras.contains_key(other) {
+            bail!("Refusing to write: camera '{}' would be lost by this edit", other);
+        }
+    }
+    for (group, members) in &config.groups {
+        let after = parsed
+            .groups
+            .get(group)
+            .ok_or_else(|| anyhow::anyhow!("Refusing to write: group '{}' disappeared", group))?;
+        let expected: Vec<&str> = members
+            .iter()
+            .filter(|m| m.as_str() != name)
+            .map(|m| m.as_str())
+            .collect();
+        if after.iter().map(|s| s.as_str()).collect::<Vec<_>>() != expected {
+            bail!("Refusing to write: group '{}' members changed unexpectedly", group);
+        }
+    }
+
+    let backup = path.with_extension("yaml.bak");
+    fs::write(&backup, &original)
+        .with_context(|| format!("Failed to write backup {}", backup.display()))?;
+    restrict_permissions(&backup)?;
+
+    write_atomic(path, &updated)?;
+
+    Ok(Removed {
+        groups,
+        comment_lines,
+    })
+}
+
+/// Drop the camera's entry, its leading comments and its group memberships.
+///
+/// Returns the new content and how many comment lines went with the entry.
+/// A camera whose name merely *contains* the removed one is left alone: keys
+/// are matched whole, as `  <name>:`.
+fn remove_camera_text(
+    content: &str,
+    name: &str,
+    groups: &std::collections::HashMap<String, Vec<String>>,
+) -> (String, usize) {
+    let lines: Vec<&str> = content.lines().collect();
+    let key = format!("{}:", name);
+
+    // Locate the entry and the indentation it sits at.
+    let mut entry_at = None;
+    for (i, line) in lines.iter().enumerate() {
+        let trimmed = line.trim_start();
+        let indent = line.len() - trimmed.len();
+        if indent > 0 && trimmed == key {
+            entry_at = Some((i, indent));
+            break;
+        }
+    }
+    let Some((start, indent)) = entry_at else {
+        return (content.to_string(), 0);
+    };
+
+    // The entry owns every following line indented deeper than its key.
+    let mut end = start;
+    for (i, line) in lines.iter().enumerate().skip(start + 1) {
+        if line.trim().is_empty() {
+            // A blank line inside the entry only counts if more of the entry follows.
+            continue;
+        }
+        let deeper = line.len() - line.trim_start().len() > indent;
+        if deeper {
+            end = i;
+        } else {
+            break;
+        }
+    }
+
+    // Walk back over an unbroken run of comment lines at the same indentation.
+    let mut first = start;
+    while first > 0 {
+        let prev = lines[first - 1];
+        let trimmed = prev.trim_start();
+        if trimmed.starts_with('#') && !trimmed.is_empty() {
+            first -= 1;
+        } else {
+            break;
+        }
+    }
+    let comment_lines = start - first;
+
+    // Which groups list this camera — only those lines get dropped.
+    let member_of: Vec<&str> = groups
+        .iter()
+        .filter(|(_, members)| members.iter().any(|m| m == name))
+        .map(|(g, _)| g.as_str())
+        .collect();
+
+    // The entry usually sits between blank lines. Dropping it would leave the
+    // two of them stacked, so one goes with it.
+    let mut skip_end = end;
+    let blank_before = first > 0 && lines[first - 1].trim().is_empty();
+    let blank_after = end + 1 < lines.len() && lines[end + 1].trim().is_empty();
+    if blank_before && blank_after {
+        skip_end = end + 1;
+    }
+
+    let mut out = String::with_capacity(content.len());
+    let mut i = 0;
+    let mut in_group: Option<&str> = None;
+    while i < lines.len() {
+        if i >= first && i <= skip_end {
+            i += 1; // the entry, its comments, and a doubled blank line
+            continue;
+        }
+        let line = lines[i];
+        let trimmed = line.trim_start();
+
+        if !line.starts_with(' ') && !line.starts_with('\t') && !trimmed.is_empty() {
+            in_group = None; // left the groups block entirely
+        }
+        if let Some(&group) = member_of.iter().find(|g| trimmed == format!("{}:", g)) {
+            // Mark the group before anything else: the member line below still
+            // has to be dropped even when the key is rewritten as empty.
+            in_group = Some(group);
+            // Last member: rewrite as an explicit empty list, or YAML reads it as null.
+            if groups.get(group).map(|m| m.len()) == Some(1) {
+                let pad = &line[..line.len() - trimmed.len()];
+                out.push_str(&format!("{}{}: []\n", pad, group));
+                i += 1;
+                continue;
+            }
+        } else if !trimmed.starts_with('-') && trimmed.ends_with(':') && !trimmed.is_empty() {
+            in_group = None; // a different group started
+        }
+
+        if in_group.is_some() {
+            if let Some(rest) = trimmed.strip_prefix("- ") {
+                if rest.trim() == name {
+                    i += 1; // drop this membership
+                    continue;
+                }
+            }
+        }
+
+        out.push_str(line);
+        out.push('\n');
+        i += 1;
+    }
+
+    (out, comment_lines)
+}
+
 /// Rename a camera, updating its group memberships too.
 ///
 /// A name derived by `enroll` (`m2035-le-55808f`) is always provisional — the
@@ -1019,6 +1226,176 @@ groups:
             parse_config_str(&fs::read_to_string(&path).unwrap()).unwrap().groups["hemma"],
             vec!["b"]
         );
+        let _ = fs::remove_dir_all(&d);
+    }
+}
+
+#[cfg(test)]
+mod remove_tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    const CFG: &str = r#"# Kameror
+cameras:
+  west:
+    host: "192.168.1.20"
+    pass: "a"
+
+  # Ny 2026-07-06 (M2035-LE), ersätter nedtagna nyckelskap.
+  # Flyttas till 192.168.8.22 vid driftsättning.
+  nyckelboxen:
+    host: "192.168.8.22"
+    pass: "b"
+    timeout: 30
+
+  nyckelboxen-old:
+    host: "192.168.8.29"
+    pass: "c"
+
+groups:
+  alphyddan:
+    - west
+    - nyckelboxen
+  hemma:
+    - nyckelboxen
+"#;
+
+    fn groups_of(content: &str) -> HashMap<String, Vec<String>> {
+        parse_config_str(content).unwrap().groups
+    }
+
+    fn tmpdir(tag: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("vapx-rmc-{}-{}", tag, std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn removes_entry_and_group_memberships() {
+        let (out, _) = remove_camera_text(CFG, "nyckelboxen", &groups_of(CFG));
+        let p = parse_config_str(&out).unwrap();
+        assert!(!p.cameras.contains_key("nyckelboxen"));
+        assert_eq!(p.cameras.len(), 2);
+        assert_eq!(p.groups["alphyddan"], vec!["west"]);
+    }
+
+    #[test]
+    fn takes_the_comments_that_belong_to_it() {
+        let (out, comments) = remove_camera_text(CFG, "nyckelboxen", &groups_of(CFG));
+        assert_eq!(comments, 2);
+        assert!(!out.contains("Flyttas till"), "orphaned comment left behind:\n{}", out);
+        assert!(!out.contains("ersätter nedtagna"), "orphaned comment left behind:\n{}", out);
+        // The file's own heading is not attached to any camera and stays.
+        assert!(out.starts_with("# Kameror"));
+    }
+
+    #[test]
+    fn a_name_that_merely_contains_the_removed_one_survives() {
+        // Same reason rename is not a string replace.
+        let (out, _) = remove_camera_text(CFG, "nyckelboxen", &groups_of(CFG));
+        let p = parse_config_str(&out).unwrap();
+        assert!(p.cameras.contains_key("nyckelboxen-old"), "prefix match got removed");
+        assert_eq!(p.cameras["nyckelboxen-old"].host, "192.168.8.29");
+    }
+
+    #[test]
+    fn group_left_empty_is_written_as_an_empty_list() {
+        // A bare `hemma:` would parse as null and the config would refuse to load.
+        let (out, _) = remove_camera_text(CFG, "nyckelboxen", &groups_of(CFG));
+        assert!(out.contains("hemma: []"), "empty group not written as a list:\n{}", out);
+        let p = parse_config_str(&out).unwrap();
+        assert!(p.groups["hemma"].is_empty());
+    }
+
+    #[test]
+    fn last_member_leaves_no_stray_list_item() {
+        // Regression: writing `hemma: []` while leaving the `- nyckelboxen`
+        // line below it produced YAML that would not parse at all.
+        let (out, _) = remove_camera_text(CFG, "nyckelboxen", &groups_of(CFG));
+        assert!(
+            parse_config_str(&out).is_ok(),
+            "emptied group left a dangling member:\n{}",
+            out
+        );
+        assert!(!out.contains("- nyckelboxen\n"), "membership line survived:\n{}", out);
+    }
+
+    #[test]
+    fn does_not_leave_a_doubled_blank_line() {
+        let (out, _) = remove_camera_text(CFG, "nyckelboxen", &groups_of(CFG));
+        assert!(!out.contains("\n\n\n"), "blank lines stacked up:\n{}", out);
+    }
+
+    #[test]
+    fn other_cameras_keep_their_settings() {
+        let (out, _) = remove_camera_text(CFG, "nyckelboxen", &groups_of(CFG));
+        let p = parse_config_str(&out).unwrap();
+        assert_eq!(p.cameras["west"].host, "192.168.1.20");
+        assert_eq!(p.groups["alphyddan"], vec!["west"]);
+    }
+
+    #[test]
+    fn unknown_camera_is_an_error_and_writes_nothing() {
+        let d = tmpdir("unknown");
+        let path = d.join("cameras.yaml");
+        fs::write(&path, CFG).unwrap();
+
+        assert!(remove_camera(&path, "finnsinte").is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), CFG, "file was modified");
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn writes_atomically_with_a_backup_and_reports_what_went() {
+        let d = tmpdir("write");
+        let path = d.join("cameras.yaml");
+        fs::write(&path, CFG).unwrap();
+
+        let removed = remove_camera(&path, "nyckelboxen").unwrap();
+        assert_eq!(removed.groups, vec!["alphyddan", "hemma"]);
+        assert_eq!(removed.comment_lines, 2);
+
+        let after = fs::read_to_string(&path).unwrap();
+        assert!(!after.contains("nyckelboxen:\n"));
+        assert!(parse_config_str(&after).is_ok());
+        assert_eq!(
+            fs::read_to_string(path.with_extension("yaml.bak")).unwrap(),
+            CFG,
+            "backup does not hold the original"
+        );
+        let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn add_then_remove_round_trips() {
+        let d = tmpdir("round");
+        let path = d.join("cameras.yaml");
+        fs::write(&path, CFG).unwrap();
+
+        add_camera(
+            &path,
+            &NewCamera {
+                name: "tillfallig".into(),
+                host: "10.9.9.9".into(),
+                user: None,
+                pass: Some("pw".into()),
+                https: false,
+                port: None,
+            },
+        )
+        .unwrap();
+        assert!(parse_config_str(&fs::read_to_string(&path).unwrap())
+            .unwrap()
+            .cameras
+            .contains_key("tillfallig"));
+
+        remove_camera(&path, "tillfallig").unwrap();
+        let after = parse_config_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert!(!after.cameras.contains_key("tillfallig"));
+        assert_eq!(after.cameras.len(), 3, "the original cameras are all still there");
         let _ = fs::remove_dir_all(&d);
     }
 }

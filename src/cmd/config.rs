@@ -1,3 +1,5 @@
+use std::io::{IsTerminal, Write};
+
 use clap::{Args, Subcommand};
 
 use crate::config::cameras;
@@ -53,6 +55,18 @@ pub enum ConfigCommands {
         from: String,
         /// New name
         to: String,
+    },
+    /// Remove a camera: its entry, group memberships, comments and keyring secret
+    #[command(visible_alias = "delete", visible_alias = "rm")]
+    Remove {
+        /// Camera name (as defined in cameras.yaml)
+        name: String,
+        /// Do not ask for confirmation
+        #[arg(short = 'y', long)]
+        yes: bool,
+        /// Leave the password in the OS keyring
+        #[arg(long)]
+        keep_secret: bool,
     },
     /// Manage camera groups (targets for `vapx batch`)
     Group {
@@ -244,6 +258,73 @@ impl ConfigCmd {
                 writer::rename_camera(&config_path, &from, &to)?;
                 format::ok_msg(&format!("Renamed '{}' to '{}' in {}", from, to, config_path.display()));
             }
+            ConfigCommands::Remove {
+                name,
+                yes,
+                keep_secret,
+            } => {
+                let config_path = cameras::config_path()
+                    .ok_or_else(|| anyhow::anyhow!("No config file found"))?;
+                let config = cameras::load_cameras()?
+                    .ok_or_else(|| anyhow::anyhow!("No config file found"))?;
+                let entry = config.cameras.get(&name).ok_or_else(|| {
+                    anyhow::anyhow!("Camera '{}' not found in {}", name, config_path.display())
+                })?;
+
+                // Removing is destructive, so say what goes before it goes.
+                let mut in_groups: Vec<&str> = config
+                    .groups
+                    .iter()
+                    .filter(|(_, members)| members.iter().any(|m| m == &name))
+                    .map(|(g, _)| g.as_str())
+                    .collect();
+                in_groups.sort();
+
+                if !yes {
+                    if !std::io::stdin().is_terminal() {
+                        anyhow::bail!(
+                            "Refusing to remove '{}' without confirmation: pass -y when running non-interactively",
+                            name
+                        );
+                    }
+                    eprintln!("Remove '{}' ({}) from {}?", name, entry.host, config_path.display());
+                    if !in_groups.is_empty() {
+                        eprintln!("  also leaves group(s): {}", in_groups.join(", "));
+                    }
+                    if !keep_secret {
+                        eprintln!("  also deletes its keyring entry, if any");
+                    }
+                    eprint!("Type the camera name to confirm: ");
+                    std::io::stderr().flush().ok();
+                    let mut answer = String::new();
+                    std::io::stdin().read_line(&mut answer)?;
+                    if answer.trim() != name {
+                        format::err_json("CANCELLED", "Name did not match — nothing was removed");
+                        return Ok(());
+                    }
+                }
+
+                let removed = writer::remove_camera(&config_path, &name)?;
+
+                // Best effort: a missing entry (or a build without keyring
+                // support) is not a reason to fail a removal that succeeded.
+                let secret = if keep_secret {
+                    "kept"
+                } else if forget_keyring_secret(&name) {
+                    "removed"
+                } else {
+                    "none"
+                };
+
+                format::ok(&serde_json::json!({
+                    "removed": name,
+                    "host": entry.host,
+                    "groups": removed.groups,
+                    "comment_lines": removed.comment_lines,
+                    "keyring": secret,
+                    "config": config_path.display().to_string(),
+                }));
+            }
             ConfigCommands::Group { command } => {
                 let config_path = cameras::config_path()
                     .ok_or_else(|| anyhow::anyhow!("No config file found"))?;
@@ -397,4 +478,21 @@ pub fn keyring_lookup(name: &str) -> Option<String> {
 #[cfg(not(feature = "keyring"))]
 pub fn keyring_lookup(_name: &str) -> Option<String> {
     None
+}
+
+/// Delete a camera's keyring entry without failing the caller.
+///
+/// Used by `config remove`, where the camera is going away regardless: no entry
+/// (or a build without keyring support) means there was nothing to clean up,
+/// which is a fine outcome rather than an error.
+#[cfg(feature = "keyring")]
+fn forget_keyring_secret(name: &str) -> bool {
+    keyring::Entry::new(KEYRING_SERVICE, name)
+        .map(|e| e.delete_credential().is_ok())
+        .unwrap_or(false)
+}
+
+#[cfg(not(feature = "keyring"))]
+fn forget_keyring_secret(_name: &str) -> bool {
+    false
 }

@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.25.0
+
+### Added
+- **`vapx config remove <name>`** (aliases `delete`, `rm`): decommission a camera in one step — its entry, every group that lists it, the comment lines that belong to it, and its keyring secret. Removing a camera was the one config edit still done by hand, and hand-editing is where a stray indent silently breaks the file for every other camera. Comments directly above an entry describe *that* camera ("ny 2026-07-06, flyttas till .22 vid driftsättning"); left behind they document something that no longer exists, so an unbroken run of them goes with the entry — a comment separated by a blank line reads as a section heading and stays. A group left with no members is written as `group: []`, which YAML would otherwise read as null. Destructive, so it asks for the camera name back before writing, and refuses to run without `-y` when there is no TTY. Same guarantees as the other config writes: re-parsed before replacing the original (exactly one camera gone, every other camera and group membership intact), atomic, backed up, chmod 600.
+
 ## v0.24.0
 
 ### Added
