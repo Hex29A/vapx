@@ -54,6 +54,11 @@ pub enum ConfigCommands {
         /// New name
         to: String,
     },
+    /// Manage camera groups (targets for `vapx batch`)
+    Group {
+        #[command(subcommand)]
+        command: GroupCommands,
+    },
     /// Store a camera password in the OS keyring
     SetSecret {
         /// Camera name (as defined in cameras.yaml)
@@ -68,6 +73,26 @@ pub enum ConfigCommands {
     RemoveSecret {
         /// Camera name (as defined in cameras.yaml)
         name: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum GroupCommands {
+    /// List groups and their members
+    List,
+    /// Add a camera to an existing group
+    Add {
+        /// Group name
+        group: String,
+        /// Camera name (as defined in cameras.yaml)
+        camera: String,
+    },
+    /// Remove a camera from a group
+    Remove {
+        /// Group name
+        group: String,
+        /// Camera name
+        camera: String,
     },
 }
 
@@ -218,6 +243,45 @@ impl ConfigCmd {
                     .ok_or_else(|| anyhow::anyhow!("No config file found"))?;
                 writer::rename_camera(&config_path, &from, &to)?;
                 format::ok_msg(&format!("Renamed '{}' to '{}' in {}", from, to, config_path.display()));
+            }
+            ConfigCommands::Group { command } => {
+                let config_path = cameras::config_path()
+                    .ok_or_else(|| anyhow::anyhow!("No config file found"))?;
+                match command {
+                    GroupCommands::List => {
+                        let config = cameras::load_cameras()?
+                            .ok_or_else(|| anyhow::anyhow!("No config file found"))?;
+                        let mut names: Vec<&String> = config.groups.keys().collect();
+                        names.sort();
+                        let out: Vec<serde_json::Value> = names
+                            .iter()
+                            .map(|g| serde_json::json!({
+                                "group": g,
+                                "members": config.groups[*g],
+                            }))
+                            .collect();
+                        format::ok(&out);
+                    }
+                    GroupCommands::Add { group, camera } => {
+                        // Fail before writing if the camera is not configured:
+                        // a group of names that resolve to nothing is worse
+                        // than an error here.
+                        let config = cameras::load_cameras()?
+                            .ok_or_else(|| anyhow::anyhow!("No config file found"))?;
+                        if !config.cameras.contains_key(&camera) {
+                            anyhow::bail!(
+                                "Camera '{}' is not in cameras.yaml — add it first with `vapx config add` or `vapx enroll`",
+                                camera
+                            );
+                        }
+                        writer::add_to_group(&config_path, &group, &camera)?;
+                        format::ok_msg(&format!("'{}' is now in group '{}'", camera, group));
+                    }
+                    GroupCommands::Remove { group, camera } => {
+                        writer::remove_from_group(&config_path, &group, &camera)?;
+                        format::ok_msg(&format!("'{}' is no longer in group '{}'", camera, group));
+                    }
+                }
             }
             ConfigCommands::SetSecret { name } => {
                 set_keyring_secret(&name)?;

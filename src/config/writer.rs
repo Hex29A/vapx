@@ -306,6 +306,80 @@ fn insert_group_member(content: &str, group: &str, camera: &str) -> anyhow::Resu
     Ok(out)
 }
 
+/// Remove a camera from a group.
+///
+/// Removing the last member turns `work:` into a key with no value, which YAML
+/// reads as null and the config then refuses to parse. That case is written as
+/// `work: []` instead.
+pub fn remove_from_group(path: &Path, group: &str, camera: &str) -> anyhow::Result<()> {
+    let original = fs::read_to_string(path)
+        .with_context(|| format!("Failed to read {}", path.display()))?;
+    let config = parse_config_str(&original)?;
+
+    let Some(members) = config.groups.get(group) else {
+        bail!("Group '{}' does not exist in {}", group, path.display());
+    };
+    if !members.iter().any(|m| m == camera) {
+        return Ok(()); // not a member — nothing to do
+    }
+
+    let last_member = members.len() == 1;
+    let updated = remove_group_member(&original, group, camera, last_member);
+
+    let parsed = parse_config_str(&updated)
+        .with_context(|| "Refusing to write: the edited config would not parse")?;
+    let after = parsed
+        .groups
+        .get(group)
+        .ok_or_else(|| anyhow::anyhow!("Refusing to write: group '{}' disappeared", group))?;
+    if after.iter().any(|m| m == camera) {
+        bail!("Refusing to write: '{}' is still in group '{}'", camera, group);
+    }
+    if after.len() + 1 != members.len() {
+        bail!("Refusing to write: group '{}' changed by more than one member", group);
+    }
+    if parsed.cameras.len() != config.cameras.len() {
+        bail!("Refusing to write: camera count changed");
+    }
+
+    write_atomic(path, &updated)
+}
+
+/// Drop the member line. When it was the only one, the group key is rewritten
+/// as an explicit empty list so the document still parses.
+fn remove_group_member(content: &str, group: &str, camera: &str, last_member: bool) -> String {
+    let mut out = String::with_capacity(content.len());
+    let mut in_group = false;
+    for line in content.lines() {
+        let trimmed = line.trim_start();
+
+        if !line.starts_with(' ') && !line.starts_with('\t') && !trimmed.is_empty() {
+            in_group = false; // left the groups block entirely
+        }
+        if trimmed == format!("{}:", group) {
+            in_group = true;
+            if last_member {
+                let indent = &line[..line.len() - trimmed.len()];
+                out.push_str(&format!("{}{}: []\n", indent, group));
+                continue;
+            }
+        } else if !trimmed.starts_with('-') && trimmed.ends_with(':') && !trimmed.is_empty() {
+            in_group = false; // a different group started
+        }
+
+        if in_group {
+            if let Some(rest) = trimmed.strip_prefix("- ") {
+                if rest.trim() == camera {
+                    continue; // drop this member
+                }
+            }
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
 /// Rename a camera, updating its group memberships too.
 ///
 /// A name derived by `enroll` (`m2035-le-55808f`) is always provisional — the
@@ -850,5 +924,101 @@ groups:
         let out = rename_in_text(yaml, "solo", "entren");
         let p = parse_config_str(&out).unwrap();
         assert!(p.cameras.contains_key("entren"));
+    }
+}
+
+#[cfg(test)]
+mod group_remove_tests {
+    use super::*;
+
+    const CFG: &str = r#"cameras:
+  a:
+    host: "10.0.0.1"
+    pass: "x"
+  b:
+    host: "10.0.0.2"
+    pass: "x"
+groups:
+  work:
+    - a
+    - b
+  ensam:
+    - a
+  hemma:
+    - b
+"#;
+
+    fn tmp(tag: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("vapx-grm-{}-{}", tag, std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn removes_only_from_the_named_group() {
+        let out = remove_group_member(CFG, "work", "a", false);
+        let p = parse_config_str(&out).unwrap();
+        assert_eq!(p.groups["work"], vec!["b"]);
+        assert_eq!(p.groups["ensam"], vec!["a"], "same camera in another group must stay");
+        assert_eq!(p.groups["hemma"], vec!["b"]);
+        assert_eq!(p.cameras.len(), 2, "cameras must be untouched");
+    }
+
+    #[test]
+    fn emptying_a_group_keeps_the_document_parseable() {
+        // The trap: `ensam:` with nothing under it reads as null, not [].
+        let out = remove_group_member(CFG, "ensam", "a", true);
+        let p = parse_config_str(&out).expect("config must still parse when a group empties");
+        assert!(p.groups["ensam"].is_empty());
+        assert_eq!(p.groups["work"], vec!["a", "b"], "other groups unaffected");
+    }
+
+    #[test]
+    fn end_to_end_and_idempotent() {
+        let d = tmp("e2e");
+        let path = d.join("cameras.yaml");
+        fs::write(&path, CFG).unwrap();
+
+        remove_from_group(&path, "work", "a").unwrap();
+        let p = parse_config_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(p.groups["work"], vec!["b"]);
+
+        // Removing again is a no-op, not an error.
+        remove_from_group(&path, "work", "a").unwrap();
+        let p = parse_config_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(p.groups["work"], vec!["b"]);
+
+        assert_eq!(fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn unknown_group_is_an_error_and_leaves_the_file_alone() {
+        let d = tmp("unknown");
+        let path = d.join("cameras.yaml");
+        fs::write(&path, CFG).unwrap();
+        assert!(remove_from_group(&path, "hittepa", "a").is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), CFG);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn add_then_remove_round_trips() {
+        let d = tmp("round");
+        let path = d.join("cameras.yaml");
+        fs::write(&path, CFG).unwrap();
+
+        add_to_group(&path, "hemma", "a").unwrap();
+        assert_eq!(
+            parse_config_str(&fs::read_to_string(&path).unwrap()).unwrap().groups["hemma"],
+            vec!["b", "a"]
+        );
+        remove_from_group(&path, "hemma", "a").unwrap();
+        assert_eq!(
+            parse_config_str(&fs::read_to_string(&path).unwrap()).unwrap().groups["hemma"],
+            vec!["b"]
+        );
+        let _ = fs::remove_dir_all(&d);
     }
 }

@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.24.0
+
+### Added
+- **`vapx config group list | add | remove`**: manage group membership from the CLI. `add_to_group` already existed but was reachable only through `vapx enroll --to-group`, so putting an existing camera into a group meant hand-editing YAML — the same gap `config rename` closed for names. `add` refuses a camera that is not in `cameras.yaml` (a group of names that resolve to nothing is worse than an error) and a group that does not exist; `remove` is idempotent. Removing the last member writes `group: []` rather than a bare key, which YAML would otherwise read as null and the config would refuse to parse.
+
 ## v0.23.0
 
 ### Added

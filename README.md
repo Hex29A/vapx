@@ -71,7 +71,7 @@ The `host` argument can be an IP address, hostname, or a camera name defined in 
 | `signedvideo` | Signed video management (status, enable, disable) |
 | `zipstream` | ZipStream compression profiles (status, set) |
 | `viewarea` | View area management (list, get, set geometry) |
-| `config` | Manage cameras.yaml (path, check, list, init, add, rename) |
+| `config` | Manage cameras.yaml (path, check, list, init, add, rename, group) |
 | `enroll` | Set up a factory-default camera: create the initial account and add it to cameras.yaml |
 | `systemready` | Device readiness and factory-default state (works without credentials) |
 | `completions` | Generate shell completions (bash, zsh, fish) |
@@ -219,6 +219,11 @@ vapx systemready mycam --until-ready 300 --after-bootid "$BOOT"
 # Rename a camera, updating its group memberships too. The name enroll
 # derives is provisional; real names describe where the camera is.
 vapx config rename p1447-le-9c57f2 entren
+
+# Group membership — groups are what `vapx batch` runs against
+vapx config group list
+vapx config group add work p1447
+vapx config group remove work p1447
 
 # Show config file location
 vapx config path
