@@ -299,8 +299,8 @@ impl ConfigCmd {
                     let mut answer = String::new();
                     std::io::stdin().read_line(&mut answer)?;
                     if answer.trim() != name {
+                        // err_json exits with status 1 — nothing has been written yet.
                         format::err_json("CANCELLED", "Name did not match — nothing was removed");
-                        return Ok(());
                     }
                 }
 
