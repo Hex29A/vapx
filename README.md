@@ -4,6 +4,26 @@ Axis camera management CLI via VAPIX. Single static binary, no runtime dependenc
 
 **Not affiliated with Axis Communications AB. VAPIX is a trademark of Axis Communications AB.**
 
+## Two tools, one config
+
+This project is part of a two-tool ecosystem for Axis cameras. Both tools read the same
+`cameras.yaml`, so a camera you add here is immediately available to the other.
+
+| Tool | Best at | Use when |
+|---|---|---|
+| **vapx** (this project) | CLI for administration | You need to set up, maintain, or batch-manage cameras |
+| **[vapx-mcp](https://github.com/Hex29A/vapx-mcp)** | AI-driven daily operations | You want an AI assistant to observe, react, and adjust cameras |
+
+**vapx** is for: firmware upgrades, network configuration, user management, ACAP installation,
+batch operations across many cameras, raw `param.cgi` access.
+
+**vapx-mcp** is for: snapshots, PTZ, I/O, overlays, analytics, event monitoring, temperature,
+stream diagnostics, rebooting, log reading.
+
+Neither tool requires the other. If you use both, note that `vapx` rewrites `cameras.yaml`
+atomically — mount the *directory* into a container, not the file, or the container will keep
+reading the copy that existed when it started.
+
 ## Install
 
 Download a release binary for your platform, or build from source:
