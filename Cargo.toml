@@ -5,6 +5,9 @@ edition = "2021"
 description = "Axis camera management CLI via VAPIX"
 license = "MIT"
 repository = "https://github.com/Hex29A/vapx"
+readme = "README.md"
+keywords = ["axis", "vapix", "camera", "cli", "surveillance"]
+categories = ["command-line-utilities", "network-programming"]
 
 [[bin]]
 name = "vapx"
