@@ -646,8 +646,10 @@ tests/
 - [x] Signed Video (`signedvideo.cgi`)
 - [x] ZipStream Compression (`zipstream/*.cgi`)
 - [x] View Area Management (`viewarea/info.cgi`)
-- [x] Audio Clip Management (`/axis-cgi/audio/*.cgi`)
+- [x] Audio Clip Management (`mediaclip.cgi`)
 - [x] Systemready (`systemready.cgi`) — unauthenticated readiness and needs-setup state
+
+See [`docs/API.md`](docs/API.md) for the full command-to-endpoint mapping.
 
 ## License
 
