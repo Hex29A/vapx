@@ -52,6 +52,8 @@ pub enum Commands {
     User(cmd::user::UserCmd),
     /// Change user password
     Pass(cmd::pass::PassCmd),
+    /// SSH service and SSH accounts
+    Ssh(cmd::ssh::SshCmd),
     /// Network configuration
     Net(cmd::net::NetCmd),
     /// Time/NTP configuration
@@ -182,6 +184,7 @@ fn main() {
         Commands::Param(cmd) => cmd.run(),
         Commands::User(cmd) => cmd.run(),
         Commands::Pass(cmd) => cmd.run(),
+        Commands::Ssh(cmd) => cmd.run(),
         Commands::Net(cmd) => cmd.run(),
         Commands::Time(cmd) => cmd.run(),
         Commands::Hw(cmd) => cmd.run(),

@@ -60,6 +60,7 @@ The `host` argument can be an IP address, hostname, or a camera name defined in 
 | `param` | Parameter management (list, get, set) |
 | `user` | User account management (list, add, update, remove) |
 | `pass` | Change user password |
+| `ssh` | SSH service on/off and SSH accounts (status, enable, disable, users list/add/passwd/remove) |
 | `net` | Network configuration (show, set) |
 | `time` | Time/NTP configuration (show, set) |
 | `hw` | I/O port management (show, set, trigger) |
@@ -147,6 +148,15 @@ vapx user add 192.168.1.100 --name viewer1 --pwd secret --role viewer -u root -p
 vapx user add 192.168.1.100 --name op1 --pwd secret --role operator --ptz -u root -p <password>
 vapx user update 192.168.1.100 --name viewer1 --pwd newpass -u root -p <password>
 vapx user remove 192.168.1.100 --name viewer1 -u root -p <password>
+
+# SSH service and SSH accounts (accounts need AXIS OS 12)
+vapx ssh status 192.168.1.100 -u root -p <password>
+vapx ssh enable 192.168.1.100 -u root -p <password>
+vapx ssh users add 192.168.1.100 --name support --pwd secret -u root -p <password>
+vapx ssh users passwd 192.168.1.100 --name support --pwd newpass -u root -p <password>
+vapx ssh users list 192.168.1.100 -u root -p <password>
+vapx ssh users remove 192.168.1.100 --name support -u root -p <password>
+vapx ssh disable 192.168.1.100 -u root -p <password>
 
 # Use camera name from config
 vapx info entrance
@@ -545,6 +555,7 @@ src/
     param.rs           # vapx param — parameter management
     user.rs            # vapx user — user account management
     pass.rs            # vapx pass — password management
+    ssh.rs             # vapx ssh — SSH service and SSH accounts
     net.rs             # vapx net — network configuration
     time.rs            # vapx time — NTP/timezone
     hw.rs              # vapx hw — I/O port management
@@ -588,6 +599,7 @@ src/
     ptz.rs             # PTZ control (com/ptz.cgi)
     params.rs          # Parameter management (param.cgi)
     users.rs           # User management (pwdgrp.cgi)
+    ssh.rs             # SSH switch (param.cgi) and SSH accounts (config/rest/ssh/v2)
     time.rs            # Time/NTP configuration
     io.rs              # I/O port configuration
     network.rs         # Network configuration
@@ -629,6 +641,7 @@ tests/
 - [x] PTZ Control (`com/ptz.cgi`)
 - [x] Parameter Management (`param.cgi`)
 - [x] User Management (`pwdgrp.cgi`)
+- [x] SSH service and accounts (`param.cgi root.Network.SSH`, `config/rest/ssh/v2/users`)
 - [x] Network Configuration (`param.cgi root.Network`)
 - [x] Time/NTP Configuration (`param.cgi root.Time`)
 - [x] I/O Port Management (`param.cgi root.IOPort`, `portmanagement.cgi`)
