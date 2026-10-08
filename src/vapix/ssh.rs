@@ -6,25 +6,101 @@ use crate::vapix::params;
 
 const ENABLED_PARAM: &str = "root.Network.SSH.Enabled";
 
-/// Device Configuration API for SSH accounts (AXIS OS 12). The older
-/// `ssh.cgi` has no user methods, so accounts can only be managed here.
+/// The JSON CGI for the service switch. It has no user methods; the
+/// documentation says it yields the same result as the parameter.
+const SSH_CGI: &str = "/axis-cgi/ssh.cgi";
+
+/// Device Configuration API for SSH accounts. `ssh.v2` is the released
+/// version; an earlier `ssh.v1` (beta, `/config/rest/ssh/v1beta`) also exists.
 const USERS_PATH: &str = "/config/rest/ssh/v2/users";
 
-/// Whether the SSH service is switched on (`root.Network.SSH.Enabled`).
+/// Discovery endpoint listing the major versions of the SSH API a device has.
+const DISCOVER_PATH: &str = "/config/discover/apis/ssh";
+
+/// Whether the SSH service is switched on. Reads `root.Network.SSH.Enabled`
+/// and falls back to `ssh.cgi` when the parameter is not reported.
 pub fn is_enabled(client: &VapixClient) -> anyhow::Result<bool> {
-    let text = params::list(client, Some("root.Network.SSH"))?;
-    parse_enabled(&text)
+    let from_param = params::list(client, Some("root.Network.SSH")).and_then(|t| parse_enabled(&t));
+    match from_param {
+        Ok(v) => Ok(v),
+        Err(param_err) => {
+            let resp = call_cgi(client, "getSshInfo", json!({}))
+                .map_err(|cgi_err| anyhow::anyhow!("{}; {}", param_err, cgi_err))?;
+            resp.pointer("/data/enabled")
+                .and_then(|v| v.as_bool())
+                .ok_or_else(|| anyhow::anyhow!("{}; ssh.cgi gave no data.enabled", param_err))
+        }
+    }
 }
 
-/// Switch the SSH service on or off.
+/// Switch the SSH service on or off. Uses the parameter and falls back to
+/// `ssh.cgi` if the device rejects it.
 pub fn set_enabled(client: &VapixClient, enabled: bool) -> anyhow::Result<()> {
     let value = if enabled { "yes" } else { "no" };
-    params::update(client, &[(ENABLED_PARAM, value)])?;
+    if let Err(param_err) = params::update(client, &[(ENABLED_PARAM, value)]) {
+        call_cgi(client, "setSshConfiguration", json!({ "enabled": enabled }))
+            .map_err(|cgi_err| anyhow::anyhow!("{}; {}", param_err, cgi_err))?;
+    }
     Ok(())
+}
+
+/// One call to `ssh.cgi`. The CGI reports failures as HTTP 200 with an
+/// `error` object, so the body has to be checked.
+fn call_cgi(client: &VapixClient, method: &str, params: Value) -> anyhow::Result<Value> {
+    let body = json!({ "apiVersion": "1.0", "context": "vapx", "method": method, "params": params });
+    let resp = client.rest_json("POST", SSH_CGI, Some(&body))?;
+    check_cgi_error(&resp)?;
+    Ok(resp)
+}
+
+/// Turn an `ssh.cgi` `error` object into an error.
+fn check_cgi_error(resp: &Value) -> anyhow::Result<()> {
+    if let Some(err) = resp.get("error") {
+        let code = err.get("code").and_then(|c| c.as_i64()).unwrap_or(0);
+        let msg = err.get("message").and_then(|m| m.as_str()).unwrap_or("unknown error");
+        bail!("ssh.cgi: {} (code {})", msg, code);
+    }
+    Ok(())
+}
+
+/// Major versions of the SSH Device Configuration API the device reports, e.g.
+/// `["v1", "v2"]`. `None` when the device has no discovery endpoint.
+pub fn api_versions(client: &VapixClient) -> Option<Vec<String>> {
+    let resp = client.rest_json("GET", DISCOVER_PATH, None).ok()?;
+    Some(parse_versions(&resp))
+}
+
+/// Pull the version keys out of a discovery answer. The documentation shows
+/// `{"ssh": {"v1": {...}, "v2": {...}}}`; a `data` wrapper is tolerated.
+fn parse_versions(resp: &Value) -> Vec<String> {
+    let node = resp
+        .pointer("/data/ssh")
+        .or_else(|| resp.get("ssh"))
+        .or_else(|| resp.get("data"));
+    let mut versions: Vec<String> = node
+        .and_then(|n| n.as_object())
+        .map(|o| o.keys().filter(|k| k.starts_with('v')).cloned().collect())
+        .unwrap_or_default();
+    versions.sort();
+    versions
+}
+
+/// The account API is only in `ssh.v2`. Stop with a clear message if the device
+/// says it has other versions but not that one; if discovery itself is not
+/// available, try the call anyway and let the device answer.
+fn require_users_api(client: &VapixClient) -> anyhow::Result<()> {
+    match api_versions(client) {
+        Some(v) if !v.is_empty() && !v.iter().any(|x| x == "v2") => bail!(
+            "This device has no SSH account API v2 (found: {}). Upgrade AXIS OS or create the account in the web interface.",
+            v.join(", ")
+        ),
+        _ => Ok(()),
+    }
 }
 
 /// List SSH accounts as the `data` array of the REST answer.
 pub fn list_users(client: &VapixClient) -> anyhow::Result<Vec<Value>> {
+    require_users_api(client)?;
     let resp = client.rest_json("GET", USERS_PATH, None)?;
     Ok(resp
         .get("data")
@@ -41,6 +117,7 @@ pub fn add_user(
     comment: &str,
 ) -> anyhow::Result<()> {
     check_name(name)?;
+    require_users_api(client)?;
     let body = json!({"data": {"username": name, "password": pwd, "comment": comment}});
     client.rest_json("POST", USERS_PATH, Some(&body))?;
     Ok(())
@@ -49,6 +126,7 @@ pub fn add_user(
 /// Change the password of an existing SSH account.
 pub fn set_password(client: &VapixClient, name: &str, pwd: &str) -> anyhow::Result<()> {
     check_name(name)?;
+    require_users_api(client)?;
     let body = json!({"data": pwd});
     client.rest_json("PATCH", &format!("{}/{}/password", USERS_PATH, name), Some(&body))?;
     Ok(())
@@ -57,6 +135,7 @@ pub fn set_password(client: &VapixClient, name: &str, pwd: &str) -> anyhow::Resu
 /// Delete an SSH account.
 pub fn remove_user(client: &VapixClient, name: &str) -> anyhow::Result<()> {
     check_name(name)?;
+    require_users_api(client)?;
     client.rest_json("DELETE", &format!("{}/{}", USERS_PATH, name), None)?;
     Ok(())
 }
@@ -105,6 +184,23 @@ mod tests {
     #[test]
     fn test_parse_enabled_missing_is_error() {
         assert!(parse_enabled("root.Network.SSH.Port=22\n").is_err());
+    }
+
+    #[test]
+    fn test_parse_versions_plain_and_wrapped() {
+        let plain = json!({"ssh": {"v2": {}, "v1": {}}});
+        assert_eq!(parse_versions(&plain), vec!["v1", "v2"]);
+        let wrapped = json!({"status": "success", "data": {"ssh": {"v2": {}}}});
+        assert_eq!(parse_versions(&wrapped), vec!["v2"]);
+        assert!(parse_versions(&json!({})).is_empty());
+    }
+
+    #[test]
+    fn test_cgi_error_is_reported() {
+        let bad = json!({"apiVersion": "1.0", "error": {"code": 4003, "message": "Missing parameter(s)"}});
+        let e = check_cgi_error(&bad).unwrap_err().to_string();
+        assert!(e.contains("Missing parameter") && e.contains("4003"));
+        assert!(check_cgi_error(&json!({"data": {}})).is_ok());
     }
 
     #[test]

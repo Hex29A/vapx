@@ -27,7 +27,7 @@ pub enum SshCommands {
         #[command(flatten)]
         cam: CameraArgs,
     },
-    /// Manage SSH accounts (AXIS OS 12 and later)
+    /// Manage SSH accounts (needs the device SSH API v2; see `ssh status`)
     Users(SshUsersCmd),
 }
 
@@ -89,8 +89,10 @@ impl SshCmd {
     pub fn run(self) -> anyhow::Result<()> {
         match self.command {
             SshCommands::Status { cam } => {
-                let enabled = ssh::is_enabled(&cam.client()?)?;
-                format::output(&serde_json::json!({ "enabled": enabled }), cam.plain);
+                let client = cam.client()?;
+                let enabled = ssh::is_enabled(&client)?;
+                let api = ssh::api_versions(&client);
+                format::output(&serde_json::json!({ "enabled": enabled, "account_api": api }), cam.plain);
             }
             SshCommands::Enable { cam } => {
                 ssh::set_enabled(&cam.client()?, true)?;

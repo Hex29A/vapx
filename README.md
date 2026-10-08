@@ -149,7 +149,7 @@ vapx user add 192.168.1.100 --name op1 --pwd secret --role operator --ptz -u roo
 vapx user update 192.168.1.100 --name viewer1 --pwd newpass -u root -p <password>
 vapx user remove 192.168.1.100 --name viewer1 -u root -p <password>
 
-# SSH service and SSH accounts (accounts need AXIS OS 12)
+# SSH service and SSH accounts (accounts need ssh API v2; `ssh status` shows what the device has)
 vapx ssh status 192.168.1.100 -u root -p <password>
 vapx ssh enable 192.168.1.100 -u root -p <password>
 vapx ssh users add 192.168.1.100 --name support --pwd secret -u root -p <password>
