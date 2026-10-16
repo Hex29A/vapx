@@ -8,4 +8,6 @@ routes = [
 
 [assets]
 directory = "./public"
+binding = "ASSETS"
+not_found_handling = "none"
 run_worker_first = ["/install", "/install.sh", "/install.ps1"]
