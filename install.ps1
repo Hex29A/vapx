@@ -1,9 +1,9 @@
 # vapx installer for Windows (PowerShell 5.1+).
 #
-#   irm https://raw.githubusercontent.com/Hex29A/vapx/main/install.ps1 | iex
+#   irm https://vapx.29a.se/install.ps1 | iex
 #
 # Read it first if you like:
-#   irm https://raw.githubusercontent.com/Hex29A/vapx/main/install.ps1
+#   irm https://vapx.29a.se/install.ps1
 #
 # Downloads vapx.exe and SHA256SUMS from the latest GitHub release, verifies the
 # checksum, and installs to %LOCALAPPDATA%\Programs\vapx (no admin). That folder

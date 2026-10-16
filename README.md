@@ -29,13 +29,19 @@ reading the copy that existed when it started.
 **Linux and macOS** (x86_64, ARM64, ARMv7 / Raspberry Pi):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Hex29A/vapx/main/install.sh | sh
+curl -fsSL https://vapx.29a.se/install | sh
 ```
 
 **Windows** (PowerShell):
 
 ```powershell
-irm https://raw.githubusercontent.com/Hex29A/vapx/main/install.ps1 | iex
+irm https://vapx.29a.se/install.ps1 | iex
+```
+
+**Homebrew** (macOS, Linux):
+
+```sh
+brew install hex29a/tap/vapx
 ```
 
 Piping a script from the internet into a shell asks you to trust it. Both scripts are short
@@ -43,7 +49,7 @@ and meant to be read first — drop the `| sh` / `| iex` to see what you would r
 read, then run:
 
 ```sh
-curl -fsSL -o install.sh https://raw.githubusercontent.com/Hex29A/vapx/main/install.sh
+curl -fsSL -o install.sh https://vapx.29a.se/install
 less install.sh
 sh install.sh
 ```

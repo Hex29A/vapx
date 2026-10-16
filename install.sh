@@ -1,10 +1,10 @@
 #!/bin/sh
 # vapx installer for Linux and macOS.
 #
-#   curl -fsSL https://raw.githubusercontent.com/Hex29A/vapx/main/install.sh | sh
+#   curl -fsSL https://vapx.29a.se/install | sh
 #
 # Read it first if you like (it is short):
-#   curl -fsSL https://raw.githubusercontent.com/Hex29A/vapx/main/install.sh | less
+#   curl -fsSL https://vapx.29a.se/install | less
 #
 # What it does: picks the release binary for this OS and CPU, downloads it and
 # SHA256SUMS from the GitHub release, verifies the checksum, and puts vapx in

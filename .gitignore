@@ -1,2 +1,4 @@
 /target
 /.cargo-docker
+/site/.wrangler
+/site/node_modules

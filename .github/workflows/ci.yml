@@ -161,5 +161,34 @@ jobs:
             | vapx-x86_64-pc-windows-msvc.exe | Windows x64 (also runs on ARM64) |
             | SHA256SUMS | Checksums for all of the above |
 
-            Install or update (Linux/macOS): `curl -fsSL https://raw.githubusercontent.com/Hex29A/vapx/main/install.sh | sh`
-            Windows (PowerShell): `irm https://raw.githubusercontent.com/Hex29A/vapx/main/install.ps1 | iex`
+            Install or update (Linux/macOS): `curl -fsSL https://vapx.29a.se/install | sh`
+            Windows (PowerShell): `irm https://vapx.29a.se/install.ps1 | iex`
+
+  homebrew:
+    needs: tagged-release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch SHA256SUMS from the release
+        run: |
+          curl -fsSL -o SHA256SUMS \
+            "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/SHA256SUMS"
+      - name: Update Hex29A/homebrew-tap
+        env:
+          TAP_KEY: ${{ secrets.HOMEBREW_TAP_KEY }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$TAP_KEY" > ~/.ssh/tap && chmod 600 ~/.ssh/tap
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/tap -o StrictHostKeyChecking=accept-new"
+          git clone git@github.com:Hex29A/homebrew-tap.git tap
+          mkdir -p tap/Formula
+          scripts/homebrew-formula.sh "$version" SHA256SUMS > tap/Formula/vapx.rb
+          cd tap
+          git config user.name "vapx CI"
+          git config user.email "actions@github.com"
+          git add Formula/vapx.rb
+          git diff --cached --quiet && { echo "formula unchanged"; exit 0; }
+          git commit -m "vapx $version"
+          git push
