@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.28.0
+
+### Added
+- **`vapx ssh status` shows how SSH logins work on the device**: `firmware` (the AXIS OS version) and `login`, which is `root` before AXIS OS 11.5 (SSH as root only), `root+accounts` on 11.5 to 11.x, and `accounts` from 12.0, where root can no longer log in over SSH. The boundaries are the ones Axis documents for ACAP development.
+- **SSH accounts on AXIS OS 11.5 to 11.x**: the `users` commands now use the `v1` beta account API (`config/rest/ssh/v1beta`) when a device reports that but not `v2`, taking the path from the device's own discovery answer. Same operations and fields as `v2`, which is still preferred when both exist. Verified on devices only for the `v2` path (12.11, 13.1); the `v1` choice is unit-tested against the discovery answer of a P3245-LV on 11.11.
+
+### Changed
+- On a device without an account API, the `users` commands now say that SSH there logs in as root only and point to `vapx ssh enable` and the root password, instead of only "no SSH account API v2".
+
 ## v0.27.0
 
 ### Added

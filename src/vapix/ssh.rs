@@ -11,8 +11,10 @@ const ENABLED_PARAM: &str = "root.Network.SSH.Enabled";
 const SSH_CGI: &str = "/axis-cgi/ssh.cgi";
 
 /// Device Configuration API for SSH accounts. `ssh.v2` is the released
-/// version; an earlier `ssh.v1` (beta, `/config/rest/ssh/v1beta`) also exists.
-const USERS_PATH: &str = "/config/rest/ssh/v2/users";
+/// version (AXIS OS 12 and later); AXIS OS 11.5 to 11.x has `ssh.v1` as a beta
+/// at `/config/rest/ssh/v1beta` with the same user operations.
+const V2_BASE: &str = "/config/rest/ssh/v2";
+const V1_BASE: &str = "/config/rest/ssh/v1beta";
 
 /// Discovery endpoint listing the major versions of the SSH API a device has.
 const DISCOVER_PATH: &str = "/config/discover/apis/ssh";
@@ -66,19 +68,47 @@ fn check_cgi_error(resp: &Value) -> anyhow::Result<()> {
 /// Major versions of the SSH Device Configuration API the device reports, e.g.
 /// `["v1", "v2"]`. `None` when the device has no discovery endpoint.
 pub fn api_versions(client: &VapixClient) -> Option<Vec<String>> {
-    let resp = client.rest_json("GET", DISCOVER_PATH, None).ok()?;
-    Some(parse_versions(&resp))
+    discover(client).map(|resp| parse_versions(&resp))
+}
+
+fn discover(client: &VapixClient) -> Option<Value> {
+    client.rest_json("GET", DISCOVER_PATH, None).ok()
+}
+
+/// How SSH logins work on a given AXIS OS: only `root` before 11.5, root and
+/// separate SSH accounts from 11.5, and only SSH accounts from 12.0, where
+/// root can no longer log in over SSH. `None` if the version is not readable.
+pub fn login_mode(firmware: &str) -> Option<&'static str> {
+    let mut parts = firmware.split('.').map(|p| p.parse::<u32>().ok());
+    let major = parts.next()??;
+    let minor = parts.next().flatten().unwrap_or(0);
+    Some(match (major, minor) {
+        (m, _) if m >= 12 => "accounts",
+        (11, n) if n >= 5 => "root+accounts",
+        _ => "root",
+    })
+}
+
+/// The device firmware version, e.g. `11.11.220`.
+pub fn firmware_version(client: &VapixClient) -> Option<String> {
+    let text = params::list(client, Some("root.Properties.Firmware.Version")).ok()?;
+    text.lines()
+        .find_map(|l| l.trim().strip_prefix("root.Properties.Firmware.Version="))
+        .map(|v| v.trim().to_string())
 }
 
 /// Pull the version keys out of a discovery answer. Devices on AXIS OS 12.11
 /// and 13.1 answer `{"v2": {...}}` at the top level; the documentation shows
 /// `{"ssh": {"v1": {...}, "v2": {...}}}`, and a `data` wrapper is tolerated.
-fn parse_versions(resp: &Value) -> Vec<String> {
-    let node = resp
-        .pointer("/data/ssh")
+fn versions_node(resp: &Value) -> &Value {
+    resp.pointer("/data/ssh")
         .or_else(|| resp.get("ssh"))
         .or_else(|| resp.get("data"))
-        .unwrap_or(resp);
+        .unwrap_or(resp)
+}
+
+fn parse_versions(resp: &Value) -> Vec<String> {
+    let node = versions_node(resp);
     let mut versions: Vec<String> = node
         .as_object()
         .map(|o| o.keys().filter(|k| is_version_key(k)).cloned().collect())
@@ -94,44 +124,68 @@ fn is_version_key(k: &str) -> bool {
         .is_some_and(|c| c.is_ascii_digit())
 }
 
+const NO_API: &str = "This device has no SSH account API (needs AXIS OS 11.5 or later). \
+Before 11.5 SSH logs in as root only: use `vapx ssh enable` and the root password.";
+
 /// What a 404 from the account API means depends on whether discovery found
-/// `v2`. Without it the device has no account API at all (AXIS OS 9 and 10
-/// have no Device Configuration API), so say that instead of a bare
-/// "HTTP 404". With it, a 404 on `users/<name>` is a missing account.
-fn explain_404(e: anyhow::Error, has_v2: bool, name: Option<&str>) -> anyhow::Error {
+/// the API. Without it the device has none (AXIS OS 9 and 10 have no Device
+/// Configuration API), so say that instead of a bare "HTTP 404". With it, a
+/// 404 on `users/<name>` is a missing account.
+fn explain_404(e: anyhow::Error, known: bool, name: Option<&str>) -> anyhow::Error {
     if !e.to_string().contains("HTTP 404") {
         return e;
     }
-    match (has_v2, name) {
+    match (known, name) {
         (true, Some(n)) => anyhow::anyhow!("No SSH account named '{}' on this device", n),
         (true, None) => e,
-        (false, _) => anyhow::anyhow!(
-            "This device has no SSH account API v2 (HTTP 404). Upgrade AXIS OS or create the account in the web interface."
-        ),
+        (false, _) => anyhow::anyhow!("{} (HTTP 404)", NO_API),
     }
 }
 
-/// The account API is only in `ssh.v2`. Stop with a clear message if the device
-/// says it has other versions but not that one; if discovery itself is not
-/// available, try the call anyway and let the device answer. Returns whether
-/// the device reported `v2`.
-fn require_users_api(client: &VapixClient) -> anyhow::Result<bool> {
-    match api_versions(client) {
-        Some(v) if !v.is_empty() && !v.iter().any(|x| x == "v2") => bail!(
-            "This device has no SSH account API v2 (found: {}). Upgrade AXIS OS or create the account in the web interface.",
-            v.join(", ")
-        ),
-        Some(v) => Ok(!v.is_empty()),
-        None => Ok(false),
+/// Where the account API lives, read from discovery: `v2` if the device has
+/// it, else `v1` (the 11.x beta), using the `rest_api` path the device reports
+/// when there is one.
+fn pick_users_base(resp: &Value) -> Option<String> {
+    let node = versions_node(resp);
+    let (key, default) = if node.get("v2").is_some() {
+        ("v2", V2_BASE)
+    } else {
+        let k = ["v1", "v1beta"].into_iter().find(|k| node.get(*k).is_some())?;
+        (k, V1_BASE)
+    };
+    let path = node
+        .pointer(&format!("/{}/rest_api", key))
+        .and_then(|p| p.as_str())
+        .map(|p| format!("/{}", p.trim_matches('/')))
+        .unwrap_or_else(|| default.to_string());
+    Some(path)
+}
+
+/// The base path of the account API and whether discovery confirmed it. Stops
+/// with a clear message if the device lists SSH API versions but none with
+/// accounts; if discovery itself is not available, `v2` is tried anyway and
+/// the device answers.
+fn users_api(client: &VapixClient) -> anyhow::Result<(String, bool)> {
+    match discover(client) {
+        Some(resp) => match pick_users_base(&resp) {
+            Some(base) => Ok((format!("{}/users", base), true)),
+            None if !parse_versions(&resp).is_empty() => bail!(
+                "{} (found: {})",
+                NO_API,
+                parse_versions(&resp).join(", ")
+            ),
+            None => Ok((format!("{}/users", V2_BASE), false)),
+        },
+        None => Ok((format!("{}/users", V2_BASE), false)),
     }
 }
 
 /// List SSH accounts as the `data` array of the REST answer.
 pub fn list_users(client: &VapixClient) -> anyhow::Result<Vec<Value>> {
-    let has_v2 = require_users_api(client)?;
+    let (path, known) = users_api(client)?;
     let resp = client
-        .rest_json("GET", USERS_PATH, None)
-        .map_err(|e| explain_404(e, has_v2, None))?;
+        .rest_json("GET", &path, None)
+        .map_err(|e| explain_404(e, known, None))?;
     Ok(resp
         .get("data")
         .and_then(|d| d.as_array())
@@ -147,32 +201,32 @@ pub fn add_user(
     comment: &str,
 ) -> anyhow::Result<()> {
     check_name(name)?;
-    let has_v2 = require_users_api(client)?;
+    let (path, known) = users_api(client)?;
     let body = json!({"data": {"username": name, "password": pwd, "comment": comment}});
     client
-        .rest_json("POST", USERS_PATH, Some(&body))
-        .map_err(|e| explain_404(e, has_v2, None))?;
+        .rest_json("POST", &path, Some(&body))
+        .map_err(|e| explain_404(e, known, None))?;
     Ok(())
 }
 
 /// Change the password of an existing SSH account.
 pub fn set_password(client: &VapixClient, name: &str, pwd: &str) -> anyhow::Result<()> {
     check_name(name)?;
-    let has_v2 = require_users_api(client)?;
+    let (path, known) = users_api(client)?;
     let body = json!({"data": pwd});
     client
-        .rest_json("PATCH", &format!("{}/{}/password", USERS_PATH, name), Some(&body))
-        .map_err(|e| explain_404(e, has_v2, Some(name)))?;
+        .rest_json("PATCH", &format!("{}/{}/password", path, name), Some(&body))
+        .map_err(|e| explain_404(e, known, Some(name)))?;
     Ok(())
 }
 
 /// Delete an SSH account.
 pub fn remove_user(client: &VapixClient, name: &str) -> anyhow::Result<()> {
     check_name(name)?;
-    let has_v2 = require_users_api(client)?;
+    let (path, known) = users_api(client)?;
     client
-        .rest_json("DELETE", &format!("{}/{}", USERS_PATH, name), None)
-        .map_err(|e| explain_404(e, has_v2, Some(name)))?;
+        .rest_json("DELETE", &format!("{}/{}", path, name), None)
+        .map_err(|e| explain_404(e, known, Some(name)))?;
     Ok(())
 }
 
@@ -244,12 +298,42 @@ mod tests {
     fn test_404_is_explained_by_discovery() {
         let nf = || anyhow::anyhow!("HTTP 404: 404 Not Found");
         // No v2 reported (AXIS OS 9.80): the API is missing.
-        assert!(explain_404(nf(), false, Some("x")).to_string().contains("no SSH account API v2"));
+        assert!(explain_404(nf(), false, Some("x")).to_string().contains("no SSH account API"));
+        assert!(explain_404(nf(), false, None).to_string().contains("root"));
         // v2 reported: a 404 on users/<name> is a missing account.
         assert!(explain_404(nf(), true, Some("x")).to_string().contains("No SSH account named 'x'"));
         assert!(explain_404(nf(), true, None).to_string().contains("HTTP 404"));
         let other = explain_404(anyhow::anyhow!("HTTP 401: Unauthorized"), false, None);
         assert!(other.to_string().contains("401"));
+    }
+
+    #[test]
+    fn test_users_base_prefers_v2() {
+        let both = json!({"v1": {"rest_api": "/config/rest/ssh/v1beta"}, "v2": {"rest_api": "/config/rest/ssh/v2"}});
+        assert_eq!(pick_users_base(&both).as_deref(), Some("/config/rest/ssh/v2"));
+    }
+
+    #[test]
+    fn test_users_base_falls_back_to_v1beta() {
+        // Shape from a P3245-LV on AXIS OS 11.11.220: only v1, state beta.
+        let dev = json!({"v1": {"rest_api": "config/rest/ssh/v1beta", "state": "beta"}});
+        assert_eq!(pick_users_base(&dev).as_deref(), Some("/config/rest/ssh/v1beta"));
+        let bare = json!({"ssh": {"v1": {}}});
+        assert_eq!(pick_users_base(&bare).as_deref(), Some("/config/rest/ssh/v1beta"));
+        assert_eq!(pick_users_base(&json!({"v3": {}})), None);
+        assert_eq!(pick_users_base(&json!({})), None);
+    }
+
+    #[test]
+    fn test_login_mode_by_firmware() {
+        assert_eq!(login_mode("8.40.104"), Some("root"));
+        assert_eq!(login_mode("10.12.338"), Some("root"));
+        assert_eq!(login_mode("11.4.1"), Some("root"));
+        assert_eq!(login_mode("11.5.64"), Some("root+accounts"));
+        assert_eq!(login_mode("11.11.220"), Some("root+accounts"));
+        assert_eq!(login_mode("12.0.1"), Some("accounts"));
+        assert_eq!(login_mode("13.1.34"), Some("accounts"));
+        assert_eq!(login_mode("x"), None);
     }
 
     #[test]
