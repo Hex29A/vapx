@@ -26,11 +26,51 @@ reading the copy that existed when it started.
 
 ## Install
 
-Download a release binary for your platform, or build from source:
+**Linux and macOS** (x86_64, ARM64, ARMv7 / Raspberry Pi):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Hex29A/vapx/main/install.sh | sh
+```
+
+**Windows** (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/Hex29A/vapx/main/install.ps1 | iex
+```
+
+Piping a script from the internet into a shell asks you to trust it. Both scripts are short
+and meant to be read first — drop the `| sh` / `| iex` to see what you would run, or download,
+read, then run:
+
+```sh
+curl -fsSL -o install.sh https://raw.githubusercontent.com/Hex29A/vapx/main/install.sh
+less install.sh
+sh install.sh
+```
+
+What they do: pick the release binary for your OS and CPU, download it together with
+`SHA256SUMS` from the GitHub release, refuse to install if the checksum does not match, and put
+`vapx` in `~/.local/bin` (Windows: `%LOCALAPPDATA%\Programs\vapx`, added to your user PATH). No
+sudo or admin. Nothing else is touched — your `cameras.yaml` stays where it is.
+
+| | Linux / macOS | Windows |
+|---|---|---|
+| Update | run the same command again | run the same command again |
+| Specific version | `curl … \| VAPX_VERSION=0.27.0 sh` | `$env:VAPX_VERSION="0.27.0"; irm … \| iex` |
+| Other directory | `curl … \| VAPX_INSTALL_DIR=/opt/bin sh` | `$env:VAPX_INSTALL_DIR="C:\tools"; irm … \| iex` |
+| Uninstall | `curl … \| sh -s -- --uninstall` | `$env:VAPX_UNINSTALL=1; irm … \| iex` |
+
+The scripts work from v0.27.0, the first release that publishes `SHA256SUMS` and macOS and
+Windows binaries.
+
+**Manual download:** every [release](https://github.com/Hex29A/vapx/releases) has a single
+static binary per platform plus `SHA256SUMS`. Download, `chmod +x`, put it on your PATH.
+
+**From source** (any platform with Rust):
 
 ```sh
 cargo build --release
-sudo cp target/release/vapx /usr/local/bin/
+cp target/release/vapx ~/.local/bin/
 ```
 
 Static musl build (Linux):

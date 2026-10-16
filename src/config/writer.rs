@@ -8,6 +8,7 @@
 
 use std::fs;
 use std::io::Write;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
@@ -697,6 +698,7 @@ fn write_atomic(path: &Path, content: &str) -> anyhow::Result<()> {
 }
 
 /// The config holds passwords in plain text — keep it owner-only.
+#[cfg(unix)]
 fn restrict_permissions(path: &Path) -> anyhow::Result<()> {
     let mut perms = fs::metadata(path)?.permissions();
     if perms.mode() & 0o077 != 0 {
@@ -704,6 +706,13 @@ fn restrict_permissions(path: &Path) -> anyhow::Result<()> {
         fs::set_permissions(path, perms)
             .with_context(|| format!("Failed to set permissions on {}", path.display()))?;
     }
+    Ok(())
+}
+
+/// On Windows there are no mode bits. The config lives under the user profile
+/// (%APPDATA%), whose default ACL already limits it to the user and admins.
+#[cfg(not(unix))]
+fn restrict_permissions(_path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 

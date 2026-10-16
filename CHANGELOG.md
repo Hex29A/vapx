@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **Install scripts**: `install.sh` (Linux, macOS) and `install.ps1` (Windows) pick the right release binary, verify it against `SHA256SUMS`, and install to the user's own directory without sudo or admin. The same command updates; `VAPX_VERSION` pins a version, `--uninstall` / `VAPX_UNINSTALL` removes it. See "Install" in the README.
+- **macOS and Windows binaries** in every release: `aarch64-apple-darwin`, `x86_64-apple-darwin` and `x86_64-pc-windows-msvc`. On Windows there are no Unix mode bits, so `cameras.yaml` is not chmod-ed; it lives under the user profile, whose default ACL already limits it to the user.
+- **`SHA256SUMS`** published with each release, covering all binaries and both install scripts.
+- **LICENSE** file (MIT, as `Cargo.toml` already declared).
+
+### CI
+- gitleaks scans the full history before anything is built for release.
+- Pull requests now build on Windows and macOS too, and shellcheck `install.sh`, so platform breakage shows up before a tag.
+
 ## v0.26.0
 
 ### Added

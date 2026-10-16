@@ -8,6 +8,7 @@ repository = "https://github.com/Hex29A/vapx"
 readme = "README.md"
 keywords = ["axis", "vapix", "camera", "cli", "surveillance"]
 categories = ["command-line-utilities", "network-programming"]
+include = ["src/**/*", "Cargo.toml", "Cargo.lock", "README.md", "CHANGELOG.md", "LICENSE"]
 
 [[bin]]
 name = "vapx"

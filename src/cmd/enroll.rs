@@ -333,12 +333,15 @@ fn mask(pw: &str) -> String {
 
 fn write_secret_file(path: &std::path::Path, content: &str) -> anyhow::Result<()> {
     use std::io::Write;
-    use std::os::unix::fs::PermissionsExt;
 
     let mut f = std::fs::File::create(path)?;
-    let mut perms = f.metadata()?.permissions();
-    perms.set_mode(0o600);
-    std::fs::set_permissions(path, perms)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = f.metadata()?.permissions();
+        perms.set_mode(0o600);
+        std::fs::set_permissions(path, perms)?;
+    }
     f.write_all(content.as_bytes())?;
     Ok(())
 }
