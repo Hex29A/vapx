@@ -377,6 +377,29 @@ vapx mangen /usr/local/share/man/man1/
 | `--timeout` | Request timeout in seconds |
 | `--plain` | Output plain text instead of JSON |
 
+## SSH: firmware support
+
+`vapx ssh` uses two separate APIs. The service switch is the parameter
+`root.Network.SSH.Enabled`, which every tested release has. Accounts go through
+the Device Configuration API `config/rest/ssh/v2/users`, which only newer
+releases have. `vapx ssh status` shows what a device offers (`account_api`).
+
+| AXIS OS | `status` / `enable` / `disable` | `users` | Tested on |
+|---------|----------------------------------|---------|-----------|
+| 12.11, 13.1 | Yes | Yes (`v2`) | Q1726, M3128-LVE, M2035-LE, Q3556-LVE |
+| 11.11 | Yes | No, device reports only `v1` (beta) | P3245-LV |
+| 10.12, 8.40 | Yes | No, no account API | M1137, Q6154-E |
+| 9.80 | `status` only (switch not tried) | No, no account API | M3045-V, C Cube |
+
+On a device without `v2` the `users` commands stop with a clear message; create
+the account in the web interface instead.
+
+If the parameter is rejected, the service switch falls back to `ssh.cgi`
+(`getSshInfo` / `setSshConfiguration`). Axis documents `ssh.cgi` as the
+successor to the parameter, so older firmware is not where the fallback
+applies; no tested release has needed it, and it is verified only against a
+mock.
+
 ## Enroll: firmware support
 
 `vapx enroll` has been verified end-to-end on both sides of the 11.5 boundary,
