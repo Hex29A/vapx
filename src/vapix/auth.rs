@@ -3,6 +3,18 @@ use reqwest::blocking::{Client, Response};
 use reqwest::header::{HeaderValue, AUTHORIZATION, WWW_AUTHENTICATE};
 use tracing::debug;
 
+/// Build a request for any HTTP method. An unparseable method falls back to GET.
+fn request_builder(client: &Client, method: &str, url: &str) -> reqwest::blocking::RequestBuilder {
+    let m = reqwest::Method::from_bytes(method.as_bytes()).unwrap_or(reqwest::Method::GET);
+    client.request(m, url)
+}
+
+/// The request URI (path and query) that a Digest response must be computed for.
+fn request_uri(url: &str) -> &str {
+    let rest = url.split_once("://").map_or(url, |(_, r)| r);
+    rest.find('/').map_or("/", |i| &rest[i..])
+}
+
 /// Perform a request with automatic Digest/Basic auth negotiation.
 /// Strategy: if `https` → use Basic directly. If `http` → try without auth,
 /// on 401 with WWW-Authenticate: Digest, retry with computed digest.
@@ -19,11 +31,7 @@ pub fn request_with_auth(
 ) -> anyhow::Result<Response> {
     if use_https {
         debug!("Using Basic auth over HTTPS");
-        let mut req = match method {
-            "POST" => client.post(url),
-            "GET" => client.get(url),
-            _ => client.get(url),
-        };
+        let mut req = request_builder(client, method, url);
         req = req.basic_auth(username, Some(password));
         if let Some(ct) = content_type {
             req = req.header("Content-Type", ct);
@@ -192,11 +200,7 @@ fn digest_request(
 ) -> anyhow::Result<Response> {
     // First request without auth to get the challenge
     debug!("Sending initial request to get Digest challenge");
-    let mut req = match method {
-        "POST" => client.post(url),
-        "GET" => client.get(url),
-        _ => client.get(url),
-    };
+    let mut req = request_builder(client, method, url);
     if let Some(ct) = content_type {
         req = req.header("Content-Type", ct);
     }
@@ -222,21 +226,14 @@ fn digest_request(
     let mut www_header = WwwAuthenticateHeader::parse(www_auth)?;
 
     // Extract path from URL for digest calculation
-    let uri_path = url
-        .find("/axis-cgi")
-        .map(|i| &url[i..])
-        .unwrap_or("/");
+    let uri_path = request_uri(url);
 
     let context = AuthContext::new_with_method(
         username,
         password,
         uri_path,
         body,
-        match method {
-            "POST" => HttpMethod::POST,
-            "GET" => HttpMethod::GET,
-            _ => HttpMethod::GET,
-        },
+        HttpMethod::from(method),
     );
 
     let auth_header: AuthorizationHeader = www_header.respond(&context)?;
@@ -245,11 +242,7 @@ fn digest_request(
     debug!("Resending with Digest auth");
 
     // Resend with auth
-    let mut req = match method {
-        "POST" => client.post(url),
-        "GET" => client.get(url),
-        _ => client.get(url),
-    };
+    let mut req = request_builder(client, method, url);
     req = req.header(AUTHORIZATION, HeaderValue::from_str(&auth_value)?);
     if let Some(ct) = content_type {
         req = req.header("Content-Type", ct);
@@ -260,4 +253,30 @@ fn digest_request(
 
     let resp = req.send()?;
     Ok(resp)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_request_uri_axis_cgi_with_query() {
+        assert_eq!(
+            request_uri("http://192.0.2.10:80/axis-cgi/param.cgi?action=list&group=root.Brand"),
+            "/axis-cgi/param.cgi?action=list&group=root.Brand"
+        );
+    }
+
+    #[test]
+    fn test_request_uri_config_rest() {
+        assert_eq!(
+            request_uri("https://192.0.2.10:443/config/rest/ssh/v2/users/support/password"),
+            "/config/rest/ssh/v2/users/support/password"
+        );
+    }
+
+    #[test]
+    fn test_request_uri_without_path() {
+        assert_eq!(request_uri("http://192.0.2.10:8080"), "/");
+    }
 }

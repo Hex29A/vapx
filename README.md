@@ -60,6 +60,7 @@ The `host` argument can be an IP address, hostname, or a camera name defined in 
 | `param` | Parameter management (list, get, set) |
 | `user` | User account management (list, add, update, remove) |
 | `pass` | Change user password |
+| `ssh` | SSH service on/off and SSH accounts (status, enable, disable, users list/add/passwd/remove) |
 | `net` | Network configuration (show, set) |
 | `time` | Time/NTP configuration (show, set) |
 | `hw` | I/O port management (show, set, trigger) |
@@ -147,6 +148,15 @@ vapx user add 192.168.1.100 --name viewer1 --pwd secret --role viewer -u root -p
 vapx user add 192.168.1.100 --name op1 --pwd secret --role operator --ptz -u root -p <password>
 vapx user update 192.168.1.100 --name viewer1 --pwd newpass -u root -p <password>
 vapx user remove 192.168.1.100 --name viewer1 -u root -p <password>
+
+# SSH service and SSH accounts (accounts need ssh API v2; `ssh status` shows what the device has)
+vapx ssh status 192.168.1.100 -u root -p <password>
+vapx ssh enable 192.168.1.100 -u root -p <password>
+vapx ssh users add 192.168.1.100 --name support --pwd secret -u root -p <password>
+vapx ssh users passwd 192.168.1.100 --name support --pwd newpass -u root -p <password>
+vapx ssh users list 192.168.1.100 -u root -p <password>
+vapx ssh users remove 192.168.1.100 --name support -u root -p <password>
+vapx ssh disable 192.168.1.100 -u root -p <password>
 
 # Use camera name from config
 vapx info entrance
@@ -367,6 +377,29 @@ vapx mangen /usr/local/share/man/man1/
 | `--timeout` | Request timeout in seconds |
 | `--plain` | Output plain text instead of JSON |
 
+## SSH: firmware support
+
+`vapx ssh` uses two separate APIs. The service switch is the parameter
+`root.Network.SSH.Enabled`, which every tested release has. Accounts go through
+the Device Configuration API `config/rest/ssh/v2/users`, which only newer
+releases have. `vapx ssh status` shows what a device offers (`account_api`).
+
+| AXIS OS | `status` / `enable` / `disable` | `users` | Tested on |
+|---------|----------------------------------|---------|-----------|
+| 12.11, 13.1 | Yes | Yes (`v2`) | Q1726, M3128-LVE, M2035-LE, Q3556-LVE |
+| 11.11 | Yes | No, device reports only `v1` (beta) | P3245-LV |
+| 10.12, 8.40 | Yes | No, no account API | M1137, Q6154-E |
+| 9.80 | `status` only (switch not tried) | No, no account API | M3045-V, C Cube |
+
+On a device without `v2` the `users` commands stop with a clear message; create
+the account in the web interface instead.
+
+If the parameter is rejected, the service switch falls back to `ssh.cgi`
+(`getSshInfo` / `setSshConfiguration`). Axis documents `ssh.cgi` as the
+successor to the parameter, so older firmware is not where the fallback
+applies; no tested release has needed it, and it is verified only against a
+mock.
+
 ## Enroll: firmware support
 
 `vapx enroll` has been verified end-to-end on both sides of the 11.5 boundary,
@@ -545,6 +578,7 @@ src/
     param.rs           # vapx param — parameter management
     user.rs            # vapx user — user account management
     pass.rs            # vapx pass — password management
+    ssh.rs             # vapx ssh — SSH service and SSH accounts
     net.rs             # vapx net — network configuration
     time.rs            # vapx time — NTP/timezone
     hw.rs              # vapx hw — I/O port management
@@ -588,6 +622,7 @@ src/
     ptz.rs             # PTZ control (com/ptz.cgi)
     params.rs          # Parameter management (param.cgi)
     users.rs           # User management (pwdgrp.cgi)
+    ssh.rs             # SSH switch (param.cgi) and SSH accounts (config/rest/ssh/v2)
     time.rs            # Time/NTP configuration
     io.rs              # I/O port configuration
     network.rs         # Network configuration
@@ -629,6 +664,7 @@ tests/
 - [x] PTZ Control (`com/ptz.cgi`)
 - [x] Parameter Management (`param.cgi`)
 - [x] User Management (`pwdgrp.cgi`)
+- [x] SSH service and accounts (`param.cgi root.Network.SSH`, `config/rest/ssh/v2/users`)
 - [x] Network Configuration (`param.cgi root.Network`)
 - [x] Time/NTP Configuration (`param.cgi root.Time`)
 - [x] I/O Port Management (`param.cgi root.IOPort`, `portmanagement.cgi`)

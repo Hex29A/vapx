@@ -28,6 +28,7 @@ pub mod rule;
 pub mod selftest;
 pub mod signedvideo;
 pub mod snap;
+pub mod ssh;
 pub mod storage;
 pub mod stream;
 pub mod streamstatus;

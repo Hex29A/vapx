@@ -160,6 +160,46 @@ impl VapixClient {
         Ok(json)
     }
 
+    /// Call a Device Configuration REST endpoint (`/config/rest/...`) with any
+    /// HTTP method and an optional JSON body.
+    ///
+    /// Those APIs answer `{"status":"success","data":...}` or
+    /// `{"status":"error","error":{"code":...,"message":...}}`, sometimes with
+    /// an empty body. The body is never logged: it can carry a password.
+    pub fn rest_json(&self, method: &str, path: &str, body: Option<&Value>) -> anyhow::Result<Value> {
+        let url = format!("{}{}", self.base_url, path);
+        let body_bytes = body.map(serde_json::to_vec).transpose()?;
+
+        debug!("{} {} (JSON body: {})", method, url, body_bytes.is_some());
+
+        let resp = self.request_with_retry(
+            method,
+            &url,
+            body_bytes.as_deref(),
+            body_bytes.as_ref().map(|_| "application/json"),
+        )?;
+
+        let status = resp.status();
+        let text = resp.text().unwrap_or_default();
+        let json: Value = if text.trim().is_empty() {
+            Value::Null
+        } else {
+            serde_json::from_str(&text).unwrap_or(Value::Null)
+        };
+
+        let reported_error = json.get("status").and_then(|s| s.as_str()) == Some("error");
+        if !status.is_success() || reported_error {
+            let message = json
+                .pointer("/error/message")
+                .and_then(|m| m.as_str())
+                .map(str::to_string)
+                .unwrap_or_else(|| sanitize_error_body(&text));
+            bail!("HTTP {}: {}", status.as_u16(), message);
+        }
+
+        Ok(json)
+    }
+
     /// GET with query params. Returns raw response.
     /// Retries on 5xx and connection/timeout errors with exponential backoff.
     pub fn get(

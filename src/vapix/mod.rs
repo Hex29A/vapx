@@ -17,6 +17,7 @@ pub mod ptz;
 pub mod rules;
 pub mod selftest;
 pub mod signedvideo;
+pub mod ssh;
 pub mod storage;
 pub mod streamstatus;
 pub mod systemready;
