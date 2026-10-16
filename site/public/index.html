@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>vapx</title>
+<meta name="description" content="Command-line tool for managing Axis network cameras over VAPIX. One static binary for Linux, macOS and Windows.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#0B4E54">
+<style>
+:root{--bg:#f6f7f7;--fg:#16191b;--mute:#626a6e;--line:#dde1e2;--code:#fff;--accent:#0B7F88}
+@media (prefers-color-scheme:dark){:root{--bg:#121516;--fg:#e6eaeb;--mute:#8d979a;--line:#262c2e;--code:#1a1f20;--accent:#3FD2DD}}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px 16px;
+  background:var(--bg);color:var(--fg);font:16px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{width:100%;max-width:560px}
+header{display:flex;align-items:center;gap:14px;margin-bottom:6px}
+header img{width:52px;height:52px}
+h1{margin:0;font-size:30px;letter-spacing:-.02em}
+p.lede{margin:0 0 28px;color:var(--mute)}
+.tabs{display:flex;gap:4px;margin-bottom:-1px}
+.tabs button{font:inherit;font-size:13px;padding:6px 12px;border:1px solid transparent;border-bottom:none;border-radius:6px 6px 0 0;
+  background:none;color:var(--mute);cursor:pointer}
+.tabs button[aria-selected=true]{background:var(--code);border-color:var(--line);color:var(--fg)}
+.cmd{display:flex;align-items:center;gap:8px;background:var(--code);border:1px solid var(--line);border-radius:0 8px 8px 8px;padding:12px 12px 12px 16px}
+.cmd code{flex:1;font:14px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow-x:auto;white-space:nowrap}
+.cmd button{flex:none;font:inherit;font-size:12px;padding:4px 10px;border:1px solid var(--line);border-radius:6px;background:none;color:var(--mute);cursor:pointer}
+.cmd button:hover{color:var(--fg)}
+.note{font-size:13px;color:var(--mute);margin:10px 0 32px}
+.note a{color:inherit}
+nav{display:flex;flex-wrap:wrap;gap:18px}
+nav a{display:flex;align-items:center;gap:7px;color:var(--mute);text-decoration:none;font-size:14px}
+nav a:hover{color:var(--accent)}
+nav svg{width:18px;height:18px;fill:currentColor}
+footer{margin-top:40px;font-size:12px;color:var(--mute)}
+</style>
+</head>
+<body>
+<main>
+  <header><img src="favicon.svg" alt=""><h1>vapx</h1></header>
+  <p class="lede">Manage Axis network cameras from the command line: firmware, users, ACAP, network, batch jobs across many cameras. One static binary, no runtime.</p>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-cmd="curl -fsSL https://vapx.29a.se/install | sh">Linux · macOS</button>
+    <button role="tab" aria-selected="false" data-cmd="irm https://vapx.29a.se/install.ps1 | iex">Windows</button>
+    <button role="tab" aria-selected="false" data-cmd="brew install hex29a/tap/vapx">Homebrew</button>
+  </div>
+  <div class="cmd"><code id="cmd">curl -fsSL https://vapx.29a.se/install | sh</code><button id="copy" type="button">Copy</button></div>
+  <p class="note">Verifies the SHA-256 checksum and installs to your home directory, no sudo. Run it again to update.
+    <a href="/install">Read the script first</a>.</p>
+
+  <nav>
+    <a href="https://github.com/Hex29A/vapx"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>GitHub</a>
+    <a href="https://github.com/Hex29A/vapx/releases"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2.75C2 1.78 2.78 1 3.75 1h4.69c.46 0 .9.18 1.23.51l4.82 4.82c.33.33.51.77.51 1.23v4.69c0 .97-.78 1.75-1.75 1.75h-.01l-4.45 1.48a.75.75 0 01-.47 0L2.79 14.2A1.75 1.75 0 012 12.75zm3 1.75a1.25 1.25 0 100 2.5 1.25 1.25 0 000-2.5z"/></svg>Releases</a>
+    <a href="https://github.com/Hex29A/vapx/blob/main/CHANGELOG.md"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.75 1A1.75 1.75 0 002 2.75v10.5c0 .97.78 1.75 1.75 1.75h8.5A1.75 1.75 0 0014 13.25V5.41c0-.46-.18-.9-.51-1.23L10.82 1.51A1.75 1.75 0 009.59 1zM5 7h6v1.5H5zm0 3h6v1.5H5z"/></svg>Changelog</a>
+    <a href="https://github.com/Hex29A/vapx#usage"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M0 2.75C0 1.78.78 1 1.75 1h12.5c.97 0 1.75.78 1.75 1.75v10.5A1.75 1.75 0 0114.25 15H1.75A1.75 1.75 0 010 13.25zm3.22 2.97a.75.75 0 000 1.06L4.94 8.5 3.22 10.22a.75.75 0 101.06 1.06l2.25-2.25a.75.75 0 000-1.06L4.28 5.72a.75.75 0 00-1.06 0zM7.5 10.5a.75.75 0 000 1.5h4a.75.75 0 000-1.5z"/></svg>Usage</a>
+    <a href="https://github.com/Hex29A/vapx-mcp"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0a1.5 1.5 0 011.5 1.5v.6A5.5 5.5 0 0113.9 6.5h.6a1.5 1.5 0 010 3h-.6a5.5 5.5 0 01-4.4 4.4v.6a1.5 1.5 0 01-3 0v-.6A5.5 5.5 0 012.1 9.5h-.6a1.5 1.5 0 010-3h.6A5.5 5.5 0 016.5 2.1v-.6A1.5 1.5 0 018 0zm0 5a3 3 0 100 6 3 3 0 000-6z"/></svg>vapx-mcp (AI)</a>
+  </nav>
+
+  <footer>MIT licensed. Not affiliated with Axis Communications AB. VAPIX is a trademark of Axis Communications AB.</footer>
+</main>
+<script>
+const code = document.getElementById("cmd"), copy = document.getElementById("copy");
+const tabs = document.querySelectorAll(".tabs button");
+const show = (b) => {
+  tabs.forEach((t) => t.setAttribute("aria-selected", t === b));
+  code.textContent = b.dataset.cmd;
+  try { localStorage.setItem("vapx-tab", b.textContent); } catch (e) {}
+};
+tabs.forEach((b) => b.addEventListener("click", () => show(b)));
+let saved = null;
+try { saved = localStorage.getItem("vapx-tab"); } catch (e) {}
+const guess = saved || (/Win/.test(navigator.platform) ? "Windows" : null);
+tabs.forEach((b) => { if (b.textContent === guess) show(b); });
+copy.addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText(code.textContent); copy.textContent = "Copied"; }
+  catch (e) { copy.textContent = "Select & copy"; }
+  setTimeout(() => (copy.textContent = "Copy"), 1500);
+});
+</script>
+</body>
+</html>

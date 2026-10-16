@@ -12,6 +12,18 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  secrets-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks (full history)
+        run: |
+          curl -fsSL https://github.com/gitleaks/gitleaks/releases/download/v8.24.0/gitleaks_8.24.0_linux_x64.tar.gz \
+            | tar -xz gitleaks
+          ./gitleaks git --redact --verbose .
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -27,8 +39,29 @@ jobs:
       - name: Clippy
         run: cargo clippy -- -D warnings
 
+  # Windows and macOS are only built at release time, so check on every PR that
+  # they still compile — Unix-only code would otherwise surface at tag time.
+  build-other-os:
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release
+
+  install-script:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck install.sh
+        run: shellcheck install.sh
+
   build-matrix:
-    needs: test
+    needs: [secrets-scan, test, build-other-os, install-script]
     if: startsWith(github.ref, 'refs/tags/v')
     strategy:
       matrix:
@@ -42,6 +75,15 @@ jobs:
           - target: armv7-unknown-linux-musleabihf
             os: ubuntu-latest
             use_cross: true
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            use_cross: false
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            use_cross: false
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            use_cross: false
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -73,7 +115,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: vapx-${{ matrix.target }}
-          path: target/${{ matrix.target }}/release/vapx
+          path: target/${{ matrix.target }}/release/vapx${{ contains(matrix.target, 'windows') && '.exe' || '' }}
 
   tagged-release:
     needs: build-matrix
@@ -92,10 +134,16 @@ jobs:
           mkdir -p release
           for dir in artifacts/vapx-*; do
             target=$(basename "$dir" | sed 's/vapx-//')
-            cp "$dir/vapx" "release/vapx-${target}"
-            chmod +x "release/vapx-${target}"
+            if [ -f "$dir/vapx.exe" ]; then
+              cp "$dir/vapx.exe" "release/vapx-${target}.exe"
+            else
+              cp "$dir/vapx" "release/vapx-${target}"
+              chmod +x "release/vapx-${target}"
+            fi
           done
-          ls -la release/
+          cp install.sh install.ps1 release/
+          (cd release && sha256sum vapx-* install.sh install.ps1 > SHA256SUMS)
+          cat release/SHA256SUMS
 
       - name: Create tagged release
         uses: softprops/action-gh-release@v2
@@ -108,3 +156,39 @@ jobs:
             | vapx-x86_64-unknown-linux-musl | Linux x86_64 (static) |
             | vapx-aarch64-unknown-linux-musl | Linux ARM64 / Raspberry Pi 4-5 |
             | vapx-armv7-unknown-linux-musleabihf | Linux ARMv7 / Raspberry Pi 3 |
+            | vapx-aarch64-apple-darwin | macOS Apple Silicon |
+            | vapx-x86_64-apple-darwin | macOS Intel |
+            | vapx-x86_64-pc-windows-msvc.exe | Windows x64 (also runs on ARM64) |
+            | SHA256SUMS | Checksums for all of the above |
+
+            Install or update (Linux/macOS): `curl -fsSL https://vapx.29a.se/install | sh`
+            Windows (PowerShell): `irm https://vapx.29a.se/install.ps1 | iex`
+
+  homebrew:
+    needs: tagged-release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch SHA256SUMS from the release
+        run: |
+          curl -fsSL -o SHA256SUMS \
+            "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/SHA256SUMS"
+      - name: Update Hex29A/homebrew-tap
+        env:
+          TAP_KEY: ${{ secrets.HOMEBREW_TAP_KEY }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$TAP_KEY" > ~/.ssh/tap && chmod 600 ~/.ssh/tap
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/tap -o StrictHostKeyChecking=accept-new"
+          git clone git@github.com:Hex29A/homebrew-tap.git tap
+          mkdir -p tap/Formula
+          scripts/homebrew-formula.sh "$version" SHA256SUMS > tap/Formula/vapx.rb
+          cd tap
+          git config user.name "vapx CI"
+          git config user.email "actions@github.com"
+          git add Formula/vapx.rb
+          git diff --cached --quiet && { echo "formula unchanged"; exit 0; }
+          git commit -m "vapx $version"
+          git push
