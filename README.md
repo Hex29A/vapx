@@ -195,7 +195,7 @@ vapx user add 192.168.1.100 --name op1 --pwd secret --role operator --ptz -u roo
 vapx user update 192.168.1.100 --name viewer1 --pwd newpass -u root -p <password>
 vapx user remove 192.168.1.100 --name viewer1 -u root -p <password>
 
-# SSH service and SSH accounts (accounts need ssh API v2; `ssh status` shows what the device has)
+# SSH service and SSH accounts (accounts need AXIS OS 11.5+; `ssh status` shows how the device logs in)
 vapx ssh status 192.168.1.100 -u root -p <password>
 vapx ssh enable 192.168.1.100 -u root -p <password>
 vapx ssh users add 192.168.1.100 --name support --pwd secret -u root -p <password>
@@ -427,18 +427,27 @@ vapx mangen /usr/local/share/man/man1/
 
 `vapx ssh` uses two separate APIs. The service switch is the parameter
 `root.Network.SSH.Enabled`, which every tested release has. Accounts go through
-the Device Configuration API `config/rest/ssh/v2/users`, which only newer
-releases have. `vapx ssh status` shows what a device offers (`account_api`).
+the Device Configuration API: `config/rest/ssh/v2/users` from AXIS OS 12, and
+the `v1` beta at `config/rest/ssh/v1beta/users` on 11.5 to 11.x (`v2` is
+preferred when a device has both). `vapx ssh status` shows what a device offers
+(`account_api`) and how logins work there (`login`):
+
+| `login` | AXIS OS | Who can log in over SSH |
+|---------|---------|-------------------------|
+| `root` | before 11.5 | Only `root`, with its password. No separate SSH accounts. |
+| `root+accounts` | 11.5 to 11.x | `root`, and SSH accounts created with `vapx ssh users`. |
+| `accounts` | 12.0 and later | Only SSH accounts; root SSH login is gone. |
 
 | AXIS OS | `status` / `enable` / `disable` | `users` | Tested on |
 |---------|----------------------------------|---------|-----------|
 | 12.11, 13.1 | Yes | Yes (`v2`) | Q1726, M3128-LVE, M2035-LE, Q3556-LVE |
-| 11.11 | Yes | No, device reports only `v1` (beta) | P3245-LV |
+| 11.11 | Yes | Yes, through `v1` (beta); not yet tried on a device | P3245-LV (status only) |
 | 10.12, 8.40 | Yes | No, no account API | M1137, Q6154-E |
 | 9.80 | `status` only (switch not tried) | No, no account API | M3045-V, C Cube |
 
-On a device without `v2` the `users` commands stop with a clear message; create
-the account in the web interface instead.
+On a device without an account API the `users` commands stop with a clear
+message. There, SSH logs in as root: `vapx ssh enable`, then `ssh root@<host>`
+with the root password.
 
 If the parameter is rejected, the service switch falls back to `ssh.cgi`
 (`getSshInfo` / `setSshConfiguration`). Axis documents `ssh.cgi` as the
