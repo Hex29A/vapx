@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.28.1
+
+### Changed
+- The install scripts end with `Next: vapx info <ip> -u root -p <password>` instead of `vapx config add`, so the first thing suggested is a quick test against a camera. It matches the new "Test a camera" box on vapx.29a.se.
+
+### Site
+- vapx.29a.se has a "Test a camera" box: IP, user and password build a ready `vapx info` command, quoted for sh or PowerShell after the selected tab. Nothing typed leaves the page.
+- Copy buttons work where `navigator.clipboard` is missing (iOS in-app browsers such as Telegram's).
+- The dome logo from #45 is on main, and unknown paths answer 404 instead of 500.
+
 ## v0.28.0
 
 ### Added
