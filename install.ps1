@@ -75,4 +75,4 @@ if (-not (($userPath -split ';') -contains $Dir)) {
     Write-Host "Added $Dir to your user PATH. Open a new terminal to use it."
 }
 Write-Host ''
-Write-Host 'Next: vapx config add <name> <ip>   (or vapx --help)'
+Write-Host 'Next: vapx info <ip> -u root -p <password>   (or vapx --help)'

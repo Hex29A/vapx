@@ -127,4 +127,4 @@ case ":$PATH:" in
 esac
 
 say ""
-say "Next: vapx config add <name> <ip>   (or vapx --help)"
+say "Next: vapx info <ip> -u root -p <password>   (or vapx --help)"
