@@ -7,7 +7,7 @@
 <meta name="description" content="Command-line tool for managing Axis network cameras over VAPIX. One static binary for Linux, macOS and Windows.">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<meta name="theme-color" content="#0B4E54">
+<meta name="theme-color" content="#121516">
 <style>
 :root{--bg:#f6f7f7;--fg:#16191b;--mute:#626a6e;--line:#dde1e2;--code:#fff;--accent:#0B7F88}
 @media (prefers-color-scheme:dark){:root{--bg:#121516;--fg:#e6eaeb;--mute:#8d979a;--line:#262c2e;--code:#1a1f20;--accent:#3FD2DD}}
@@ -15,8 +15,8 @@
 body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px 16px;
   background:var(--bg);color:var(--fg);font:16px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
 main{width:100%;max-width:560px}
-header{display:flex;align-items:center;gap:14px;margin-bottom:6px}
-header img{width:52px;height:52px}
+header{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+header .logo{width:44px;height:32px}
 h1{margin:0;font-size:30px;letter-spacing:-.02em}
 p.lede{margin:0 0 28px;color:var(--mute)}
 .tabs{display:flex;gap:4px;margin-bottom:-1px}
@@ -46,7 +46,7 @@ footer{margin-top:40px;font-size:12px;color:var(--mute)}
 </head>
 <body>
 <main>
-  <header><img src="favicon.svg" alt=""><h1>vapx</h1></header>
+  <header><svg class="logo" viewBox="0 6 48 34" aria-hidden="true"><path d="M6 20 H42 A18 18 0 0 1 6 20 Z" fill="currentColor"/><rect x="6" y="12" width="36" height="5" rx="2.5" fill="currentColor"/><circle cx="24" cy="25" r="5" fill="var(--accent)"/></svg><h1>vapx</h1></header>
   <p class="lede">Manage Axis network cameras from the command line: firmware, users, ACAP, network, batch jobs across many cameras. One static binary, no runtime.</p>
 
   <div class="tabs" role="tablist">
