@@ -103,13 +103,11 @@ let saved = null;
 try { saved = localStorage.getItem("vapx-tab"); } catch (e) {}
 const guess = saved || (/Win/.test(navigator.platform) ? "Windows" : null);
 tabs.forEach((b) => { if (b.textContent === guess) show(b); });
-// navigator.clipboard is missing in some in-app browsers (Telegram on iOS among
-// them), so fall back to a selected textarea, which iOS only copies when the
-// selection is made with setSelectionRange.
+// The textarea copy runs first and synchronously: iOS browsers (Brave, Telegram's
+// in-app one) only allow it inside the tap itself, and an awaited clipboard
+// promise that fails first would already have used the tap up. iOS only copies
+// a selection made with setSelectionRange.
 const copyText = async (text) => {
-  if (navigator.clipboard && window.isSecureContext) {
-    try { await navigator.clipboard.writeText(text); return true; } catch (e) {}
-  }
   const t = document.createElement("textarea");
   t.value = text;
   t.setAttribute("readonly", "");
@@ -120,7 +118,8 @@ const copyText = async (text) => {
   let ok = false;
   try { ok = document.execCommand("copy"); } catch (e) {}
   t.remove();
-  return ok;
+  if (ok) return true;
+  try { await navigator.clipboard.writeText(text); return true; } catch (e) { return false; }
 };
 document.querySelectorAll(".copy").forEach((copy) => copy.addEventListener("click", async () => {
   const code = document.getElementById(copy.dataset.for);
