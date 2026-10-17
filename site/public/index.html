@@ -24,7 +24,7 @@ p.lede{margin:0 0 28px;color:var(--mute)}
   background:none;color:var(--mute);cursor:pointer}
 .tabs button[aria-selected=true]{background:var(--code);border-color:var(--line);color:var(--fg)}
 .cmd{display:flex;align-items:center;gap:8px;background:var(--code);border:1px solid var(--line);border-radius:0 8px 8px 8px;padding:12px 12px 12px 16px}
-.cmd code{flex:1;font:14px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow-x:auto;white-space:nowrap}
+.cmd code{flex:1;-webkit-user-select:all;user-select:all;font:14px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow-x:auto;white-space:nowrap}
 .cmd button{flex:none;font:inherit;font-size:12px;padding:4px 10px;border:1px solid var(--line);border-radius:6px;background:none;color:var(--mute);cursor:pointer}
 .cmd button:hover{color:var(--fg)}
 .note{font-size:13px;color:var(--mute);margin:10px 0 32px}
@@ -103,9 +103,29 @@ let saved = null;
 try { saved = localStorage.getItem("vapx-tab"); } catch (e) {}
 const guess = saved || (/Win/.test(navigator.platform) ? "Windows" : null);
 tabs.forEach((b) => { if (b.textContent === guess) show(b); });
+// navigator.clipboard is missing in some in-app browsers (Telegram on iOS among
+// them), so fall back to a selected textarea, which iOS only copies when the
+// selection is made with setSelectionRange.
+const copyText = async (text) => {
+  if (navigator.clipboard && window.isSecureContext) {
+    try { await navigator.clipboard.writeText(text); return true; } catch (e) {}
+  }
+  const t = document.createElement("textarea");
+  t.value = text;
+  t.setAttribute("readonly", "");
+  t.style.cssText = "position:fixed;top:0;left:0;opacity:0;font-size:16px";
+  document.body.appendChild(t);
+  t.focus();
+  t.setSelectionRange(0, text.length);
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch (e) {}
+  t.remove();
+  return ok;
+};
 document.querySelectorAll(".copy").forEach((copy) => copy.addEventListener("click", async () => {
-  try { await navigator.clipboard.writeText(document.getElementById(copy.dataset.for).textContent); copy.textContent = "Copied"; }
-  catch (e) { copy.textContent = "Select & copy"; }
+  const code = document.getElementById(copy.dataset.for);
+  if (await copyText(code.textContent)) copy.textContent = "Copied";
+  else { getSelection().selectAllChildren(code); copy.textContent = "Selected"; }
   setTimeout(() => (copy.textContent = "Copy"), 1500);
 }));
 </script>
