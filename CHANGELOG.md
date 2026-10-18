@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.28.2
+
+### Security
+- Dependency update: `quinn-proto` 0.11.14 → 0.11.19 (high) and `rustls` 0.23.40 → 0.23.46 (medium), which closes the two open Dependabot alerts. No code changes.
+
 ## v0.28.1
 
 ### Changed
