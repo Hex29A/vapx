@@ -42,6 +42,8 @@ pub enum Commands {
     Snap(cmd::snap::SnapCmd),
     /// Firmware management
     Fw(cmd::fw::FwCmd),
+    /// Reboot the camera (same as `fw reboot`)
+    Reboot(cmd::fw::RebootArgs),
     /// ACAP application management
     Acap(cmd::acap::AcapCmd),
     /// PTZ control (pan, tilt, zoom)
@@ -195,6 +197,7 @@ fn main() {
         Commands::Info(cmd) => cmd.run(),
         Commands::Snap(cmd) => cmd.run(),
         Commands::Fw(cmd) => cmd.run(),
+        Commands::Reboot(args) => cmd::fw::run_reboot(args),
         Commands::Acap(cmd) => cmd.run(),
         Commands::Ptz(cmd) => cmd.run(),
         Commands::Param(cmd) => cmd.run(),

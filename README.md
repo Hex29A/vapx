@@ -292,10 +292,13 @@ vapx enroll 192.168.0.90 --out creds.json     # full result to a 0600 file
 vapx systemready 192.168.0.90
 vapx systemready mycam --until-ready 240      # poll while the camera boots
 
+# Reboot (also `vapx fw reboot`): sent once, --wait reports the time until the camera is back.
+vapx reboot mycam --wait
+
 # After a reboot or factory default, wait for the *new* boot: a camera that
 # has been told to restart keeps answering "ready" until it actually goes down.
 BOOT=$(vapx systemready mycam | jq -r .data.bootid)
-vapx fw factory-default mycam --mode soft
+vapx fw factory-default mycam --mode soft --yes   # --yes skips the confirmation
 vapx systemready mycam --until-ready 300 --after-bootid "$BOOT"
 
 # Rename a camera, updating its group memberships too. The name enroll

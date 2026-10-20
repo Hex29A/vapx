@@ -1,3 +1,4 @@
+use std::io::{IsTerminal, Write};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -15,6 +16,21 @@ use crate::cmd::CameraArgs;
 pub struct FwCmd {
     #[command(subcommand)]
     pub command: FwCommands,
+}
+
+/// Arguments for `vapx reboot` and `vapx fw reboot`.
+#[derive(Args)]
+pub struct RebootArgs {
+    #[command(flatten)]
+    pub cam: CameraArgs,
+
+    /// Wait for camera to come back online
+    #[arg(long)]
+    pub wait: bool,
+
+    /// Max seconds to wait for reboot (default: 120)
+    #[arg(long, default_value_t = 120)]
+    pub wait_timeout: u64,
 }
 
 #[derive(Subcommand)]
@@ -60,19 +76,8 @@ pub enum FwCommands {
         cam: CameraArgs,
     },
     /// Reboot the camera
-    Reboot {
-        #[command(flatten)]
-        cam: CameraArgs,
-
-        /// Wait for camera to come back online
-        #[arg(long)]
-        wait: bool,
-
-        /// Max seconds to wait for reboot (default: 120)
-        #[arg(long, default_value_t = 120)]
-        wait_timeout: u64,
-    },
-    /// Factory default the camera
+    Reboot(RebootArgs),
+    /// Factory default the camera (asks for confirmation)
     FactoryDefault {
         #[command(flatten)]
         cam: CameraArgs,
@@ -80,6 +85,10 @@ pub enum FwCommands {
         /// Mode: soft (keep network settings) or hard (full reset)
         #[arg(long, default_value = "soft")]
         mode: String,
+
+        /// Skip the confirmation prompt (required when stdin is not a terminal)
+        #[arg(short, long)]
+        yes: bool,
     },
     /// Check firmware version against another camera or expected version
     Check {
@@ -130,25 +139,13 @@ impl FwCmd {
                 firmware::rollback(&client)?;
                 format::ok_msg("Rollback initiated — camera is rebooting");
             }
-            FwCommands::Reboot { cam, wait, wait_timeout } => {
-                let (creds, resolved_host) = resolve_cam(&cam)?;
-                let client = crate::cmd::make_client(&resolved_host, creds.clone(), cam.timeout);
-                eprintln!("Rebooting camera...");
-                firmware::reboot(&client)?;
-
-                if wait {
-                    wait_for_reboot(&resolved_host, creds.port, creds, wait_timeout)?;
-                    eprintln!("Camera is back online.");
-                }
-
-                format::ok_msg("Reboot complete");
-            }
-            FwCommands::FactoryDefault { cam, mode } => {
+            FwCommands::Reboot(args) => run_reboot(args)?,
+            FwCommands::FactoryDefault { cam, mode, yes } => {
+                confirm_factory_default(&cam.host, &mode, yes)?;
                 let (creds, resolved_host) = resolve_cam(&cam)?;
                 let client = crate::cmd::make_client(&resolved_host, creds, cam.timeout);
-                eprintln!("Factory defaulting camera (mode: {})...", mode);
                 firmware::factory_default(&client, &mode)?;
-                format::ok_msg(&format!("Factory default ({}) initiated", mode));
+                format::ok_msg(&format!("Factory default ({}) sent, camera is going down", mode));
             }
             FwCommands::Check { cam, expected, compare, other } => {
                 run_check(cam, expected, compare, other)?;
@@ -157,6 +154,54 @@ impl FwCmd {
 
         Ok(())
     }
+}
+
+/// Reboot the camera. Also behind the top-level `vapx reboot`.
+pub fn run_reboot(args: RebootArgs) -> anyhow::Result<()> {
+    let RebootArgs { cam, wait, wait_timeout } = args;
+    let (creds, resolved_host) = resolve_cam(&cam)?;
+    let client = crate::cmd::make_client(&resolved_host, creds.clone(), cam.timeout);
+    let started = Instant::now();
+
+    // Sent once. The camera usually closes the connection while going down,
+    // which firmware::reboot treats as accepted.
+    firmware::reboot(&client)?;
+    eprintln!("Reboot sent, camera is going down");
+
+    if !wait {
+        format::ok_msg("Reboot sent, camera is going down");
+        return Ok(());
+    }
+
+    eprintln!("Waiting for the camera to come back (up to {}s)...", wait_timeout);
+    wait_for_reboot(&resolved_host, creds.port, creds, wait_timeout, true)?;
+    let secs = started.elapsed().as_secs();
+    eprintln!("Camera is back online after {} s", secs);
+    format::ok_msg(&format!("Camera back online after {} s", secs));
+    Ok(())
+}
+
+/// Factory default wipes settings: ask first. Without `--yes` and without a
+/// terminal there is nobody to ask, so nothing is done.
+fn confirm_factory_default(host: &str, mode: &str, yes: bool) -> anyhow::Result<()> {
+    if yes {
+        return Ok(());
+    }
+    if !std::io::stdin().is_terminal() {
+        anyhow::bail!(
+            "Factory default ({}) of {} erases settings on the camera. Nothing was done; pass --yes to confirm.",
+            mode,
+            host
+        );
+    }
+    eprint!("Factory default ({}) of {} erases settings. Type 'yes' to continue: ", mode, host);
+    std::io::stderr().flush().ok();
+    let mut answer = String::new();
+    std::io::stdin().read_line(&mut answer)?;
+    if answer.trim() != "yes" {
+        anyhow::bail!("Aborted, nothing was done.");
+    }
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -225,7 +270,7 @@ fn run_upgrade(
             .unwrap());
         pb.set_message("Waiting for reboot...");
         pb.enable_steady_tick(Duration::from_millis(100));
-        wait_for_reboot(&resolved_host, creds.port, creds.clone(), wait_timeout)?;
+        wait_for_reboot(&resolved_host, creds.port, creds.clone(), wait_timeout, false)?;
         pb.finish_and_clear();
         eprintln!("Camera is back online.");
 
@@ -341,29 +386,44 @@ fn resolve_fw_timeout(host: &str) -> Option<u64> {
 }
 
 /// Wait for camera to come back online after reboot.
+///
+/// With `confirm_down` the camera must first be seen going down (within 30 s),
+/// so a reboot that never started is reported instead of looking like a
+/// reboot that finished at once. Polling is quiet: one attempt per probe.
 fn wait_for_reboot(
     host: &str,
     port: u16,
     creds: credentials::Credentials,
     timeout_secs: u64,
+    confirm_down: bool,
 ) -> anyhow::Result<()> {
     let start = Instant::now();
     let timeout = Duration::from_secs(timeout_secs);
+    let probe = || firmware::is_up(&VapixClient::new(host, port, creds.clone(), 5));
 
-    // Wait for the camera to go down
-    std::thread::sleep(Duration::from_secs(5));
+    if confirm_down {
+        let down_limit = Duration::from_secs(30).min(timeout);
+        while probe() {
+            if start.elapsed() > down_limit {
+                anyhow::bail!(
+                    "Camera still answered {}s after the reboot request; the reboot may not have started",
+                    down_limit.as_secs()
+                );
+            }
+            std::thread::sleep(Duration::from_secs(1));
+        }
+    } else {
+        // Wait for the camera to go down
+        std::thread::sleep(Duration::from_secs(5));
+    }
 
     loop {
         if start.elapsed() > timeout {
             anyhow::bail!("Camera did not come back online within {}s", timeout_secs);
         }
-
-        let probe_client = VapixClient::new(host, port, creds.clone(), 5);
-        match firmware::status(&probe_client) {
-            Ok(_) => return Ok(()),
-            Err(_) => {
-                std::thread::sleep(Duration::from_secs(3));
-            }
+        if probe() {
+            return Ok(());
         }
+        std::thread::sleep(Duration::from_secs(2));
     }
 }

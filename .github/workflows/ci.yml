@@ -36,6 +36,8 @@ jobs:
         run: cargo test --bin vapx
       - name: Broken-pipe regression test
         run: cargo test --test sigpipe
+      - name: Reboot regression test
+        run: cargo test --test reboot
       - name: Build
         run: cargo build --release
       - name: Clippy
