@@ -34,6 +34,38 @@ fn sanitize_error_body(text: &str) -> String {
     }
 }
 
+/// Result of a request sent exactly once (see `VapixClient::post_json_once`).
+pub enum Sent {
+    /// The camera replied with a valid, non-error response.
+    Answered,
+    /// The request was sent but the connection ended before a reply arrived.
+    Dropped,
+}
+
+/// Validate a VAPIX JSON response: HTTP status first, then an `error` field
+/// that the camera can return with HTTP 200.
+fn parse_vapix_json(resp: reqwest::blocking::Response) -> anyhow::Result<Value> {
+    let status = resp.status();
+    if !status.is_success() {
+        let text = resp.text().unwrap_or_default();
+        bail!("HTTP {}: {}", status.as_u16(), sanitize_error_body(&text));
+    }
+
+    let json: Value = resp.json().context("Failed to parse JSON response")?;
+    trace!("Response: {}", json);
+
+    if let Some(error) = json.get("error") {
+        let code = error.get("code").and_then(|c| c.as_i64()).unwrap_or(0);
+        let message = error
+            .get("message")
+            .and_then(|m| m.as_str())
+            .unwrap_or("Unknown error");
+        bail!("VAPIX error {}: {}", code, message);
+    }
+
+    Ok(json)
+}
+
 pub struct VapixClient {
     inner: reqwest::blocking::Client,
     base_url: String,
@@ -46,6 +78,16 @@ fn is_retryable_error(err: &anyhow::Error) -> bool {
         return reqwest_err.is_timeout() || reqwest_err.is_connect();
     }
     false
+}
+
+/// Check if a request failed *after* it was sent: the connection was reset,
+/// closed or timed out while waiting for the reply. A failure to connect does
+/// not count, since the request never left.
+fn is_dropped_after_send(err: &anyhow::Error) -> bool {
+    match err.downcast_ref::<reqwest::Error>() {
+        Some(e) => !e.is_connect() && (e.is_timeout() || e.is_request() || e.is_body()),
+        None => false,
+    }
 }
 
 /// Check if an HTTP status code is retryable (5xx).
@@ -137,27 +179,42 @@ impl VapixClient {
         debug!("POST {} body={}", url, body);
 
         let resp = self.request_with_retry("POST", &url, Some(&body_bytes), Some("application/json"))?;
+        parse_vapix_json(resp)
+    }
 
-        let status = resp.status();
-        if !status.is_success() {
-            let text = resp.text().unwrap_or_default();
-            bail!("HTTP {}: {}", status.as_u16(), sanitize_error_body(&text));
+    /// POST JSON exactly once, for calls that are not idempotent (reboot,
+    /// factory default). A retry could trigger the action a second time.
+    ///
+    /// If the request went out but the connection broke or timed out before
+    /// the camera answered, that is `Sent::Dropped`, not an error: a camera
+    /// that is rebooting closes the connection before it replies. A failure to
+    /// connect at all is still an error, since nothing was sent.
+    pub fn post_json_once(&self, path: &str, body: &Value) -> anyhow::Result<Sent> {
+        let url = format!("{}{}", self.base_url, path);
+        let body_bytes = serde_json::to_vec(body)?;
+
+        debug!("POST (no retry) {} body={}", url, body);
+
+        let result = request_with_auth(
+            &self.inner,
+            "POST",
+            &url,
+            Some(&body_bytes),
+            Some("application/json"),
+            &self.creds.user,
+            &self.creds.pass,
+            self.creds.https,
+        )
+        .and_then(parse_vapix_json);
+
+        match result {
+            Ok(_) => Ok(Sent::Answered),
+            Err(err) if is_dropped_after_send(&err) => {
+                debug!("Connection closed before the camera replied: {}", err);
+                Ok(Sent::Dropped)
+            }
+            Err(err) => Err(err),
         }
-
-        let json: Value = resp.json().context("Failed to parse JSON response")?;
-        trace!("Response: {}", json);
-
-        // Check for VAPIX error in response body (HTTP 200 but error field present)
-        if let Some(error) = json.get("error") {
-            let code = error.get("code").and_then(|c| c.as_i64()).unwrap_or(0);
-            let message = error
-                .get("message")
-                .and_then(|m| m.as_str())
-                .unwrap_or("Unknown error");
-            bail!("VAPIX error {}: {}", code, message);
-        }
-
-        Ok(json)
     }
 
     /// Call a Device Configuration REST endpoint (`/config/rest/...`) with any

@@ -38,6 +38,8 @@ jobs:
         run: cargo test --test sigpipe
       - name: MCP server tests
         run: cargo test --test mcp
+      - name: Reboot regression test
+        run: cargo test --test reboot
       - name: Build
         run: cargo build --release
       - name: Clippy

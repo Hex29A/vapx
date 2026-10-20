@@ -34,6 +34,30 @@ fn parse_params(text: &str) -> Value {
     Value::Object(out)
 }
 
+/// Apply day/night settings to `channel`: the `daynight.cgi` API, or one
+/// `param.cgi` update per setting on cameras without it.
+pub fn set_configuration(client: &VapixClient, channel: i64, settings: &Map<String, Value>) -> anyhow::Result<()> {
+    let mut params = Map::new();
+    params.insert("channel".into(), json!(channel));
+    params.extend(settings.clone());
+    let modern = client.post_json(
+        "/axis-cgi/daynight.cgi",
+        &json!({"apiVersion": "1.2", "method": "setConfiguration", "params": params}),
+    );
+    if modern.is_ok() {
+        return Ok(());
+    }
+    for (key, value) in settings {
+        let name = format!("{GROUP}.{key}");
+        let text = match value {
+            Value::String(s) => s.clone(),
+            other => other.to_string(),
+        };
+        client.get_text("/axis-cgi/param.cgi", &[("action", "update"), (&name, &text)])?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::parse_params;

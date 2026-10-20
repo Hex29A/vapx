@@ -88,3 +88,38 @@ fn normalize(resp: &Value) -> Value {
             .collect(),
     )
 }
+
+/// Set a view area's rectangular geometry through `configure.cgi`.
+pub fn configure_geometry(
+    client: &VapixClient,
+    view_area_id: i64,
+    horizontal_offset: i64,
+    vertical_offset: i64,
+    horizontal_size: i64,
+    vertical_size: i64,
+) -> anyhow::Result<Value> {
+    let resp = client.post_json("/axis-cgi/viewarea/configure.cgi", &json!({
+        "apiVersion": "1.0",
+        "method": "setGeometry",
+        "params": {
+            "viewAreaId": view_area_id,
+            "rectangularGeometry": {
+                "horizontalOffset": horizontal_offset,
+                "verticalOffset": vertical_offset,
+                "horizontalSize": horizontal_size,
+                "verticalSize": vertical_size,
+            },
+        },
+    }))?;
+    Ok(super::data_of(resp))
+}
+
+/// Reset a view area to its factory geometry (the full canvas).
+pub fn reset_geometry(client: &VapixClient, view_area_id: i64) -> anyhow::Result<Value> {
+    let resp = client.post_json("/axis-cgi/viewarea/configure.cgi", &json!({
+        "apiVersion": "1.0",
+        "method": "resetGeometry",
+        "params": {"viewAreaId": view_area_id},
+    }))?;
+    Ok(super::data_of(resp))
+}

@@ -51,8 +51,13 @@ struct Stdio_ {
 
 impl Stdio_ {
     fn start(config: &PathBuf) -> Self {
+        Self::start_env(config, &[])
+    }
+
+    fn start_env(config: &PathBuf, env: &[(&str, &str)]) -> Self {
         let mut child = vapx(config)
             .arg("mcp")
+            .envs(env.iter().copied())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -281,54 +286,126 @@ fn http_refuses_to_start_without_a_token_or_a_bind_address() {
 
 // ---- tools against a fake camera ----
 
-/// A camera stand-in that answers by request path (no authentication challenge).
-fn fake_camera(routes: Vec<(&'static str, &'static str)>) -> u16 {
+type Log = std::sync::Arc<std::sync::Mutex<Vec<String>>>;
+
+/// How a fake camera answers one path.
+struct Route(&'static str, &'static str, &'static str); // path, content type, body
+
+fn json_route(path: &'static str, body: &'static str) -> Route {
+    Route(path, "application/json", body)
+}
+
+/// A camera stand-in. It answers by request path (no authentication
+/// challenge), `{"data":{}}` for paths it has no route for, and records each
+/// request as `METHOD target body`. With `drop_connections` it records the
+/// request and closes the connection without answering, as a camera does
+/// while it reboots.
+fn camera_stub(routes: Vec<Route>, drop_connections: bool) -> (u16, Log) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
+    let log: Log = Default::default();
+    let shared = log.clone();
+    let routes = std::sync::Arc::new(routes);
     thread::spawn(move || {
         for stream in listener.incoming() {
             let Ok(mut stream) = stream else { break };
-            let routes = routes.clone();
+            let (routes, log) = (routes.clone(), shared.clone());
             thread::spawn(move || {
                 use std::io::Read;
-                let mut buf = vec![0u8; 8192];
-                let n = stream.read(&mut buf).unwrap_or(0);
-                let head = String::from_utf8_lossy(&buf[..n]).into_owned();
-                let path = head.split_whitespace().nth(1).unwrap_or("/").split('?').next().unwrap().to_string();
-                let (status, body) = match routes.iter().find(|(p, _)| *p == path) {
-                    Some((_, body)) => ("200 OK", *body),
-                    None => ("404 Not Found", "not found"),
+                let mut data = Vec::new();
+                let mut buf = [0u8; 4096];
+                // Read the head, then as much body as Content-Length announces.
+                let head_end = loop {
+                    let n = stream.read(&mut buf).unwrap_or(0);
+                    if n == 0 {
+                        return;
+                    }
+                    data.extend_from_slice(&buf[..n]);
+                    if let Some(i) = data.windows(4).position(|w| w == b"\r\n\r\n") {
+                        break i + 4;
+                    }
                 };
+                let head = String::from_utf8_lossy(&data[..head_end]).into_owned();
+                let length = head
+                    .lines()
+                    .find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse::<usize>().unwrap_or(0)))
+                    .unwrap_or(0);
+                while data.len() < head_end + length {
+                    let n = stream.read(&mut buf).unwrap_or(0);
+                    if n == 0 {
+                        break;
+                    }
+                    data.extend_from_slice(&buf[..n]);
+                }
+                let body = String::from_utf8_lossy(&data[head_end..]).into_owned();
+                let mut first = head.lines().next().unwrap_or("").split_whitespace();
+                let (method, target) = (first.next().unwrap_or(""), first.next().unwrap_or("/"));
+                log.lock().unwrap().push(format!("{method} {target} {body}"));
+                if drop_connections {
+                    return;
+                }
+                let path = target.split('?').next().unwrap();
+                let (ctype, reply) = routes
+                    .iter()
+                    .find(|r| r.0 == path)
+                    .map(|r| (r.1, r.2))
+                    .unwrap_or(("application/json", r#"{"apiVersion":"1.0","data":{}}"#));
                 let _ = write!(
                     stream,
-                    "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                    body.len()
+                    "HTTP/1.1 200 OK\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{reply}",
+                    reply.len()
                 );
             });
         }
     });
-    port
+    (port, log)
+}
+
+fn fake_camera(routes: Vec<Route>) -> (u16, Log) {
+    camera_stub(routes, false)
+}
+
+fn requests(log: &Log) -> Vec<String> {
+    log.lock().unwrap().clone()
 }
 
 fn config_with_camera(tag: &str, port: u16) -> PathBuf {
+    config_with_camera_extra(tag, port, "")
+}
+
+fn config_with_camera_extra(tag: &str, port: u16, extra: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("vapx-mcp-{}-{}", std::process::id(), tag));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("cameras.yaml");
-    std::fs::write(&path, format!("cameras:\n  cam1:\n    host: 127.0.0.1\n    port: {port}\n    user: root\n    pass: pass\n")).unwrap();
+    std::fs::write(
+        &path,
+        format!("cameras:\n  cam1:\n    host: 127.0.0.1\n    port: {port}\n    user: root\n    pass: pass\n{extra}"),
+    )
+    .unwrap();
     path
 }
 
-fn call_text(s: &mut Stdio_, id: i64, tool: &str, args: Value) -> String {
+fn call(s: &mut Stdio_, id: i64, tool: &str, args: Value) -> Value {
     s.send(json!({"jsonrpc": "2.0", "id": id, "method": "tools/call",
                   "params": {"name": tool, "arguments": args}}));
-    let r = s.response(id);
-    assert_ne!(r["result"]["isError"], json!(true), "{r}");
-    r["result"]["content"][0]["text"].as_str().unwrap().to_string()
+    s.response(id)["result"].clone()
+}
+
+fn call_text(s: &mut Stdio_, id: i64, tool: &str, args: Value) -> String {
+    let r = call(s, id, tool, args);
+    assert_ne!(r["isError"], json!(true), "{r}");
+    r["content"][0]["text"].as_str().unwrap().to_string()
+}
+
+fn error_text(s: &mut Stdio_, id: i64, tool: &str, args: Value) -> String {
+    let r = call(s, id, tool, args);
+    assert_eq!(r["isError"], json!(true), "{r}");
+    r["content"][0]["text"].as_str().unwrap().to_string()
 }
 
 #[test]
 fn camera_info_drops_the_vendor_url_and_adds_the_device_url() {
-    let port = fake_camera(vec![(
+    let (port, _) = fake_camera(vec![json_route(
         "/axis-cgi/basicdeviceinfo.cgi",
         r#"{"apiVersion":"1.0","data":{"propertyList":{"ProdNbr":"P1375","Version":"11.11.1","SerialNumber":"ACCC00000000","WebURL":"https://www.axis.com"}}}"#,
     )]);
@@ -348,10 +425,165 @@ fn camera_info_drops_the_vendor_url_and_adds_the_device_url() {
 
 #[test]
 fn system_log_can_be_cut_to_the_last_lines() {
-    let port = fake_camera(vec![("/axis-cgi/admin/systemlog.cgi", "one\ntwo\nthree\nfour")]);
+    let (port, _) = fake_camera(vec![Route("/axis-cgi/admin/systemlog.cgi", "text/plain", "one\ntwo\nthree\nfour")]);
     let mut s = Stdio_::start(&config_with_camera("syslog", port));
     s.initialize();
 
     assert_eq!(call_text(&mut s, 2, "get_system_log", json!({"camera_id": "cam1", "lines": 2})), "three\nfour");
     assert_eq!(call_text(&mut s, 3, "get_system_log", json!({"camera_id": "cam1"})), "one\ntwo\nthree\nfour");
+}
+
+// ---- write tools (#58) ----
+
+#[test]
+fn tools_list_has_the_write_tools_and_marks_the_disruptive_ones() {
+    let mut s = Stdio_::start(&test_config("write-list"));
+    s.initialize();
+    s.send(json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}));
+    let r = s.response(2);
+    let tools = r["result"]["tools"].as_array().unwrap();
+    assert_eq!(tools.len(), 78, "every tool of the Python server");
+    let reboot = tools.iter().find(|t| t["name"] == "reboot_camera").unwrap();
+    assert_eq!(reboot["annotations"]["destructiveHint"], true, "{reboot}");
+    assert_eq!(reboot["annotations"]["readOnlyHint"], false);
+    assert!(reboot["description"].as_str().unwrap().contains("Disruptive"));
+    let info = tools.iter().find(|t| t["name"] == "get_camera_info").unwrap();
+    assert_eq!(info["annotations"]["readOnlyHint"], true);
+}
+
+#[test]
+fn invalid_arguments_are_rejected_before_any_request_is_made() {
+    let (port, log) = fake_camera(vec![]);
+    let mut s = Stdio_::start(&config_with_camera("invalid", port));
+    s.initialize();
+
+    let e = error_text(&mut s, 2, "ptz_move", json!({"camera_id": "cam1", "pan": 0, "tilt": 0, "zoom": 0}));
+    assert!(e.contains("zoom") && e.contains("at least"), "{e}");
+    let e = error_text(&mut s, 3, "set_io_port", json!({"camera_id": "cam1", "port": "0", "state": "ajar"}));
+    assert!(e.contains("one of"), "{e}");
+    let e = error_text(&mut s, 4, "toggle_light", json!({"camera_id": "cam1", "light_id": "led0"}));
+    assert!(e.contains("on is required"), "{e}");
+    assert!(requests(&log).is_empty(), "no request may reach the camera: {:?}", requests(&log));
+}
+
+#[test]
+fn ptz_move_sends_the_absolute_position() {
+    let (port, log) = fake_camera(vec![]);
+    let mut s = Stdio_::start(&config_with_camera("ptz", port));
+    s.initialize();
+
+    let text = call_text(&mut s, 2, "ptz_move", json!({"camera_id": "cam1", "pan": 10, "tilt": -5.5, "zoom": 100}));
+    assert_eq!(text, "Moved cam1 to pan=10, tilt=-5.5, zoom=100");
+    let reqs = requests(&log);
+    let req = reqs.iter().find(|r| r.contains("/axis-cgi/com/ptz.cgi")).expect("a PTZ request");
+    assert!(req.starts_with("GET ") && req.contains("pan=10") && req.contains("tilt=-5.5") && req.contains("zoom=100"), "{req}");
+}
+
+#[test]
+fn io_light_timezone_and_siren_calls_reach_the_camera_as_documented() {
+    let (port, log) = fake_camera(vec![]);
+    let mut s = Stdio_::start(&config_with_camera("calls", port));
+    s.initialize();
+
+    call_text(&mut s, 2, "set_io_port", json!({"camera_id": "cam1", "port": "1", "state": "closed"}));
+    call_text(&mut s, 3, "toggle_light", json!({"camera_id": "cam1", "light_id": "led0", "on": false}));
+    call_text(&mut s, 4, "set_timezone", json!({"camera_id": "cam1", "timezone": "Europe/Stockholm"}));
+    call_text(&mut s, 5, "stop_siren", json!({"camera_id": "cam1"}));
+    call_text(&mut s, 6, "activate_siren", json!({"camera_id": "cam1", "siren_pattern": "wail", "duration": 3}));
+
+    let all = requests(&log).join("\n");
+    for want in [
+        "/axis-cgi/io/portmanagement.cgi", r#""method":"setPorts""#, r#""state":"closed""#,
+        "/axis-cgi/lightcontrol.cgi", r#""method":"deactivateLight""#, r#""lightID":"led0""#,
+        "/axis-cgi/time.cgi", r#""method":"setTimeZone""#, "Europe/Stockholm",
+        "/axis-cgi/siren_and_light.cgi", r#""method":"stop""#, r#""method":"start""#,
+        r#""pattern":"wail""#, r#""unit":"seconds""#,
+    ] {
+        assert!(all.contains(want), "missing {want} in:\n{all}");
+    }
+}
+
+#[test]
+fn applications_and_audio_clips_use_the_cameras_own_apis() {
+    let (port, log) = fake_camera(vec![Route("/axis-cgi/applications/control.cgi", "text/plain", "OK")]);
+    let mut s = Stdio_::start(&config_with_camera("apps", port));
+    s.initialize();
+
+    assert_eq!(call_text(&mut s, 2, "restart_application", json!({"camera_id": "cam1", "package_name": "larod"})),
+               "Restarted 'larod' on cam1");
+    let clip: Value = serde_json::from_str(&call_text(&mut s, 3, "play_audio_clip", json!({"camera_id": "cam1", "name_or_id": "3"}))).unwrap();
+    assert_eq!(clip, json!({"clip_id": 3, "status": "playing"}));
+    let all = requests(&log).join("\n");
+    assert!(all.contains("action=restart") && all.contains("package=larod"), "{all}");
+    assert!(all.contains("/axis-cgi/mediaclip.cgi") && all.contains("action=play"), "{all}");
+}
+
+#[test]
+fn privacy_masks_are_converted_for_rotated_cameras() {
+    let (port, log) = fake_camera(vec![Route(
+        "/axis-cgi/param.cgi",
+        "text/plain",
+        "root.Image.I0.Appearance.Resolution=1920x1080",
+    ), Route("/axis-cgi/privacymask.cgi", "text/plain", "")]);
+    let mut s = Stdio_::start(&config_with_camera_extra("mask", port, "    mask_rotation: 180\n"));
+    s.initialize();
+
+    let text = call_text(&mut s, 2, "add_privacy_mask", json!({"camera_id": "cam1", "name": "door", "polygon": "100,100:200,100"}));
+    assert!(text.contains("auto-corrected for 180"), "{text}");
+    let reqs = requests(&log);
+    let req = reqs.iter().find(|r| r.contains("privacymask.cgi")).expect("a mask request");
+    // (100,100) and (200,100) on a 180 degree rotated 1920x1080 sensor.
+    assert!(req.contains("action=add") && req.contains("name=door"), "{req}");
+    assert!(req.contains("1820%2C980%3A1720%2C980") || req.contains("1820,980:1720,980"), "{req}");
+}
+
+#[test]
+fn reboot_is_sent_once_and_a_dropped_connection_counts_as_sent() {
+    let (port, log) = camera_stub(vec![], true);
+    let mut s = Stdio_::start(&config_with_camera("reboot", port));
+    s.initialize();
+
+    let result: Value = serde_json::from_str(&call_text(&mut s, 2, "reboot_camera", json!({"camera_id": "cam1"}))).unwrap();
+    assert_eq!(result["status"], "rebooting", "{result}");
+    assert_eq!(result["camera"], "cam1");
+    assert!(result["note"].as_str().unwrap().contains("unreachable"));
+    assert_eq!(requests(&log).len(), 1, "the reboot request must be sent exactly once: {:?}", requests(&log));
+}
+
+#[test]
+fn export_writes_into_the_exports_directory_and_nowhere_else() {
+    let (port, log) = fake_camera(vec![Route("/axis-cgi/record/export/exportrecording.cgi", "video/x-matroska", "MKVDATA")]);
+    let dir = std::env::temp_dir().join(format!("vapx-mcp-exports-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut s = Stdio_::start_env(&config_with_camera("export", port), &[("VAPX_MCP_EXPORTS_DIR", dir.to_str().unwrap())]);
+    s.initialize();
+
+    let result: Value = serde_json::from_str(&call_text(
+        &mut s, 2, "export_recording", json!({"camera_id": "cam1", "recording_id": "r1", "disk_id": "SD_DISK"}),
+    ))
+    .unwrap();
+    assert_eq!(result["size_bytes"], 7, "{result}");
+    assert_eq!(std::fs::read(dir.join("r1.mkv")).unwrap(), b"MKVDATA");
+
+    let before = requests(&log).len();
+    let e = error_text(&mut s, 3, "export_recording", json!({
+        "camera_id": "cam1", "recording_id": "r1", "disk_id": "SD_DISK", "filename": "../evil.mkv"}));
+    assert!(e.contains("plain file name"), "{e}");
+    assert_eq!(requests(&log).len(), before, "a rejected filename must not even download");
+    assert!(!dir.parent().unwrap().join("evil.mkv").exists());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn snapshot_all_returns_an_image_per_camera() {
+    let (port, _) = fake_camera(vec![Route("/axis-cgi/jpg/image.cgi", "image/jpeg", "JPEGBYTES")]);
+    let mut s = Stdio_::start(&config_with_camera("snapall", port));
+    s.initialize();
+
+    let r = call(&mut s, 2, "snapshot_all", json!({}));
+    assert_ne!(r["isError"], json!(true), "{r}");
+    assert_eq!(r["content"][0]["text"], "--- cam1 (cam1) ---");
+    assert_eq!(r["content"][1]["type"], "image");
+    assert_eq!(r["content"][1]["mimeType"], "image/jpeg");
+    assert_eq!(r["content"][1]["data"], "SlBFR0JZVEVT"); // base64 of JPEGBYTES
 }

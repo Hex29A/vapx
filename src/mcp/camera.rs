@@ -10,6 +10,9 @@ use crate::config::credentials::Credentials;
 use crate::vapix::client::VapixClient;
 
 pub struct Cam {
+    pub id: String,
+    pub mask_rotation: u16,
+    pub mask_mirror: bool,
     pub host: String,
     pub creds: Credentials,
     pub client: VapixClient,
@@ -47,7 +50,14 @@ pub fn open(id: &str) -> anyhow::Result<Cam> {
         timeout: config.effective_timeout(entry),
     };
     let client = VapixClient::new(&entry.host, creds.port, creds.clone(), creds.timeout);
-    Ok(Cam { host: entry.host.clone(), creds, client })
+    Ok(Cam {
+        id: id.to_string(),
+        mask_rotation: entry.mask_rotation,
+        mask_mirror: entry.mask_mirror,
+        host: entry.host.clone(),
+        creds,
+        client,
+    })
 }
 
 /// All enabled cameras, sorted by ID: `[{id, name, host, capabilities}]`.

@@ -368,3 +368,40 @@ pub fn get_storage_params(client: &VapixClient) -> anyhow::Result<String> {
         &[("action", "list"), ("group", "root.Storage")],
     )
 }
+
+/// Download a recording as Matroska. Returns the file's bytes.
+pub fn export_recording(
+    client: &VapixClient,
+    recording_id: &str,
+    disk_id: &str,
+    start_time: Option<&str>,
+    stop_time: Option<&str>,
+) -> anyhow::Result<Vec<u8>> {
+    let mut params: Vec<(&str, &str)> = vec![
+        ("schemaversion", "1"),
+        ("recordingid", recording_id),
+        ("diskid", disk_id),
+        ("exportformat", "matroska"),
+    ];
+    if let Some(t) = start_time {
+        params.push(("starttime", t));
+    }
+    if let Some(t) = stop_time {
+        params.push(("stoptime", t));
+    }
+    let resp = client.get("/axis-cgi/record/export/exportrecording.cgi", &params)?;
+    let textual = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.contains("xml") || v.contains("text"))
+        .unwrap_or(false);
+    let bytes = resp.bytes()?.to_vec();
+    if textual {
+        let text = String::from_utf8_lossy(&bytes);
+        if text.contains("Error") || text.contains("error") {
+            anyhow::bail!("Export error: {}", text.trim());
+        }
+    }
+    Ok(bytes)
+}

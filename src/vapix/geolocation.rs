@@ -28,6 +28,30 @@ fn parse_location(xml: &str) -> anyhow::Result<Value> {
     Ok(Value::Object(out))
 }
 
+/// Set position (WGS-84 decimal degrees), heading and free text. Only the
+/// given values change.
+pub fn set_location(
+    client: &VapixClient,
+    lat: Option<f64>,
+    lng: Option<f64>,
+    heading: Option<f64>,
+    text: Option<&str>,
+) -> anyhow::Result<()> {
+    let numbers: Vec<(&str, String)> = [("lat", lat), ("lng", lng), ("heading", heading)]
+        .into_iter()
+        .filter_map(|(k, v)| v.map(|v| (k, v.to_string())))
+        .collect();
+    let mut params: Vec<(&str, &str)> = numbers.iter().map(|(k, v)| (*k, v.as_str())).collect();
+    if let Some(t) = text {
+        params.push(("text", t));
+    }
+    let reply = client.get_text("/axis-cgi/geolocation/set.cgi", &params)?;
+    if reply.to_lowercase().contains("error") {
+        anyhow::bail!("Geolocation error: {}", reply.trim());
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

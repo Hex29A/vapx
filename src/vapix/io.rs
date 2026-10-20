@@ -130,3 +130,22 @@ fn parse_legacy_ports(param_text: &str, state_text: &str) -> serde_json::Value {
     }
     serde_json::Value::Array(list.into_iter().map(serde_json::Value::Object).collect())
 }
+
+/// Set an output port (`"0"`, `"1"`, ...) to `open` or `closed`, through the
+/// `portmanagement.cgi` API or, on cameras without it, `io/port.cgi`.
+pub fn set_port_state(client: &VapixClient, port: &str, state: &str) -> anyhow::Result<()> {
+    if state != "open" && state != "closed" {
+        bail!("state must be 'open' or 'closed', got '{}'", state);
+    }
+    let modern = client.post_json(
+        "/axis-cgi/io/portmanagement.cgi",
+        &json!({"apiVersion": "1.0", "method": "setPorts",
+                "params": {"ports": [{"port": port, "state": state}]}}),
+    );
+    if modern.is_ok() {
+        return Ok(());
+    }
+    let index: u8 = port.parse().map_err(|_| anyhow::anyhow!("port must be a number, got '{}'", port))?;
+    trigger_port(client, index, state == "closed")?;
+    Ok(())
+}

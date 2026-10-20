@@ -13,3 +13,21 @@ pub fn list_profiles(client: &VapixClient, name: Option<&str>) -> anyhow::Result
     )?;
     Ok(super::data_of(resp))
 }
+
+/// Create a profile. `parameters` is URL-encoded, e.g. `resolution=1920x1080&fps=30`.
+pub fn create_profile(client: &VapixClient, name: &str, parameters: &str, description: &str) -> anyhow::Result<()> {
+    client.post_json(
+        "/axis-cgi/streamprofile.cgi",
+        &json!({"apiVersion": "1.0", "method": "create", "params": {"streamProfile": [
+            {"name": name, "description": description, "parameters": parameters}]}}),
+    )?;
+    Ok(())
+}
+
+pub fn remove_profile(client: &VapixClient, name: &str) -> anyhow::Result<()> {
+    client.post_json(
+        "/axis-cgi/streamprofile.cgi",
+        &json!({"apiVersion": "1.0", "method": "remove", "params": {"streamProfile": [{"name": name}]}}),
+    )?;
+    Ok(())
+}

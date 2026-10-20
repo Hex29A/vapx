@@ -1,6 +1,6 @@
 use serde_json::{json, Value};
 
-use crate::vapix::client::VapixClient;
+use crate::vapix::client::{Sent, VapixClient};
 
 /// Get firmware status
 pub fn status(client: &VapixClient) -> anyhow::Result<Value> {
@@ -102,17 +102,31 @@ pub fn rollback(client: &VapixClient) -> anyhow::Result<Value> {
     client.post_json("/axis-cgi/firmwaremanagement.cgi", &body)
 }
 
-/// Reboot the camera.
-pub fn reboot(client: &VapixClient) -> anyhow::Result<Value> {
+/// Reboot the camera. Sent once, never retried: the camera drops the
+/// connection as it goes down, and a retry could reboot it a second time.
+pub fn reboot(client: &VapixClient) -> anyhow::Result<Sent> {
     let body = json!({
         "apiVersion": "1.0",
         "method": "reboot"
     });
-    client.post_json("/axis-cgi/firmwaremanagement.cgi", &body)
+    client.post_json_once("/axis-cgi/firmwaremanagement.cgi", &body)
 }
 
-/// Factory default the camera.
-pub fn factory_default(client: &VapixClient, mode: &str) -> anyhow::Result<Value> {
+/// Whether the camera answers a firmware status request right now. One
+/// attempt, no retries and no log noise, for polling while it reboots.
+pub fn is_up(client: &VapixClient) -> bool {
+    let body = json!({
+        "apiVersion": "1.0",
+        "method": "status"
+    });
+    matches!(
+        client.post_json_once("/axis-cgi/firmwaremanagement.cgi", &body),
+        Ok(Sent::Answered)
+    )
+}
+
+/// Factory default the camera. Sent once, never retried (see `reboot`).
+pub fn factory_default(client: &VapixClient, mode: &str) -> anyhow::Result<Sent> {
     let body = json!({
         "apiVersion": "1.0",
         "method": "factoryDefault",
@@ -120,5 +134,5 @@ pub fn factory_default(client: &VapixClient, mode: &str) -> anyhow::Result<Value
             "factoryDefaultMode": mode
         }
     });
-    client.post_json("/axis-cgi/firmwaremanagement.cgi", &body)
+    client.post_json_once("/axis-cgi/firmwaremanagement.cgi", &body)
 }

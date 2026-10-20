@@ -40,3 +40,36 @@ pub fn get_ntp_info(client: &VapixClient) -> anyhow::Result<serde_json::Value> {
     )?;
     Ok(super::data_of(resp))
 }
+
+/// Set the time zone (IANA name, e.g. `Europe/Stockholm`).
+pub fn set_timezone(client: &VapixClient, timezone: &str) -> anyhow::Result<()> {
+    client.post_json(
+        "/axis-cgi/time.cgi",
+        &serde_json::json!({"apiVersion": "1.0", "method": "setTimeZone", "params": {"timeZone": timezone}}),
+    )?;
+    Ok(())
+}
+
+/// Configure the NTP client. Only the given settings change.
+pub fn set_ntp_config(
+    client: &VapixClient,
+    enabled: Option<bool>,
+    servers_source: Option<&str>,
+    static_servers: Option<&[String]>,
+) -> anyhow::Result<()> {
+    let mut params = serde_json::Map::new();
+    if let Some(v) = enabled {
+        params.insert("enabled".into(), serde_json::json!(v));
+    }
+    if let Some(v) = servers_source {
+        params.insert("serversSource".into(), serde_json::json!(v));
+    }
+    if let Some(v) = static_servers {
+        params.insert("staticServers".into(), serde_json::json!(v));
+    }
+    client.post_json(
+        "/axis-cgi/ntp.cgi",
+        &serde_json::json!({"apiVersion": "1.0", "method": "setNTPClientConfiguration", "params": params}),
+    )?;
+    Ok(())
+}

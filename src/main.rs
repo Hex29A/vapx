@@ -45,6 +45,8 @@ pub enum Commands {
     Fw(cmd::fw::FwCmd),
     /// MCP server for AI assistants (stdio or HTTP)
     Mcp(mcp::McpCmd),
+    /// Reboot the camera (same as `fw reboot`)
+    Reboot(cmd::fw::RebootArgs),
     /// ACAP application management
     Acap(cmd::acap::AcapCmd),
     /// PTZ control (pan, tilt, zoom)
@@ -199,6 +201,7 @@ fn main() {
         Commands::Snap(cmd) => cmd.run(),
         Commands::Fw(cmd) => cmd.run(),
         Commands::Mcp(cmd) => cmd.run(),
+        Commands::Reboot(args) => cmd::fw::run_reboot(args),
         Commands::Acap(cmd) => cmd.run(),
         Commands::Ptz(cmd) => cmd.run(),
         Commands::Param(cmd) => cmd.run(),

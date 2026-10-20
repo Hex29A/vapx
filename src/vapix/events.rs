@@ -1,7 +1,10 @@
+use std::time::{Duration, Instant};
+
 use anyhow::Context;
 use serde_json::{json, Value};
 use tracing::debug;
 use tungstenite::http::Uri;
+use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{connect, Message};
 
 use crate::config::credentials::Credentials;
@@ -16,6 +19,37 @@ pub fn stream_events(
     creds: &Credentials,
     host: &str,
     topic_filter: Option<&str>,
+    on_event: impl FnMut(&Value) -> bool,
+) -> anyhow::Result<()> {
+    stream_events_until(client, creds, host, topic_filter, None, on_event)
+}
+
+/// Collect the event notifications that arrive within `seconds`.
+pub fn poll_events(
+    client: &VapixClient,
+    creds: &Credentials,
+    host: &str,
+    topic_filter: Option<&str>,
+    seconds: f64,
+) -> anyhow::Result<Vec<Value>> {
+    let deadline = Instant::now() + Duration::from_secs_f64(seconds);
+    let mut events = Vec::new();
+    stream_events_until(client, creds, host, topic_filter, Some(deadline), |msg| {
+        if msg.get("method").and_then(Value::as_str) == Some("events:notify") {
+            events.push(msg.pointer("/params/notification").cloned().unwrap_or(Value::Null));
+        }
+        true
+    })?;
+    Ok(events)
+}
+
+/// Like [`stream_events`], but stops quietly once `deadline` has passed.
+pub fn stream_events_until(
+    client: &VapixClient,
+    creds: &Credentials,
+    host: &str,
+    topic_filter: Option<&str>,
+    deadline: Option<Instant>,
     mut on_event: impl FnMut(&Value) -> bool,
 ) -> anyhow::Result<()> {
     let session_token = get_ws_session(client)?;
@@ -49,6 +83,7 @@ pub fn stream_events(
         .context("Failed to send configure")?;
 
     // Read the configure response
+    limit_read_time(&mut socket, deadline);
     let msg = socket.read().context("Failed to read configure response")?;
     if let Message::Text(text) = &msg {
         let resp: Value = serde_json::from_str(text)?;
@@ -62,6 +97,10 @@ pub fn stream_events(
 
     // Stream events
     loop {
+        if deadline.is_some_and(|d| Instant::now() >= d) {
+            break;
+        }
+        limit_read_time(&mut socket, deadline);
         match socket.read() {
             Ok(Message::Text(text)) => {
                 match serde_json::from_str::<Value>(&text) {
@@ -83,6 +122,12 @@ pub fn stream_events(
                 let _ = socket.send(Message::Pong(data));
             }
             Ok(_) => {} // Binary, Pong, Frame — ignore
+            Err(tungstenite::Error::Io(e))
+                if deadline.is_some()
+                    && matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) =>
+            {
+                // The read timed out; the loop ends if the deadline has passed.
+            }
             Err(e) => {
                 anyhow::bail!("WebSocket error: {}", e);
             }
@@ -90,4 +135,14 @@ pub fn stream_events(
     }
 
     Ok(())
+}
+
+/// Make blocking reads return when `deadline` arrives, so a quiet camera does
+/// not hold the connection past it.
+fn limit_read_time(socket: &mut tungstenite::WebSocket<MaybeTlsStream<std::net::TcpStream>>, deadline: Option<Instant>) {
+    let Some(deadline) = deadline else { return };
+    let left = deadline.saturating_duration_since(Instant::now()).max(Duration::from_millis(50));
+    if let MaybeTlsStream::Plain(stream) = socket.get_mut() {
+        let _ = stream.set_read_timeout(Some(left));
+    }
 }

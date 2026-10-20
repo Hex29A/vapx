@@ -293,10 +293,13 @@ vapx enroll 192.168.0.90 --out creds.json     # full result to a 0600 file
 vapx systemready 192.168.0.90
 vapx systemready mycam --until-ready 240      # poll while the camera boots
 
+# Reboot (also `vapx fw reboot`): sent once, --wait reports the time until the camera is back.
+vapx reboot mycam --wait
+
 # After a reboot or factory default, wait for the *new* boot: a camera that
 # has been told to restart keeps answering "ready" until it actually goes down.
 BOOT=$(vapx systemready mycam | jq -r .data.bootid)
-vapx fw factory-default mycam --mode soft
+vapx fw factory-default mycam --mode soft --yes   # --yes skips the confirmation
 vapx systemready mycam --until-ready 300 --after-bootid "$BOOT"
 
 # Rename a camera, updating its group memberships too. The name enroll
@@ -500,9 +503,17 @@ credentials on AXIS OS 9.50 and later.
 
 ## MCP server
 
-`vapx mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server built into the CLI, so an AI assistant can look at your cameras with the same code and the same `cameras.yaml` the CLI uses. It is being built up in steps (see the tracking issue): this release has the read-only tools, with the tool names, parameters and descriptions of the Python [vapx-mcp](https://github.com/Hex29A/vapx-mcp) server. Cameras are identified by their key in `cameras.yaml` (`camera_id`); the file is read on every call, so changes made with `vapx config` apply without a restart.
+`vapx mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server built into the CLI, so an AI assistant can look at your cameras with the same code and the same `cameras.yaml` the CLI uses. It has the tool names, parameters and descriptions of the Python [vapx-mcp](https://github.com/Hex29A/vapx-mcp) server (78 tools), so existing clients keep working. Cameras are identified by their key in `cameras.yaml` (`camera_id`); the file is read on every call, so changes made with `vapx config` apply without a restart.
 
 Read-only tools: `list_cameras`, `get_camera_info`, `get_snapshot`, `status_all`, `get_temperature`, `get_time_info`, `get_ntp_status`, `get_system_log`, `get_audit_log`, `get_users`, `list_applications`, `list_stream_profiles`, `get_stream_status`, `get_io_ports`, `get_disk_status`, `list_recordings`, `get_recording_info`, `get_daynight_config`, `get_motion_config`, `get_lights`, `get_mqtt_config`, `list_overlays`, `list_privacy_masks`, `list_view_areas`, `get_capture_modes`, `get_orientation`, `get_geolocation`, `get_signed_video_status`, `get_audio_settings`, `list_audio_clips`, `list_guard_tours`, `ptz_status`, `get_siren_status`, `get_clear_view_info`, `list_analytics_producers`, `check_systemready`, `discover_apis`.
+
+Tools that change a camera: `ptz_move`, `ptz_relative`, `ptz_home`, `ptz_preset`, `set_io_port`, `toggle_light`, `add_overlay`, `remove_overlay`, `add_privacy_mask`, `remove_privacy_mask`, `set_view_area_geometry`, `reset_view_area_geometry`, `create_stream_profile`, `remove_stream_profile`, `configure_mqtt`, `enable_mqtt`, `disable_mqtt`, `set_daynight_config`, `set_motion_config`, `set_ntp_config`, `set_timezone`, `set_geolocation`, `set_capture_mode`, `set_audio_settings`, `set_analytics_producers`, `play_audio_clip`, `stop_audio_clip`, `delete_audio_clip`, `start_guard_tour`, `stop_guard_tour`, `activate_siren`, `stop_siren`, `start_clear_view`, `stop_clear_view`, `start_application`, `stop_application`, `restart_application`, `reboot_camera`; and `snapshot_all`, `poll_events` and `export_recording`.
+
+- Every tool is marked read-only or not in its annotations, and the ones that interrupt a camera or cannot be undone (reboot, siren, relay outputs, removals, application restarts, ...) are marked destructive and say so in their description, so a client can ask before calling them.
+- Arguments are checked against each tool's input schema before anything is sent to a camera.
+- `reboot_camera` sends the request once: a connection that closes while the camera goes down counts as sent.
+- `export_recording` saves the recording under `$VAPX_MCP_EXPORTS_DIR` (the Python server's `$VAPIX_EXPORTS_DIR` also works), by default `vapx/exports` in your user data directory, and only accepts plain file names.
+- `add_privacy_mask` takes the polygon as it appears in a snapshot; set `mask_rotation` and `mask_mirror` for the camera in `cameras.yaml` if its image is rotated or mirrored.
 
 `list_cameras` returns an empty `capabilities` list: the server does not probe cameras to list them, and a tool the camera does not support returns the camera's own error.
 
@@ -598,6 +609,8 @@ groups:
 | `timeout` | int (s) | `10` | Request timeout in seconds |
 | `fw_timeout` | int (s) | `300` | Firmware upload timeout in seconds (overrides `timeout` for `fw upgrade`) |
 | `enabled` | bool | `true` | Set `false` to skip camera in `batch`/`watch`/`health` without removing it |
+| `mask_rotation` | int | `0` | Image rotation in degrees (0, 90, 180, 270). `vapx mcp` uses it to convert privacy mask polygons from the displayed image to the sensor |
+| `mask_mirror` | bool | `false` | Whether the image is mirrored (see `mask_rotation`) |
 
 Per-camera fields override `defaults`. Each camera entry also requires `host`.
 
