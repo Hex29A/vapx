@@ -32,6 +32,7 @@ pub mod ssh;
 pub mod storage;
 pub mod streamprofile;
 pub mod streamstatus;
+pub mod streamurl;
 pub mod system;
 pub mod systemready;
 pub mod temperature;

@@ -43,39 +43,47 @@ impl AuditCmd {
         let timeout = self.timeout.unwrap_or(creds.timeout);
         let client = VapixClient::new(&resolved_host, creds.port, creds.clone(), timeout);
 
-        let findings = collect_findings(&client, &creds);
-
-        // Get device info for summary
-        let device_info = device::get_all_properties(&client).ok();
-        let model = device_info.as_ref()
-            .and_then(|d| d.pointer("/data/propertyList/Model").or(d.get("Model")))
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown");
-
-        let severity_counts = |level: &str| findings.iter()
-            .filter(|f| f["severity"].as_str() == Some(level))
-            .count();
-
-        let result = serde_json::json!({
-            "host": self.host,
-            "model": model,
-            "summary": {
-                "total": findings.len(),
-                "critical": severity_counts("critical"),
-                "warning": severity_counts("warning"),
-                "info": severity_counts("info"),
-            },
-            "findings": findings,
-        });
+        let result = audit_report(&self.host, &client, &creds);
+        let findings: Vec<serde_json::Value> =
+            result["findings"].as_array().cloned().unwrap_or_default();
+        let model = result["model"].as_str().unwrap_or("unknown").to_string();
 
         if self.plain {
-            print_plain(&self.host, model, &findings);
+            print_plain(&self.host, &model, &findings);
         } else {
             format::ok(&result);
         }
 
         Ok(())
     }
+}
+
+/// The audit of one camera: `{host, model, summary, findings}`.
+pub(crate) fn audit_report(
+    host: &str,
+    client: &VapixClient,
+    creds: &crate::config::credentials::Credentials,
+) -> serde_json::Value {
+    let findings = collect_findings(client, creds);
+    let device_info = device::get_all_properties(client).ok();
+    let model = device_info
+        .as_ref()
+        .and_then(|d| d.pointer("/data/propertyList/Model").or(d.get("Model")))
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+    let count = |level: &str| findings.iter().filter(|f| f["severity"].as_str() == Some(level)).count();
+    serde_json::json!({
+        "host": host,
+        "model": model,
+        "summary": {
+            "total": findings.len(),
+            "critical": count("critical"),
+            "warning": count("warning"),
+            "info": count("info"),
+        },
+        "findings": findings,
+    })
 }
 
 fn collect_findings(client: &VapixClient, creds: &crate::config::credentials::Credentials) -> Vec<serde_json::Value> {

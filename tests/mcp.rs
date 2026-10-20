@@ -442,7 +442,7 @@ fn tools_list_has_the_write_tools_and_marks_the_disruptive_ones() {
     s.send(json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}));
     let r = s.response(2);
     let tools = r["result"]["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 78, "every tool of the Python server");
+    assert_eq!(tools.len(), 93, "the 78 tools of the Python server and the 15 CLI tools");
     let reboot = tools.iter().find(|t| t["name"] == "reboot_camera").unwrap();
     assert_eq!(reboot["annotations"]["destructiveHint"], true, "{reboot}");
     assert_eq!(reboot["annotations"]["readOnlyHint"], false);
@@ -586,4 +586,277 @@ fn snapshot_all_returns_an_image_per_camera() {
     assert_eq!(r["content"][1]["type"], "image");
     assert_eq!(r["content"][1]["mimeType"], "image/jpeg");
     assert_eq!(r["content"][1]["data"], "SlBFR0JZVEVT"); // base64 of JPEGBYTES
+}
+
+// ---- tools for CLI features (#59) ----
+
+/// A config with several cameras, each on its own stub port.
+fn config_with_cameras(tag: &str, cams: &[(&str, u16)]) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("vapx-mcp-{}-{}", std::process::id(), tag));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("cameras.yaml");
+    let mut yaml = String::from("cameras:\n");
+    for (name, port) in cams {
+        yaml.push_str(&format!("  {name}:\n    host: 127.0.0.1\n    port: {port}\n    user: root\n    pass: pass\n"));
+    }
+    std::fs::write(&path, yaml).unwrap();
+    path
+}
+
+const FIRMWARE: &str = "/axis-cgi/firmwaremanagement.cgi";
+
+fn firmware_stub(version: &'static str) -> (u16, Log) {
+    camera_stub(vec![], false).tap_routes(version)
+}
+
+trait Tap {
+    fn tap_routes(self, version: &'static str) -> (u16, Log);
+}
+
+impl Tap for (u16, Log) {
+    /// Replace the plain stub by one that reports `version` as the active firmware.
+    fn tap_routes(self, version: &'static str) -> (u16, Log) {
+        let body: &'static str = Box::leak(
+            format!(r#"{{"apiVersion":"1.0","data":{{"activeFirmwareVersion":"{version}","firmwareVersion":"12.0.1"}}}}"#).into_boxed_str(),
+        );
+        camera_stub(vec![json_route(FIRMWARE, body)], false)
+    }
+}
+
+#[test]
+fn firmware_status_and_checks() {
+    let (port_a, _) = firmware_stub("11.11.1");
+    let (port_b, _) = firmware_stub("12.0.0");
+    let mut s = Stdio_::start(&config_with_cameras("fwcheck", &[("a", port_a), ("b", port_b)]));
+    s.initialize();
+
+    let status: Value = serde_json::from_str(&call_text(&mut s, 2, "firmware_status", json!({"camera_id": "a"}))).unwrap();
+    assert_eq!(status["activeFirmwareVersion"], "11.11.1");
+
+    let ok: Value = serde_json::from_str(&call_text(&mut s, 3, "firmware_check", json!({"camera_id": "a", "expected_version": "11.11.1"}))).unwrap();
+    assert_eq!(ok["matches"], true, "{ok}");
+    let bad: Value = serde_json::from_str(&call_text(&mut s, 4, "firmware_check", json!({"camera_id": "a", "expected_version": "12.0.0"}))).unwrap();
+    assert_eq!(bad["matches"], false);
+    let cmp: Value = serde_json::from_str(&call_text(&mut s, 5, "firmware_check", json!({"camera_id": "a", "compare_to": "b"}))).unwrap();
+    assert_eq!((cmp["version_a"].as_str(), cmp["version_b"].as_str(), &cmp["matches"]), (Some("11.11.1"), Some("12.0.0"), &json!(false)));
+    let e = error_text(&mut s, 6, "firmware_check", json!({"camera_id": "a"}));
+    assert!(e.contains("expected_version or compare_to"), "{e}");
+}
+
+#[test]
+fn firmware_upgrade_needs_confirmation_and_a_bin_file() {
+    let (port, log) = firmware_stub("11.0.0");
+    let dir = std::env::temp_dir().join(format!("vapx-mcp-fw-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let bin = dir.join("axis.bin");
+    std::fs::write(&bin, b"FWBYTES").unwrap();
+    std::fs::write(dir.join("notes.txt"), b"x").unwrap();
+    let mut s = Stdio_::start(&config_with_camera("fwup", port));
+    s.initialize();
+    let path = bin.to_str().unwrap();
+
+    let e = error_text(&mut s, 2, "firmware_upgrade", json!({"camera_id": "cam1", "file_path": path, "confirm": false}));
+    assert!(e.contains("confirm"), "{e}");
+    let e = error_text(&mut s, 3, "firmware_upgrade", json!({"camera_id": "cam1", "file_path": path}));
+    assert!(e.contains("confirm is required"), "{e}");
+    let e = error_text(&mut s, 4, "firmware_upgrade", json!({
+        "camera_id": "cam1", "file_path": dir.join("notes.txt").to_str().unwrap(), "confirm": true}));
+    assert!(e.contains(".bin"), "{e}");
+    let e = error_text(&mut s, 5, "firmware_upgrade", json!({"camera_id": "cam1", "file_path": path, "confirm": true, "auto_commit": true}));
+    assert!(e.contains("auto_commit needs wait"), "{e}");
+    assert!(requests(&log).is_empty(), "nothing may be sent before the checks pass: {:?}", requests(&log));
+
+    let r: Value = serde_json::from_str(&call_text(&mut s, 6, "firmware_upgrade", json!({"camera_id": "cam1", "file_path": path, "confirm": true}))).unwrap();
+    assert_eq!(r["previousVersion"], "11.0.0", "{r}");
+    assert_eq!(r["newVersion"], "12.0.1");
+    assert_eq!(r["committed"], false);
+    let all = requests(&log).join("\n");
+    assert!(all.contains("FWBYTES") && all.contains(r#""method":"upgrade""#), "the file must be uploaded: {all}");
+    assert!(!all.contains("factoryDefault"), "a factory default must never be requested");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+const PARAMS: &str = "root.Brand.Brand=AXIS\nroot.MQTT.Password=hunter2\nroot.SNMP.V2.ReadCommunity=public\n";
+
+#[test]
+fn param_get_redacts_secrets() {
+    let (port, log) = fake_camera(vec![Route("/axis-cgi/param.cgi", "text/plain", PARAMS)]);
+    let mut s = Stdio_::start(&config_with_camera("pget", port));
+    s.initialize();
+
+    let text = call_text(&mut s, 2, "param_get", json!({"camera_id": "cam1", "param": "root"}));
+    let v: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(v["root.Brand.Brand"], "AXIS");
+    assert_eq!(v["root.MQTT.Password"], "[redacted]");
+    assert_eq!(v["root.SNMP.V2.ReadCommunity"], "[redacted]");
+    assert!(!text.contains("hunter2") && !text.contains("public"));
+    assert!(requests(&log)[0].contains("group=root"));
+    let e = error_text(&mut s, 3, "param_get", json!({"camera_id": "cam1", "param": "Brand"}));
+    assert!(e.contains("start with root."), "{e}");
+}
+
+#[test]
+fn param_set_takes_explicit_unprotected_keys_only() {
+    let (port, log) = fake_camera(vec![Route("/axis-cgi/param.cgi", "text/plain", "OK")]);
+    let mut s = Stdio_::start(&config_with_camera("pset", port));
+    s.initialize();
+
+    for (i, key) in ["root.Network.SSH.Enabled", "root.Users.U0.Name", "root.Image.*", "root.Image.", "Image.I0.Rotation"].iter().enumerate() {
+        let e = error_text(&mut s, 2 + i as i64, "param_set", json!({"camera_id": "cam1", "assignments": {*key: "x"}}));
+        assert!(e.contains("protected") || e.contains("explicit"), "{key}: {e}");
+    }
+    let e = error_text(&mut s, 10, "param_set", json!({"camera_id": "cam1", "assignments": {}}));
+    assert!(e.contains("between 1 and"), "{e}");
+    let e = error_text(&mut s, 11, "param_set", json!({"camera_id": "cam1", "assignments": {"root.Image.I0.Appearance.Rotation": {"a": 1}}}));
+    assert!(e.contains("string, number or boolean"), "{e}");
+    assert!(requests(&log).is_empty(), "refused keys must not reach the camera: {:?}", requests(&log));
+
+    let r: Value = serde_json::from_str(&call_text(&mut s, 12, "param_set", json!({
+        "camera_id": "cam1", "assignments": {"root.Image.I0.Appearance.Rotation": 180, "root.Image.I0.Appearance.Mirror": true}}))).unwrap();
+    assert_eq!(r["updated"], 2, "{r}");
+    let req = requests(&log).join("\n");
+    assert!(req.contains("action=update") && req.contains("root.Image.I0.Appearance.Rotation=180") && req.contains("Mirror=yes"), "{req}");
+}
+
+#[test]
+fn imaging_settings_can_be_read_and_only_existing_ones_set() {
+    let (port, log) = fake_camera(vec![Route("/axis-cgi/param.cgi", "text/plain", "root.ImageSource.I0.Sensor.WDR=off\nroot.ImageSource.I0.Sensor.Brightness=50\n")]);
+    let mut s = Stdio_::start(&config_with_camera("imaging", port));
+    s.initialize();
+
+    let v: Value = serde_json::from_str(&call_text(&mut s, 2, "imaging_get", json!({"camera_id": "cam1"}))).unwrap();
+    assert_eq!(v["root.ImageSource.I0.Sensor.WDR"], "off");
+
+    let e = error_text(&mut s, 3, "imaging_set", json!({"camera_id": "cam1", "settings": {"Nonsense": 1}}));
+    assert!(e.contains("not an image sensor setting"), "{e}");
+    let e = error_text(&mut s, 4, "imaging_set", json!({"camera_id": "cam1", "settings": {"root.Network.SSH.Enabled": "yes"}}));
+    assert!(e.contains("not an image sensor setting"), "{e}");
+    assert!(requests(&log).iter().all(|r| !r.contains("action=update")), "{:?}", requests(&log));
+
+    call_text(&mut s, 5, "imaging_set", json!({"camera_id": "cam1", "settings": {"WDR": "on"}}));
+    assert!(requests(&log).iter().any(|r| r.contains("action=update") && r.contains("root.ImageSource.I0.Sensor.WDR=on")), "{:?}", requests(&log));
+}
+
+fn healthy_camera() -> (u16, Log) {
+    fake_camera(vec![
+        json_route("/axis-cgi/basicdeviceinfo.cgi", r#"{"data":{"propertyList":{"Model":"P1375","SerialNumber":"S1"}}}"#),
+        json_route(FIRMWARE, r#"{"data":{"activeFirmwareVersion":"11.11.1"}}"#),
+        Route("/axis-cgi/param.cgi", "text/plain", "root.Network.UPnP.Enabled=yes\nroot.Network.SSH.Enabled=yes\n"),
+    ])
+}
+
+/// A port nothing listens on.
+fn dead_port() -> u16 {
+    TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port()
+}
+
+#[test]
+fn fleet_health_reports_each_camera_and_a_summary() {
+    let (up, _) = healthy_camera();
+    let mut s = Stdio_::start(&config_with_cameras("fleet", &[("up", up), ("down", dead_port())]));
+    s.initialize();
+
+    let v: Value = serde_json::from_str(&call_text(&mut s, 2, "fleet_health", json!({}))).unwrap();
+    assert_eq!(v["summary"], json!({"total": 2, "healthy": 1, "degraded": 0, "unreachable": 1}), "{v}");
+    let cams = v["cameras"].as_array().unwrap();
+    let up = cams.iter().find(|c| c["camera"] == "up").unwrap();
+    assert_eq!((up["status"].as_str(), up["model"].as_str(), up["firmware"].as_str()), (Some("healthy"), Some("P1375"), Some("11.11.1")));
+    assert_eq!(cams.iter().find(|c| c["camera"] == "down").unwrap()["status"], "unreachable");
+
+    let one: Value = serde_json::from_str(&call_text(&mut s, 3, "fleet_health", json!({"targets": "up"}))).unwrap();
+    assert_eq!(one["summary"]["total"], 1);
+    let e = error_text(&mut s, 4, "fleet_health", json!({"targets": "nope"}));
+    assert!(e.contains("nope"), "{e}");
+}
+
+#[test]
+fn security_audit_covers_one_camera_or_all() {
+    let (port, _) = healthy_camera();
+    let mut s = Stdio_::start(&config_with_cameras("audit", &[("front", port)]));
+    s.initialize();
+
+    let one: Value = serde_json::from_str(&call_text(&mut s, 2, "security_audit", json!({"camera_id": "front"}))).unwrap();
+    let codes: Vec<&str> = one["findings"].as_array().unwrap().iter().map(|f| f["code"].as_str().unwrap()).collect();
+    for want in ["UNENCRYPTED_HTTP", "UPNP_ENABLED", "SSH_ENABLED", "DEFAULT_USER"] {
+        assert!(codes.contains(&want), "missing {want} in {codes:?}");
+    }
+    assert_eq!(one["model"], "P1375");
+
+    let all: Value = serde_json::from_str(&call_text(&mut s, 3, "security_audit", json!({}))).unwrap();
+    assert_eq!(all["cameras"].as_array().unwrap().len(), 1);
+    assert_eq!(all["cameras"][0]["host"], "front");
+}
+
+#[test]
+fn backup_keeps_secrets_in_a_private_file_and_returns_only_the_count() {
+    let (port, _) = fake_camera(vec![Route("/axis-cgi/param.cgi", "text/plain", PARAMS)]);
+    let dir = std::env::temp_dir().join(format!("vapx-mcp-backup-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut s = Stdio_::start_env(&config_with_camera("backup", port), &[("VAPX_MCP_EXPORTS_DIR", dir.to_str().unwrap())]);
+    s.initialize();
+
+    let text = call_text(&mut s, 2, "backup_params", json!({"camera_id": "cam1"}));
+    assert!(!text.contains("hunter2"), "the reply must not carry the parameters: {text}");
+    let r: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(r["parameters"], 3);
+    let file = dir.join("cam1-params.json");
+    let saved: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    assert_eq!(saved["root.MQTT.Password"], "hunter2");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(std::fs::metadata(&file).unwrap().permissions().mode() & 0o777, 0o600);
+    }
+    let e = error_text(&mut s, 3, "backup_params", json!({"camera_id": "cam1", "filename": "../x.json"}));
+    assert!(e.contains("plain file name"), "{e}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn diff_params_lists_differences_and_hides_secrets() {
+    let (a, _) = fake_camera(vec![Route("/axis-cgi/param.cgi", "text/plain", "root.A=1\nroot.MQTT.Password=one\nroot.Same=x\n")]);
+    let (b, _) = fake_camera(vec![Route("/axis-cgi/param.cgi", "text/plain", "root.A=2\nroot.MQTT.Password=two\nroot.Same=x\nroot.New=y\n")]);
+    let mut s = Stdio_::start(&config_with_cameras("diff", &[("one", a), ("two", b)]));
+    s.initialize();
+
+    let text = call_text(&mut s, 2, "diff_params", json!({"camera_a": "one", "camera_b": "two"}));
+    assert!(!text.contains("\"one\": \"one\"") && !text.contains("hunter"), "{text}");
+    let v: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(v["total_diffs"], 3, "{v}");
+    let diffs = v["diffs"].as_array().unwrap();
+    let get = |p: &str| diffs.iter().find(|d| d["param"] == p).unwrap_or_else(|| panic!("{p}: {v}")).clone();
+    assert_eq!((get("root.A")["one"].as_str(), get("root.A")["two"].as_str()), (Some("1"), Some("2")));
+    assert_eq!(get("root.MQTT.Password")["one"], "[redacted]");
+    assert_eq!(get("root.MQTT.Password")["two"], "[redacted]");
+    assert_eq!(get("root.New")["change"], "only_in_second");
+}
+
+#[test]
+fn certificates_stream_urls_selftest_and_zipstream() {
+    let (port, log) = fake_camera(vec![
+        json_route("/axis-cgi/certificate/certificate.cgi", r#"{"data":{"certs":[{"id":"c1"}]}}"#),
+        json_route("/axis-cgi/deviceselftest.cgi", r#"{"data":{"result":"pass"}}"#),
+        Route("/axis-cgi/zipstream/listprofiles.cgi", "text/xml",
+              r#"<Zipstream><MaxLevel>100</MaxLevel><Profile name="classic"><Level>10</Level></Profile></Zipstream>"#),
+    ]);
+    let mut s = Stdio_::start(&config_with_camera("misc", port));
+    s.initialize();
+
+    let certs: Value = serde_json::from_str(&call_text(&mut s, 2, "cert_list", json!({"camera_id": "cam1"}))).unwrap();
+    assert_eq!(certs["certs"][0]["id"], "c1");
+    let st: Value = serde_json::from_str(&call_text(&mut s, 3, "selftest", json!({"camera_id": "cam1"}))).unwrap();
+    assert_eq!(st["result"], "pass");
+    let zs: Value = serde_json::from_str(&call_text(&mut s, 4, "zipstream_status", json!({"camera_id": "cam1"}))).unwrap();
+    assert_eq!(zs["maxLevel"], 100);
+    assert_eq!(zs["profiles"][0]["name"], "classic");
+
+    let before = requests(&log).len();
+    let text = call_text(&mut s, 5, "stream_urls", json!({"camera_id": "cam1", "resolution": "1280x720", "fps": 10}));
+    assert_eq!(requests(&log).len(), before, "building URLs must not call the camera");
+    let u: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(u["rtsp"], "rtsp://127.0.0.1:554/axis-media/media.amp?videocodec=h264&camera=1&resolution=1280x720&fps=10");
+    assert!(u["mjpeg"].as_str().unwrap().starts_with("http://127.0.0.1:"), "{u}");
+    assert!(!text.contains("root:") && !text.contains("pass@"), "no credentials in URLs: {text}");
+    let e = error_text(&mut s, 6, "stream_urls", json!({"camera_id": "cam1", "resolution": "big&evil"}));
+    assert!(e.contains("1920x1080"), "{e}");
 }

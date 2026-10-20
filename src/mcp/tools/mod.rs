@@ -12,6 +12,7 @@ use serde_json::{Map, Value};
 
 use super::camera::{self, Cam};
 
+mod cli;
 mod read;
 mod write;
 
@@ -86,6 +87,12 @@ impl Args {
         self.0.get(key).filter(|v| !v.is_null())
     }
 
+    /// The camera named by `camera_id`, opened with the firmware upload timeout.
+    pub fn camera_for_firmware(&self) -> anyhow::Result<Cam> {
+        let id = self.opt_str("camera_id")?.filter(|s| !s.is_empty());
+        camera::open_for_firmware(id.ok_or_else(|| anyhow!("camera_id is required"))?)
+    }
+
     /// The camera named by `camera_id`.
     pub fn camera(&self) -> anyhow::Result<Cam> {
         let id = self.opt_str("camera_id")?.filter(|s| !s.is_empty());
@@ -103,9 +110,13 @@ struct Def {
     input_schema: JsonObject,
 }
 
-/// Every tool the Python server exposed, with its schema.
+/// Every tool the Python server exposed (`tools.json`, unchanged) and the CLI-only
+/// ones added here (`tools_extra.json`), with their schemas.
 fn definitions() -> Vec<Def> {
-    serde_json::from_str(include_str!("../tools.json")).expect("tools.json is valid")
+    let mut defs: Vec<Def> = serde_json::from_str(include_str!("../tools.json")).expect("tools.json is valid");
+    let extra: Vec<Def> = serde_json::from_str(include_str!("../tools_extra.json")).expect("tools_extra.json is valid");
+    defs.extend(extra);
+    defs
 }
 
 pub struct Registry {
@@ -119,7 +130,7 @@ pub struct Registry {
 const DESTRUCTIVE: &[&str] = &[
     "reboot_camera", "delete_audio_clip", "remove_overlay", "remove_privacy_mask", "remove_stream_profile",
     "stop_application", "restart_application", "set_capture_mode", "set_motion_config",
-    "set_analytics_producers", "set_audio_settings", "export_recording",
+    "set_analytics_producers", "set_audio_settings", "export_recording", "firmware_upgrade", "param_set",
 ];
 
 /// Warnings added to a tool's description, so a client (and the person behind
@@ -133,6 +144,9 @@ fn notice(name: &str) -> Option<&'static str> {
         "delete_audio_clip" | "remove_overlay" | "remove_privacy_mask" | "remove_stream_profile" => "Destructive: the item is deleted and cannot be restored by this server. Confirm with the user first.",
         "set_capture_mode" => "Disruptive: the camera must be rebooted for the new mode to apply.",
         "export_recording" => "Writes a file on the machine running this server.",
+        "firmware_upgrade" => "Disruptive: uploads firmware and reboots the camera. Runs only with confirm set to true. Confirm with the user first.",
+        "param_set" => "Changes camera configuration. Keys under root.Network, root.Users and root.Properties are refused. Confirm with the user first.",
+        "backup_params" => "Writes a file (which may contain secrets) on the machine running this server.",
         _ => return None,
     })
 }
@@ -150,8 +164,9 @@ impl Registry {
     pub fn new() -> Self {
         let read: Vec<(&'static str, Handler)> = read::handlers();
         let write: Vec<(&'static str, Handler)> = write::handlers();
-        let read_only: Vec<&str> = read.iter().map(|(n, _)| *n).collect();
-        let handlers: HashMap<&'static str, Handler> = read.into_iter().chain(write).collect();
+        let extra: Vec<(&'static str, Handler)> = cli::handlers();
+        let read_only: Vec<&str> = read.iter().map(|(n, _)| *n).chain(cli::READ_ONLY.iter().copied()).collect();
+        let handlers: HashMap<&'static str, Handler> = read.into_iter().chain(write).chain(extra).collect();
         let mut tools = Vec::new();
         let mut schemas = HashMap::new();
         for d in definitions().into_iter().filter(|d| handlers.contains_key(d.name.as_str())) {
@@ -314,7 +329,7 @@ mod tests {
     }
     /// Every tool the Python server exposes (#58). A tool missing here or in
     /// `tools/list` breaks clients that still expect the Python server's set.
-    const ALL_TOOLS: &[&str] = &[
+    const PYTHON_TOOLS: &[&str] = &[
         "activate_siren",
         "add_overlay",
         "add_privacy_mask",
@@ -395,11 +410,18 @@ mod tests {
         "toggle_light",
     ];
 
+    /// The tools added for CLI features the Python server never had (#59).
+    const CLI_TOOLS: &[&str] = &[
+        "firmware_status", "firmware_check", "firmware_upgrade", "param_get", "param_set", "imaging_get",
+        "imaging_set", "fleet_health", "security_audit", "backup_params", "diff_params", "cert_list",
+        "stream_urls", "selftest", "zipstream_status",
+    ];
+
     #[test]
-    fn tools_list_has_every_tool_of_the_python_server() {
+    fn tools_list_has_every_tool_of_the_python_server_and_the_cli_tools() {
         let mut got = Registry::new().names();
         got.sort();
-        let mut want: Vec<String> = ALL_TOOLS.iter().map(|s| s.to_string()).collect();
+        let mut want: Vec<String> = PYTHON_TOOLS.iter().chain(CLI_TOOLS).map(|s| s.to_string()).collect();
         want.sort();
         assert_eq!(got, want);
     }
@@ -454,6 +476,7 @@ mod tests {
                     Some("number") => json!(spec.get("minimum").and_then(Value::as_f64).unwrap_or(1.0)),
                     Some("boolean") => json!(true),
                     Some("array") => json!([]),
+                    Some("object") => json!({}),
                     _ => panic!("{}: no sample for {key}", def.name),
                 }
             };
@@ -473,8 +496,8 @@ mod tests {
                 if spec.get("type").is_some() {
                     assert!(err.as_ref().is_err_and(|e| e.to_string().contains(key.as_str())), "{}.{key}: {err:?}", def.name);
                 }
-                if spec.get("enum").is_some() {
-                    args.insert(key.clone(), json!("no-such-value"));
+                if let Some(first) = spec.get("enum").and_then(|e| e.get(0)) {
+                    args.insert(key.clone(), first.as_bool().map_or(json!("no-such-value"), |b| json!(!b)));
                     assert!(validate_args(schema, &args).unwrap_err().to_string().contains("one of"), "{}.{key}", def.name);
                 }
                 if let Some(max) = spec.get("maximum").and_then(Value::as_f64) {
@@ -501,5 +524,28 @@ mod tests {
         let reg = Registry::new();
         let bad = Args(serde_json::from_str(r#"{"camera_id": "c", "static_servers": ["a", 3]}"#).unwrap());
         assert!(reg.validate("set_ntp_config", &bad).unwrap_err().to_string().contains("static_servers"));
+    }
+
+    /// The README's tool table lists every tool, so none is documented by accident.
+    #[test]
+    fn the_readme_lists_every_tool() {
+        let readme = include_str!("../../../README.md");
+        for name in PYTHON_TOOLS.iter().chain(CLI_TOOLS) {
+            assert!(readme.contains(&format!("`{name}`")), "README.md does not list `{name}`");
+        }
+    }
+
+    #[test]
+    fn cli_tools_that_change_things_are_marked_and_say_so() {
+        let tools = Registry::new().list();
+        let by_name = |n: &str| tools.iter().find(|t| t.name == n).unwrap();
+        for name in ["firmware_status", "param_get", "fleet_health", "diff_params", "stream_urls"] {
+            assert_eq!(by_name(name).annotations.as_ref().unwrap().read_only_hint, Some(true), "{name}");
+        }
+        for name in ["firmware_upgrade", "param_set", "imaging_set", "backup_params", "selftest"] {
+            assert_eq!(by_name(name).annotations.as_ref().unwrap().read_only_hint, Some(false), "{name}");
+        }
+        assert_eq!(by_name("firmware_upgrade").annotations.as_ref().unwrap().destructive_hint, Some(true));
+        assert!(by_name("firmware_upgrade").description.clone().unwrap().contains("Disruptive"));
     }
 }

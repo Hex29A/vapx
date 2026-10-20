@@ -11,6 +11,16 @@ pub fn status(client: &VapixClient) -> anyhow::Result<Value> {
     client.post_json("/axis-cgi/firmwaremanagement.cgi", &body)
 }
 
+/// The firmware version the camera is running, or `unknown`.
+pub fn active_version(client: &VapixClient) -> anyhow::Result<String> {
+    let resp = status(client)?;
+    Ok(resp
+        .pointer("/data/activeFirmwareVersion")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown")
+        .to_string())
+}
+
 /// Upgrade firmware by uploading a .bin file.
 /// Returns the JSON response from the camera (contains new firmwareVersion on success).
 /// The camera will reboot after a successful upgrade.

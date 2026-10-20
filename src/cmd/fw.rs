@@ -390,7 +390,7 @@ fn resolve_fw_timeout(host: &str) -> Option<u64> {
 /// With `confirm_down` the camera must first be seen going down (within 30 s),
 /// so a reboot that never started is reported instead of looking like a
 /// reboot that finished at once. Polling is quiet: one attempt per probe.
-fn wait_for_reboot(
+pub(crate) fn wait_for_reboot(
     host: &str,
     port: u16,
     creds: credentials::Credentials,

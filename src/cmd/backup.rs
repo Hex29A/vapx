@@ -206,15 +206,5 @@ impl BackupRestoreCmd {
 }
 
 fn parse_params(text: &str) -> BTreeMap<String, String> {
-    let mut map = BTreeMap::new();
-    for line in text.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        if let Some((k, v)) = line.split_once('=') {
-            map.insert(k.to_string(), v.to_string());
-        }
-    }
-    map
+    params::parse(text)
 }
