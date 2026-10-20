@@ -1,0 +1,340 @@
+[
+  {
+    "name": "firmware_status",
+    "description": "Show the camera's firmware status: active and inactive versions, build date and whether the firmware is committed.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier from list_cameras"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "firmware_check",
+    "description": "Check the camera's firmware version against an expected version, or against another camera. Give expected_version or compare_to.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier from list_cameras"
+        },
+        "expected_version": {
+          "type": "string",
+          "description": "Version the camera should be running, e.g. \"12.1.0\""
+        },
+        "compare_to": {
+          "type": "string",
+          "description": "Another camera's identifier to compare with"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "firmware_upgrade",
+    "description": "Upload a firmware .bin file from the server's disk and install it. The camera reboots. Only runs with confirm set to true. The file is not committed unless auto_commit is set, so the camera can roll back by itself.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier from list_cameras"
+        },
+        "file_path": {
+          "type": "string",
+          "description": "Path of the firmware .bin file on the machine running this server"
+        },
+        "confirm": {
+          "type": "boolean",
+          "enum": [
+            true
+          ],
+          "description": "Must be true: the upgrade reboots the camera"
+        },
+        "wait": {
+          "type": "boolean",
+          "description": "Wait for the camera to come back online",
+          "default": false
+        },
+        "wait_timeout": {
+          "type": "integer",
+          "description": "Seconds to wait for the reboot",
+          "default": 300,
+          "minimum": 30,
+          "maximum": 1800
+        },
+        "auto_commit": {
+          "type": "boolean",
+          "description": "Commit the firmware once the camera is back (needs wait)",
+          "default": false
+        }
+      },
+      "required": [
+        "camera_id",
+        "file_path",
+        "confirm"
+      ]
+    }
+  },
+  {
+    "name": "param_get",
+    "description": "Read camera parameters by key or group, e.g. \"root.Brand\" or \"root.Brand.ProdNbr\". Values of secrets (passwords, tokens, community strings) are shown as [redacted].",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier from list_cameras"
+        },
+        "param": {
+          "type": "string",
+          "description": "Parameter key or group name starting with root."
+        }
+      },
+      "required": [
+        "camera_id",
+        "param"
+      ]
+    }
+  },
+  {
+    "name": "param_set",
+    "description": "Set camera parameters by explicit key. No wildcards or groups; keys under root.Network, root.Users and root.Properties are refused because they can lock you out of the camera.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier from list_cameras"
+        },
+        "assignments": {
+          "type": "object",
+          "description": "Parameter keys and their new values, e.g. {\"root.Image.I0.Appearance.Rotation\": \"180\"}"
+        }
+      },
+      "required": [
+        "camera_id",
+        "assignments"
+      ]
+    }
+  },
+  {
+    "name": "imaging_get",
+    "description": "Read the image sensor settings (brightness, contrast, exposure, WDR and others) as parameters.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier from list_cameras"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "imaging_set",
+    "description": "Change image sensor settings. Only parameters that exist under root.ImageSource.I0.Sensor on this camera can be set; use imaging_get to see them.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier from list_cameras"
+        },
+        "settings": {
+          "type": "object",
+          "description": "Setting names and values, e.g. {\"WDR\": \"on\"}; names may be given with or without the root.ImageSource.I0.Sensor. prefix"
+        }
+      },
+      "required": [
+        "camera_id",
+        "settings"
+      ]
+    }
+  },
+  {
+    "name": "fleet_health",
+    "description": "Check the health of several cameras in parallel: reachability, model, firmware, latency and issues. Defaults to every configured camera.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "targets": {
+          "type": "string",
+          "description": "A group name from cameras.yaml, or camera identifiers separated by commas"
+        }
+      }
+    }
+  },
+  {
+    "name": "security_audit",
+    "description": "Audit the security posture of one camera, or of every configured camera when camera_id is left out: unencrypted HTTP, old firmware, default user, SSH, UPnP, anonymous viewing and more.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier from list_cameras"
+        }
+      }
+    }
+  },
+  {
+    "name": "backup_params",
+    "description": "Save a camera's parameters as a JSON file on the machine running this server (they can contain secrets, so the file is readable by its owner only). Returns the path and the number of parameters, not the parameters.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier from list_cameras"
+        },
+        "group": {
+          "type": "string",
+          "description": "Only this parameter group, e.g. \"root.Brand\""
+        },
+        "filename": {
+          "type": "string",
+          "description": "File name (default: <camera_id>-params.json)"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "diff_params",
+    "description": "Compare the parameters of two cameras and list what differs. Values of secrets are shown as [redacted]. At most 500 differences are returned.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_a": {
+          "type": "string",
+          "description": "First camera identifier"
+        },
+        "camera_b": {
+          "type": "string",
+          "description": "Second camera identifier"
+        },
+        "group": {
+          "type": "string",
+          "description": "Only this parameter group, e.g. \"root.Brand\""
+        }
+      },
+      "required": [
+        "camera_a",
+        "camera_b"
+      ]
+    }
+  },
+  {
+    "name": "cert_list",
+    "description": "List the certificates installed on a camera.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier from list_cameras"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "stream_urls",
+    "description": "Build RTSP, MJPEG and snapshot URLs for a camera. The URLs carry no credentials; use the camera's user and password to authenticate.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier from list_cameras"
+        },
+        "channel": {
+          "type": "integer",
+          "description": "Video channel",
+          "default": 1,
+          "minimum": 1,
+          "maximum": 255
+        },
+        "resolution": {
+          "type": "string",
+          "description": "Resolution, e.g. \"1920x1080\""
+        },
+        "codec": {
+          "type": "string",
+          "enum": [
+            "h264",
+            "h265",
+            "jpeg"
+          ],
+          "description": "Video codec for the RTSP URL",
+          "default": "h264"
+        },
+        "fps": {
+          "type": "integer",
+          "description": "Frame rate limit",
+          "minimum": 1,
+          "maximum": 255
+        },
+        "stream_profile": {
+          "type": "integer",
+          "description": "Stream profile number for the RTSP URL",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 255
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "selftest",
+    "description": "Run the camera's built-in self test and return its result. Some cameras only allow it in preview mode.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier from list_cameras"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "zipstream_status",
+    "description": "Show the camera's ZipStream compression profiles and maximum level.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier from list_cameras"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  }
+]

@@ -484,7 +484,7 @@ fn snapshot_all(args: &Args) -> anyhow::Result<Vec<Out>> {
 
 /// Where `export_recording` writes: `$VAPX_MCP_EXPORTS_DIR` (or the Python
 /// server's `$VAPIX_EXPORTS_DIR`), else `exports` under the user's data directory.
-fn exports_dir() -> PathBuf {
+pub(super) fn exports_dir() -> PathBuf {
     std::env::var_os("VAPX_MCP_EXPORTS_DIR")
         .or_else(|| std::env::var_os("VAPIX_EXPORTS_DIR"))
         .map(PathBuf::from)
@@ -492,7 +492,7 @@ fn exports_dir() -> PathBuf {
 }
 
 /// A file name that cannot leave the exports directory.
-fn safe_filename(name: &str) -> anyhow::Result<&str> {
+pub(super) fn safe_filename(name: &str) -> anyhow::Result<&str> {
     if name.is_empty() || name == "." || name == ".." || name.contains(['/', '\\', '\0']) {
         bail!("filename must be a plain file name without directories");
     }

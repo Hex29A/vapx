@@ -194,6 +194,9 @@ fn main() {
         )
         .with_target(false)
         .without_time()
+        // Logs go to stderr: stdout carries the command's output, and for
+        // `vapx mcp` the protocol itself.
+        .with_writer(std::io::stderr)
         .init();
 
     let result = match cli.command {

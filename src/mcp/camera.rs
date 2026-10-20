@@ -20,6 +20,16 @@ pub struct Cam {
 
 /// Camera IDs are the keys of `cameras.yaml`, as in the Python server.
 pub fn open(id: &str) -> anyhow::Result<Cam> {
+    open_as(id, false)
+}
+
+/// Like [`open`], with the camera's firmware timeout (`fw_timeout`, default
+/// 300 s) instead of the ordinary request timeout, for firmware uploads.
+pub fn open_for_firmware(id: &str) -> anyhow::Result<Cam> {
+    open_as(id, true)
+}
+
+fn open_as(id: &str, firmware: bool) -> anyhow::Result<Cam> {
     let config = load_cameras()?.ok_or_else(|| anyhow!("No cameras.yaml found"))?;
     let entry = match config.cameras.get(id) {
         Some(e) => e,
@@ -49,7 +59,8 @@ pub fn open(id: &str) -> anyhow::Result<Cam> {
         port: entry.port.unwrap_or(if https { 443 } else { 80 }),
         timeout: config.effective_timeout(entry),
     };
-    let client = VapixClient::new(&entry.host, creds.port, creds.clone(), creds.timeout);
+    let timeout = if firmware { entry.fw_timeout.unwrap_or(300) } else { creds.timeout };
+    let client = VapixClient::new(&entry.host, creds.port, creds.clone(), timeout);
     Ok(Cam {
         id: id.to_string(),
         mask_rotation: entry.mask_rotation,

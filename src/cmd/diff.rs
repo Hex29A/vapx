@@ -76,46 +76,7 @@ impl DiffCmd {
         let map_a = parse_params(&text_a);
         let map_b = parse_params(&text_b);
 
-        let mut diffs = Vec::new();
-
-        // Find changed and removed keys
-        for (k, v_a) in &map_a {
-            match map_b.get(k) {
-                Some(v_b) if v_a != v_b => {
-                    diffs.push(serde_json::json!({
-                        "param": k,
-                        "change": "modified",
-                        self.host_a.clone(): v_a,
-                        self.host_b.clone(): v_b,
-                    }));
-                }
-                None => {
-                    diffs.push(serde_json::json!({
-                        "param": k,
-                        "change": "only_in_first",
-                        self.host_a.clone(): v_a,
-                    }));
-                }
-                _ => {}
-            }
-        }
-
-        // Find keys only in B
-        for (k, v_b) in &map_b {
-            if !map_a.contains_key(k) {
-                diffs.push(serde_json::json!({
-                    "param": k,
-                    "change": "only_in_second",
-                    self.host_b.clone(): v_b,
-                }));
-            }
-        }
-
-        diffs.sort_by(|a, b| {
-            let ka = a["param"].as_str().unwrap_or("");
-            let kb = b["param"].as_str().unwrap_or("");
-            ka.cmp(kb)
-        });
+        let diffs = params::diff(&self.host_a, &self.host_b, &map_a, &map_b);
 
         format::ok(&serde_json::json!({
             "host_a": self.host_a,
@@ -215,15 +176,5 @@ fn count_diffs(map_a: &BTreeMap<String, String>, map_b: &BTreeMap<String, String
 }
 
 fn parse_params(text: &str) -> BTreeMap<String, String> {
-    let mut map = BTreeMap::new();
-    for line in text.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        if let Some((k, v)) = line.split_once('=') {
-            map.insert(k.to_string(), v.to_string());
-        }
-    }
-    map
+    params::parse(text)
 }

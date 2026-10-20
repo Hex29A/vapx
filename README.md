@@ -505,15 +505,117 @@ credentials on AXIS OS 9.50 and later.
 
 `vapx mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server built into the CLI, so an AI assistant can look at your cameras with the same code and the same `cameras.yaml` the CLI uses. It has the tool names, parameters and descriptions of the Python [vapx-mcp](https://github.com/Hex29A/vapx-mcp) server (78 tools), so existing clients keep working. Cameras are identified by their key in `cameras.yaml` (`camera_id`); the file is read on every call, so changes made with `vapx config` apply without a restart.
 
-Read-only tools: `list_cameras`, `get_camera_info`, `get_snapshot`, `status_all`, `get_temperature`, `get_time_info`, `get_ntp_status`, `get_system_log`, `get_audit_log`, `get_users`, `list_applications`, `list_stream_profiles`, `get_stream_status`, `get_io_ports`, `get_disk_status`, `list_recordings`, `get_recording_info`, `get_daynight_config`, `get_motion_config`, `get_lights`, `get_mqtt_config`, `list_overlays`, `list_privacy_masks`, `list_view_areas`, `get_capture_modes`, `get_orientation`, `get_geolocation`, `get_signed_video_status`, `get_audio_settings`, `list_audio_clips`, `list_guard_tours`, `ptz_status`, `get_siren_status`, `get_clear_view_info`, `list_analytics_producers`, `check_systemready`, `discover_apis`.
+### Tools
 
-Tools that change a camera: `ptz_move`, `ptz_relative`, `ptz_home`, `ptz_preset`, `set_io_port`, `toggle_light`, `add_overlay`, `remove_overlay`, `add_privacy_mask`, `remove_privacy_mask`, `set_view_area_geometry`, `reset_view_area_geometry`, `create_stream_profile`, `remove_stream_profile`, `configure_mqtt`, `enable_mqtt`, `disable_mqtt`, `set_daynight_config`, `set_motion_config`, `set_ntp_config`, `set_timezone`, `set_geolocation`, `set_capture_mode`, `set_audio_settings`, `set_analytics_producers`, `play_audio_clip`, `stop_audio_clip`, `delete_audio_clip`, `start_guard_tour`, `stop_guard_tour`, `activate_siren`, `stop_siren`, `start_clear_view`, `stop_clear_view`, `start_application`, `stop_application`, `restart_application`, `reboot_camera`; and `snapshot_all`, `poll_events` and `export_recording`.
+93 tools: the 78 of the Python server, plus 15 for features of the CLI it never had (firmware, parameters, imaging, fleet health, audits, backups, diffs, certificates, stream URLs, self test, ZipStream). "read" tools only look; "write" tools change a camera, run something on it, or write a file on the machine running the server.
 
-- Every tool is marked read-only or not in its annotations, and the ones that interrupt a camera or cannot be undone (reboot, siren, relay outputs, removals, application restarts, ...) are marked destructive and say so in their description, so a client can ask before calling them.
+| Tool | Access | What it does |
+|---|---|---|
+| `activate_siren` | write | Activate a siren and/or strobe light on a deterrence device. |
+| `add_overlay` | write | Add a text overlay to the camera's live video stream. |
+| `add_privacy_mask` | write | Add a privacy mask to cover a sensitive area in the video. |
+| `backup_params` | write | Save a camera's parameters as a JSON file on the machine running this server (they can contain secrets, so the file is readable by its owner only). |
+| `cert_list` | read | List the certificates installed on a camera. |
+| `check_systemready` | read | Check if an Axis camera is ready to handle requests. |
+| `configure_mqtt` | write | Configure the MQTT client connection on a camera. |
+| `create_stream_profile` | write | Create a new video stream profile with specified parameters. |
+| `delete_audio_clip` | write | Delete an audio clip from the camera. |
+| `diff_params` | read | Compare the parameters of two cameras and list what differs. |
+| `disable_mqtt` | write | Disable (deactivate) the MQTT client on a camera — disconnects from the broker. |
+| `discover_apis` | read | List all VAPIX APIs supported by an Axis device. |
+| `enable_mqtt` | write | Enable (activate) the MQTT client on a camera — connects to the configured broker. |
+| `export_recording` | write | Export a recording from the camera's edge storage as a .mkv file. |
+| `firmware_check` | read | Check the camera's firmware version against an expected version, or against another camera. |
+| `firmware_status` | read | Show the camera's firmware status: active and inactive versions, build date and whether the firmware is committed. |
+| `firmware_upgrade` | write | Upload a firmware .bin file from the server's disk and install it. |
+| `fleet_health` | read | Check the health of several cameras in parallel: reachability, model, firmware, latency and issues. |
+| `get_audio_settings` | read | Get audio device settings — input/output configuration, gain levels, mute status, and connection types. |
+| `get_audit_log` | read | Read the security audit log from an Axis camera. |
+| `get_camera_info` | read | Get device information for an Axis camera: model, serial number, firmware version, hardware ID, architecture, etc. |
+| `get_capture_modes` | read | List available video capture modes (resolution + max FPS) for a camera. |
+| `get_clear_view_info` | read | Get Clear View service info — available cleaning services (wiper, speed-dry), duration limits, and cooldown times. |
+| `get_daynight_config` | read | Get the day/night (IR-cut filter) configuration for a camera — shift levels, dwell times, auto-tune, and IR-pass filter settings. |
+| `get_disk_status` | read | Get storage disk status for a camera — SD card and network share info including total size, free space, health, filesystem, and lock status. |
+| `get_geolocation` | read | Get the camera's configured GPS coordinates (latitude, longitude), compass heading, and location description text. |
+| `get_io_ports` | read | List all I/O ports on a camera/device with their current states, directions (input/output), and configurations. |
+| `get_lights` | read | List all lights (IR, white, indicator) on a camera with their current state, type, and configuration. |
+| `get_motion_config` | read | Get the current video motion detection (VMD4) configuration, including detection zones, filters, and trigger areas. |
+| `get_mqtt_config` | read | Get MQTT client configuration and connection status — broker address, port, client ID, connection state, and event publication settings. |
+| `get_ntp_status` | read | Get NTP time synchronization status — whether NTP is enabled, sync status, configured servers, time offset, and next sync time. |
+| `get_orientation` | read | Read the camera's physical orientation from its built-in sensor (accelerometer/gyroscope). |
+| `get_recording_info` | read | Get export properties for a specific recording — estimated file size, exact start/stop times, export format. |
+| `get_signed_video_status` | read | Check whether signed video is enabled on a camera. |
+| `get_siren_status` | read | Get the current status of siren and strobe light devices. |
+| `get_snapshot` | read | Capture a still JPEG image from an Axis camera. |
+| `get_stream_status` | read | Get real-time stream diagnostics for a camera — active client count, bitrate (kbps), FPS, resolution, and codec for each stream. |
+| `get_system_log` | read | Read the system log from an Axis camera. |
+| `get_temperature` | read | Read temperature sensors (CPU, main board, lens, etc.) and heater status from a camera. |
+| `get_time_info` | read | Get the camera's current date/time, timezone, and DST status. |
+| `get_users` | read | List all user accounts on a camera with their group memberships (admin, operator, viewer, ptz). |
+| `imaging_get` | read | Read the image sensor settings (brightness, contrast, exposure, WDR and others) as parameters. |
+| `imaging_set` | write | Change image sensor settings. |
+| `list_analytics_producers` | read | List analytics metadata producers (object detection, motion, etc.) and whether they are enabled per video channel. |
+| `list_applications` | read | List all installed ACAP applications on a camera with their status (Running/Stopped/Idle), license validity, vendor, version, and resources used. |
+| `list_audio_clips` | read | List audio clips stored on a camera. |
+| `list_cameras` | read | List all configured Axis cameras with their IDs, names, and capabilities |
+| `list_guard_tours` | read | List all configured guard tours (automated PTZ patrol routes) on a camera, including their presets and running status. |
+| `list_overlays` | read | List all text and image overlays currently on the camera's video stream. |
+| `list_privacy_masks` | read | List all privacy masks on a camera with their pixel coordinates, names, enabled status, and zoom visibility. |
+| `list_recordings` | read | List recordings stored on the camera's edge storage (SD card or network share). |
+| `list_stream_profiles` | read | List video stream profiles — preset configurations for resolution, codec, FPS, and other streaming parameters. |
+| `list_view_areas` | read | List all view areas (virtual channels) on a camera. |
+| `param_get` | read | Read camera parameters by key or group, e.g. |
+| `param_set` | write | Set camera parameters by explicit key. |
+| `play_audio_clip` | write | Trigger playback of an audio clip on the camera's built-in speaker. |
+| `poll_events` | write | Poll for camera events over WebSocket for a specified duration. |
+| `ptz_home` | write | Return a PTZ camera to its home position. |
+| `ptz_move` | write | Move a PTZ camera to an absolute pan/tilt/zoom position. |
+| `ptz_preset` | write | Move a PTZ camera to a named preset position. |
+| `ptz_relative` | write | Move a PTZ camera by a relative offset from its current position. |
+| `ptz_status` | read | Get the current pan/tilt/zoom position of a PTZ camera. |
+| `reboot_camera` | write | Reboot an Axis camera. |
+| `remove_overlay` | write | Remove an overlay from the camera's video stream by its identity. |
+| `remove_privacy_mask` | write | Remove a privacy mask by name. |
+| `remove_stream_profile` | write | Remove a video stream profile by name. |
+| `reset_view_area_geometry` | write | Reset a view area's geometry back to its factory default (full canvas). |
+| `restart_application` | write | Restart an ACAP application on a camera. |
+| `security_audit` | read | Audit the security posture of one camera, or of every configured camera when camera_id is left out: unencrypted HTTP, old firmware, default user, S... |
+| `selftest` | write | Run the camera's built-in self test and return its result. |
+| `set_analytics_producers` | write | Enable or disable specific analytics metadata producers per video channel. |
+| `set_audio_settings` | write | Update audio device settings — change gain, mute, or input source. |
+| `set_capture_mode` | write | Switch a camera to a different capture mode (resolution/FPS). |
+| `set_daynight_config` | write | Configure day/night switching behavior — thresholds for switching between day mode (color) and night mode (IR/B&W). |
+| `set_geolocation` | write | Set the camera's GPS coordinates and heading. |
+| `set_io_port` | write | Set the state of a digital output port. |
+| `set_motion_config` | write | Set video motion detection (VMD4) configuration. |
+| `set_ntp_config` | write | Configure NTP time synchronization — enable/disable, set server source (static or DHCP), and configure NTP server addresses. |
+| `set_timezone` | write | Set the camera's timezone using an IANA timezone name (e.g. |
+| `set_view_area_geometry` | write | Set the crop geometry for a view area, digitally repositioning where the camera 'looks' without moving the physical lens. |
+| `snapshot_all` | write | Capture a JPEG snapshot from every configured camera simultaneously. |
+| `start_application` | write | Start a stopped ACAP application on a camera. |
+| `start_clear_view` | write | Activate the camera's wiper or speed-dry function to clean the lens. |
+| `start_guard_tour` | write | Start a guard tour (automated PTZ patrol). |
+| `status_all` | read | Get a quick status summary of all configured cameras — model, firmware, online/offline, and key capabilities. |
+| `stop_application` | write | Stop a running ACAP application on a camera. |
+| `stop_audio_clip` | write | Stop any currently playing audio clip on the camera. |
+| `stop_clear_view` | write | Stop a running wiper/speed-dry operation (if stoppable). |
+| `stop_guard_tour` | write | Stop a running guard tour. |
+| `stop_siren` | write | Stop all active sirens and lights on a deterrence device. |
+| `stream_urls` | read | Build RTSP, MJPEG and snapshot URLs for a camera. |
+| `toggle_light` | write | Turn a camera light on or off. |
+| `zipstream_status` | read | Show the camera's ZipStream compression profiles and maximum level. |
+
+- Every tool is marked read-only or not in its annotations. The ones that interrupt a camera or cannot be undone (reboot, firmware upgrade, siren, relay outputs, removals, application restarts, parameter changes, ...) are marked destructive and say so in their description, so a client can ask before calling them.
 - Arguments are checked against each tool's input schema before anything is sent to a camera.
 - `reboot_camera` sends the request once: a connection that closes while the camera goes down counts as sent.
-- `export_recording` saves the recording under `$VAPX_MCP_EXPORTS_DIR` (the Python server's `$VAPIX_EXPORTS_DIR` also works), by default `vapx/exports` in your user data directory, and only accepts plain file names.
+- `firmware_upgrade` uploads a `.bin` file from the server's disk and reboots the camera. It only runs with `confirm: true`, never factory-defaults, and commits only with `auto_commit` (which needs `wait`).
+- `param_set` takes explicit keys only (no wildcards or groups, at most 50) and refuses keys under `root.Network`, `root.Users` and `root.Properties`.
+- `param_get` and `diff_params` show the values of secrets (passwords, tokens, community strings) as `[redacted]`. `backup_params` keeps them, which is why it saves a file readable only by its owner instead of returning the parameters.
+- `export_recording` and `backup_params` write under `$VAPX_MCP_EXPORTS_DIR` (the Python server's `$VAPIX_EXPORTS_DIR` also works), by default `vapx/exports` in your user data directory, and only accept plain file names.
+- `stream_urls` returns URLs without credentials.
 - `add_privacy_mask` takes the polygon as it appears in a snapshot; set `mask_rotation` and `mask_mirror` for the camera in `cameras.yaml` if its image is rotated or mirrored.
+
+**Not available as tools**, because they can lock you out of a camera: factory default, changing passwords, creating or deleting users, SSH accounts, network settings and enrolling a camera. Use the command line for those.
 
 `list_cameras` returns an empty `capabilities` list: the server does not probe cameras to list them, and a tool the camera does not support returns the camera's own error.
 

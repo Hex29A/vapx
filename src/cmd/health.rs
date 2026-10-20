@@ -44,9 +44,9 @@ impl HealthCmd {
 
         let results = results.into_inner().unwrap();
         let total = results.len();
-        let healthy = results.iter().filter(|r| r["status"].as_str() == Some("healthy")).count();
-        let degraded = results.iter().filter(|r| r["status"].as_str() == Some("degraded")).count();
-        let unreachable = results.iter().filter(|r| r["status"].as_str() == Some("unreachable")).count();
+        let summary = summarize(&results);
+        let (healthy, degraded, unreachable) =
+            (summary["healthy"].as_u64().unwrap_or(0), summary["degraded"].as_u64().unwrap_or(0), summary["unreachable"].as_u64().unwrap_or(0));
 
         if self.plain {
             eprintln!("Fleet Health Report");
@@ -70,12 +70,7 @@ impl HealthCmd {
             eprintln!("Total: {} | Healthy: {} | Degraded: {} | Unreachable: {}", total, healthy, degraded, unreachable);
         } else {
             format::ok(&serde_json::json!({
-                "summary": {
-                    "total": total,
-                    "healthy": healthy,
-                    "degraded": degraded,
-                    "unreachable": unreachable,
-                },
+                "summary": summary,
                 "cameras": results,
             }));
         }
@@ -84,6 +79,7 @@ impl HealthCmd {
     }
 }
 
+/// Check one camera by name: resolves it (cameras.yaml, flags, prompt), then [`check_client`].
 fn check_camera(name: &str, timeout: Option<u64>) -> serde_json::Value {
     let start = Instant::now();
 
@@ -100,7 +96,13 @@ fn check_camera(name: &str, timeout: Option<u64>) -> serde_json::Value {
 
     let t = timeout.unwrap_or(creds.timeout.min(10)); // Cap at 10s for health checks
     let client = VapixClient::new(&resolved_host, creds.port, creds, t);
+    check_client(name, &resolved_host, &client, start)
+}
 
+/// Health of one camera, with `start` as the moment the check began (the
+/// reported latency includes whatever happened since). `status` is `healthy`,
+/// `degraded` or `unreachable`.
+pub(crate) fn check_client(name: &str, resolved_host: &str, client: &VapixClient, start: Instant) -> serde_json::Value {
     let mut result = serde_json::json!({
         "camera": name,
         "host": resolved_host,
@@ -109,7 +111,7 @@ fn check_camera(name: &str, timeout: Option<u64>) -> serde_json::Value {
     let mut issues = Vec::new();
 
     // Device info
-    match device::get_all_properties(&client) {
+    match device::get_all_properties(client) {
         Ok(resp) => {
             let data = resp.get("data").unwrap_or(&resp);
             let props = data.get("propertyList").unwrap_or(data);
@@ -129,7 +131,7 @@ fn check_camera(name: &str, timeout: Option<u64>) -> serde_json::Value {
     }
 
     // Firmware status
-    match firmware::status(&client) {
+    match firmware::status(client) {
         Ok(resp) => {
             let version = resp.pointer("/data/activeFirmwareVersion")
                 .and_then(|v| v.as_str())
@@ -165,3 +167,13 @@ fn check_camera(name: &str, timeout: Option<u64>) -> serde_json::Value {
     result
 }
 
+/// `{total, healthy, degraded, unreachable}` over a list of [`check_client`] results.
+pub(crate) fn summarize(results: &[serde_json::Value]) -> serde_json::Value {
+    let count = |status: &str| results.iter().filter(|r| r["status"].as_str() == Some(status)).count();
+    serde_json::json!({
+        "total": results.len(),
+        "healthy": count("healthy"),
+        "degraded": count("degraded"),
+        "unreachable": count("unreachable"),
+    })
+}
