@@ -39,8 +39,9 @@ pub struct McpCmd {
     pub bind: Option<SocketAddr>,
 
     /// Extra Host header value to accept besides the bind address and localhost
-    /// (repeatable), e.g. a DNS name the server is reached by
-    #[arg(long = "allowed-host")]
+    /// (repeatable, or comma-separated in the environment variable), e.g. a DNS
+    /// name the server is reached by
+    #[arg(long = "allowed-host", env = "VAPX_MCP_ALLOWED_HOSTS", value_delimiter = ',')]
     pub allowed_hosts: Vec<String>,
 
     /// Serve HTTP without a bearer token. Only for a trusted loopback setup.

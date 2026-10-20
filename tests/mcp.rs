@@ -927,3 +927,54 @@ fn stdio_stdout_carries_only_json_rpc_even_when_cameras_fail() {
     assert!(stderr.contains("Retry"), "the retries should be logged on stderr: {stderr}");
     assert!(!stderr.contains('\u{1b}'), "no colour codes when stderr is not a terminal: {stderr:?}");
 }
+
+// ---- switch-over (#60) ----
+
+#[test]
+fn the_python_servers_config_variable_still_selects_the_config() {
+    let config = test_config("vapix-config");
+    let out = Command::new(env!("CARGO_BIN_EXE_vapx"))
+        .args(["config", "path"])
+        .env_remove("VAPX_CONFIG")
+        .env("VAPIX_CONFIG", &config)
+        .output()
+        .unwrap();
+    assert!(String::from_utf8_lossy(&out.stdout).contains(config.to_str().unwrap()), "{out:?}");
+}
+
+#[test]
+fn http_accepts_extra_hosts_from_the_environment_only() {
+    let config = test_config("allowed-host");
+    let addr = free_addr();
+    let mut child = vapx(&config)
+        .args(["mcp", "--transport", "http", "--bind", &addr.to_string()])
+        .env("VAPX_MCP_TOKEN", "tok")
+        .env("VAPX_MCP_ALLOWED_HOSTS", "mcp.example.test,other.example.test")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while TcpStream::connect(addr).is_err() {
+        assert!(Instant::now() < deadline, "vapx mcp did not start listening");
+        thread::sleep(Duration::from_millis(50));
+    }
+    let post = |host: &str| {
+        reqwest::blocking::Client::new()
+            .post(format!("http://{addr}/mcp"))
+            .header("Host", host)
+            .header("Authorization", "Bearer tok")
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json, text/event-stream")
+            .header("MCP-Protocol-Version", "2025-03-26")
+            .body(r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#)
+            .send()
+            .unwrap()
+            .status()
+    };
+    let (ok, other_ok, refused) = (post("mcp.example.test"), post("other.example.test"), post("evil.example.test"));
+    let _ = child.kill();
+    let _ = child.wait();
+    assert!(ok.is_success() && other_ok.is_success(), "{ok} {other_ok}");
+    assert!(refused.is_client_error(), "a Host that was not allowed must be refused: {refused}");
+}

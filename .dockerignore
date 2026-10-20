@@ -1,0 +1,8 @@
+.git
+target
+site
+docs
+scripts
+tests
+*.md
+!README.md
