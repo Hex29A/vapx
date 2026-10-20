@@ -45,3 +45,46 @@ pub fn set_geometry(
         },
     }))
 }
+
+/// View areas in the shape the MCP tools use: `[{id, camera, source,
+/// configurable, canvas_size?, geometry?, min_size?, max_size?, grid?}]`.
+pub fn list_normalized(client: &VapixClient) -> anyhow::Result<Value> {
+    let resp = list(client)?;
+    Ok(normalize(&resp))
+}
+
+fn normalize(resp: &Value) -> Value {
+    let areas = resp.pointer("/data/viewAreas").and_then(Value::as_array).cloned().unwrap_or_default();
+    Value::Array(
+        areas
+            .iter()
+            .map(|a| {
+                let mut e = serde_json::Map::new();
+                e.insert("id".into(), a.get("id").cloned().unwrap_or(Value::Null));
+                e.insert("camera".into(), a.get("camera").cloned().unwrap_or(Value::Null));
+                e.insert("source".into(), a.get("source").cloned().unwrap_or(Value::Null));
+                e.insert("configurable".into(), a.get("configurable").cloned().unwrap_or(Value::Bool(false)));
+                if let Some(v) = a.get("canvasSize") {
+                    e.insert("canvas_size".into(), v.clone());
+                }
+                if let Some(g) = a.get("rectangularGeometry") {
+                    e.insert(
+                        "geometry".into(),
+                        json!({
+                            "horizontal_offset": g.get("horizontalOffset"),
+                            "vertical_offset": g.get("verticalOffset"),
+                            "horizontal_size": g.get("horizontalSize"),
+                            "vertical_size": g.get("verticalSize"),
+                        }),
+                    );
+                }
+                for (from, to) in [("minSize", "min_size"), ("maxSize", "max_size"), ("grid", "grid")] {
+                    if let Some(v) = a.get(from) {
+                        e.insert(to.into(), v.clone());
+                    }
+                }
+                Value::Object(e)
+            })
+            .collect(),
+    )
+}

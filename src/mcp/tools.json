@@ -1,0 +1,1718 @@
+[
+  {
+    "name": "activate_siren",
+    "description": "Activate a siren and/or strobe light on a deterrence device. Specify pattern, intensity, colors, and duration. Or use a saved profile name.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Device identifier"
+        },
+        "profile": {
+          "type": "string",
+          "description": "Name of saved profile to activate (alternative to manual config)"
+        },
+        "siren_pattern": {
+          "type": "string",
+          "description": "Siren pattern (e.g. \"Alarm: Horror\", \"Alarm: Car alarm\")"
+        },
+        "siren_intensity": {
+          "type": "integer",
+          "description": "Siren intensity (1-10)",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "light_pattern": {
+          "type": "string",
+          "description": "Light pattern (e.g. \"Alternate\", \"Pulse\", \"Solid\")"
+        },
+        "light_colors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Light colors (e.g. [\"red\", \"blue\"])"
+        },
+        "light_intensity": {
+          "type": "integer",
+          "description": "Light intensity (1-10)",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "duration": {
+          "type": "integer",
+          "description": "Duration in seconds"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "add_overlay",
+    "description": "Add a text overlay to the camera's live video stream. Use format strings like %c for date/time. Max 512 characters.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "text": {
+          "type": "string",
+          "description": "Overlay text. Supports %c (date+time), %H (hour), etc.",
+          "maxLength": 512
+        },
+        "position": {
+          "type": "string",
+          "enum": [
+            "topLeft",
+            "topRight",
+            "bottomLeft",
+            "bottomRight"
+          ],
+          "description": "Position on the video (default: topLeft)",
+          "default": "topLeft"
+        },
+        "text_color": {
+          "type": "string",
+          "description": "Text color (white, black, red, etc.)",
+          "default": "white"
+        },
+        "text_bg_color": {
+          "type": "string",
+          "description": "Background color (transparent, black, white, etc.)",
+          "default": "transparent"
+        }
+      },
+      "required": [
+        "camera_id",
+        "text"
+      ]
+    }
+  },
+  {
+    "name": "add_privacy_mask",
+    "description": "Add a privacy mask to cover a sensitive area in the video. Provide polygon coordinates as they appear in the snapshot image — the server automatically converts to sensor coordinates using the camera's detected rotation/orientation. Masks adapt to PTZ changes.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "name": {
+          "type": "string",
+          "description": "Unique mask name (max 128 chars)"
+        },
+        "polygon": {
+          "type": "string",
+          "description": "Pixel polygon \"x1,y1:x2,y2:x3,y3:x4,y4\" as seen in the snapshot image (top-left origin). Use get_snapshot to identify coordinates visually. Minimum 3 points, recommend 4 for rectangles."
+        },
+        "display_width": {
+          "type": "integer",
+          "description": "Width of the snapshot used to identify coordinates (default: 1920)",
+          "default": 1920
+        },
+        "display_height": {
+          "type": "integer",
+          "description": "Height of the snapshot used to identify coordinates (default: 1080)",
+          "default": 1080
+        }
+      },
+      "required": [
+        "camera_id",
+        "name",
+        "polygon"
+      ]
+    }
+  },
+  {
+    "name": "check_systemready",
+    "description": "Check if an Axis camera is ready to handle requests. Returns readiness status, uptime in seconds, and boot ID. Useful for polling after a reboot.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "timeout": {
+          "type": "integer",
+          "description": "Max seconds to wait for readiness (default: 10)",
+          "default": 10,
+          "minimum": 1,
+          "maximum": 60
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "configure_mqtt",
+    "description": "Configure the MQTT client connection on a camera. Once configured and enabled, the camera publishes events directly to the broker — no MCP involvement at runtime.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "host": {
+          "type": "string",
+          "description": "MQTT broker hostname or IP"
+        },
+        "port": {
+          "type": "integer",
+          "description": "Broker port (default 1883)",
+          "default": 1883
+        },
+        "protocol": {
+          "type": "string",
+          "description": "Protocol: tcp, ssl, ws, wss",
+          "default": "tcp"
+        },
+        "client_id": {
+          "type": "string",
+          "description": "Optional MQTT client ID"
+        },
+        "username": {
+          "type": "string",
+          "description": "Optional broker username"
+        },
+        "password": {
+          "type": "string",
+          "description": "Optional broker password"
+        }
+      },
+      "required": [
+        "camera_id",
+        "host"
+      ]
+    }
+  },
+  {
+    "name": "create_stream_profile",
+    "description": "Create a new video stream profile with specified parameters. Parameters are URL-encoded (e.g. 'resolution=1920x1080&fps=30&videocodec=h264').",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "name": {
+          "type": "string",
+          "description": "Unique profile name"
+        },
+        "parameters": {
+          "type": "string",
+          "description": "URL-encoded parameter string (e.g. 'resolution=1920x1080&fps=30')"
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description",
+          "default": ""
+        }
+      },
+      "required": [
+        "camera_id",
+        "name",
+        "parameters"
+      ]
+    }
+  },
+  {
+    "name": "delete_audio_clip",
+    "description": "Delete an audio clip from the camera. Accepts clip name (string) or integer ID.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "name_or_id": {
+          "type": "string",
+          "description": "Clip name or integer ID"
+        }
+      },
+      "required": [
+        "camera_id",
+        "name_or_id"
+      ]
+    }
+  },
+  {
+    "name": "disable_mqtt",
+    "description": "Disable (deactivate) the MQTT client on a camera — disconnects from the broker.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "discover_apis",
+    "description": "List all VAPIX APIs supported by an Axis device. Useful for checking what capabilities a camera has before attempting operations.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "enable_mqtt",
+    "description": "Enable (activate) the MQTT client on a camera — connects to the configured broker.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "export_recording",
+    "description": "Export a recording from the camera's edge storage as a .mkv file. Downloads to the server's /exports/ directory. Use list_recordings first to find recording IDs, and get_recording_info to check file size.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "recording_id": {
+          "type": "string",
+          "description": "Recording ID from list_recordings"
+        },
+        "disk_id": {
+          "type": "string",
+          "description": "Disk ID where the recording is stored"
+        },
+        "start_time": {
+          "type": "string",
+          "description": "Optional clip start time (ISO 8601 UTC)"
+        },
+        "stop_time": {
+          "type": "string",
+          "description": "Optional clip stop time"
+        },
+        "filename": {
+          "type": "string",
+          "description": "Output filename (default: recording_id.mkv)"
+        }
+      },
+      "required": [
+        "camera_id",
+        "recording_id",
+        "disk_id"
+      ]
+    }
+  },
+  {
+    "name": "get_audio_settings",
+    "description": "Get audio device settings — input/output configuration, gain levels, mute status, and connection types.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "get_audit_log",
+    "description": "Read the security audit log from an Axis camera. Shows login events, configuration changes, and other security-relevant actions. Optionally returns only the last N lines.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "lines": {
+          "type": "integer",
+          "description": "Return only the last N lines. Omit for the full log.",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "get_camera_info",
+    "description": "Get device information for an Axis camera: model, serial number, firmware version, hardware ID, architecture, etc.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier from list_cameras"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "get_capture_modes",
+    "description": "List available video capture modes (resolution + max FPS) for a camera. Shows which mode is currently active.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "get_clear_view_info",
+    "description": "Get Clear View service info — available cleaning services (wiper, speed-dry), duration limits, and cooldown times. Only available on cameras with wiper/speed-dry hardware.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "get_daynight_config",
+    "description": "Get the day/night (IR-cut filter) configuration for a camera — shift levels, dwell times, auto-tune, and IR-pass filter settings.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "channel": {
+          "type": "integer",
+          "description": "Video channel (default 0)",
+          "default": 0
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "get_disk_status",
+    "description": "Get storage disk status for a camera — SD card and network share info including total size, free space, health, filesystem, and lock status.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "get_geolocation",
+    "description": "Get the camera's configured GPS coordinates (latitude, longitude), compass heading, and location description text.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "get_io_ports",
+    "description": "List all I/O ports on a camera/device with their current states, directions (input/output), and configurations.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "get_lights",
+    "description": "List all lights (IR, white, indicator) on a camera with their current state, type, and configuration.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "get_motion_config",
+    "description": "Get the current video motion detection (VMD4) configuration, including detection zones, filters, and trigger areas.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "get_mqtt_config",
+    "description": "Get MQTT client configuration and connection status — broker address, port, client ID, connection state, and event publication settings.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "get_ntp_status",
+    "description": "Get NTP time synchronization status — whether NTP is enabled, sync status, configured servers, time offset, and next sync time.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "get_orientation",
+    "description": "Read the camera's physical orientation from its built-in sensor (accelerometer/gyroscope). Returns longitudinal rotation and lateral tilt angles. Not all cameras have this hardware.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "get_recording_info",
+    "description": "Get export properties for a specific recording — estimated file size, exact start/stop times, export format. Use before deciding whether to export.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "recording_id": {
+          "type": "string",
+          "description": "Recording ID from list_recordings"
+        },
+        "disk_id": {
+          "type": "string",
+          "description": "Disk ID where the recording is stored"
+        },
+        "start_time": {
+          "type": "string",
+          "description": "Optional clip start time (ISO 8601 UTC)"
+        },
+        "stop_time": {
+          "type": "string",
+          "description": "Optional clip stop time"
+        }
+      },
+      "required": [
+        "camera_id",
+        "recording_id",
+        "disk_id"
+      ]
+    }
+  },
+  {
+    "name": "get_signed_video_status",
+    "description": "Check whether signed video is enabled on a camera. Signed video cryptographically signs recordings so tampering can be detected. Tries signedvideo.cgi first; falls back to param.cgi on firmware 12.x where the CGI endpoint is absent despite appearing in API discovery. Response includes a 'source' field indicating which path provided the data.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "get_siren_status",
+    "description": "Get the current status of siren and strobe light devices. Returns empty if idle, or active siren/light details.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera/device identifier"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "get_snapshot",
+    "description": "Capture a still JPEG image from an Axis camera. Returns the image directly for visual inspection.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "resolution": {
+          "type": "string",
+          "description": "Image resolution, e.g. \"1920x1080\", \"1280x720\", \"640x480\"",
+          "default": "1920x1080"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "get_stream_status",
+    "description": "Get real-time stream diagnostics for a camera — active client count, bitrate (kbps), FPS, resolution, and codec for each stream. Returns an empty list when no streams are active.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "get_system_log",
+    "description": "Read the system log from an Axis camera. Useful for diagnostics and troubleshooting. Optionally returns only the last N lines.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "lines": {
+          "type": "integer",
+          "description": "Return only the last N lines. Omit for the full log.",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "get_temperature",
+    "description": "Read temperature sensors (CPU, main board, lens, etc.) and heater status from a camera. Returns readings in both Celsius and Fahrenheit.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "get_time_info",
+    "description": "Get the camera's current date/time, timezone, and DST status.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "get_users",
+    "description": "List all user accounts on a camera with their group memberships (admin, operator, viewer, ptz). Service accounts (stsuser, AxisDeviceMgmt, pfagentvapix) are flagged separately.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "list_analytics_producers",
+    "description": "List analytics metadata producers (object detection, motion, etc.) and whether they are enabled per video channel.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "list_applications",
+    "description": "List all installed ACAP applications on a camera with their status (Running/Stopped/Idle), license validity, vendor, version, and resources used. Use this to check if analytics apps like VMD, Object Analytics, or Loitering Guard are active.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "list_audio_clips",
+    "description": "List audio clips stored on a camera. Returns each clip's integer ID, name, and storage location. Only available on cameras with built-in speaker hardware.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "list_cameras",
+    "description": "List all configured Axis cameras with their IDs, names, and capabilities",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "list_guard_tours",
+    "description": "List all configured guard tours (automated PTZ patrol routes) on a camera, including their presets and running status.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "list_overlays",
+    "description": "List all text and image overlays currently on the camera's video stream.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "list_privacy_masks",
+    "description": "List all privacy masks on a camera with their pixel coordinates, names, enabled status, and zoom visibility.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "list_recordings",
+    "description": "List recordings stored on the camera's edge storage (SD card or network share). Can filter by time range. Returns recording IDs, timestamps, and video/audio info.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "disk_id": {
+          "type": "string",
+          "description": "Disk ID to filter (e.g. \"SD_DISK\", \"NetworkShare\"). Omit for all."
+        },
+        "start_time": {
+          "type": "string",
+          "description": "Filter start time in ISO 8601 UTC (e.g. \"2024-01-15T08:00:00Z\")"
+        },
+        "stop_time": {
+          "type": "string",
+          "description": "Filter stop time in ISO 8601 UTC"
+        },
+        "max_recordings": {
+          "type": "integer",
+          "description": "Maximum number of recordings to return (default: 1000)"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "list_stream_profiles",
+    "description": "List video stream profiles — preset configurations for resolution, codec, FPS, and other streaming parameters.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "name": {
+          "type": "string",
+          "description": "Specific profile name to query (omit for all)"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "list_view_areas",
+    "description": "List all view areas (virtual channels) on a camera. Each view area is a crop of the full sensor mapped to a virtual video channel. Returns geometry (offset + size in pixels), canvas size, and grid alignment constraints.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "play_audio_clip",
+    "description": "Trigger playback of an audio clip on the camera's built-in speaker. Accepts clip name (string) or integer ID. Use list_audio_clips to see available clips.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "name_or_id": {
+          "type": "string",
+          "description": "Clip name or integer ID"
+        }
+      },
+      "required": [
+        "camera_id",
+        "name_or_id"
+      ]
+    }
+  },
+  {
+    "name": "poll_events",
+    "description": "Poll for camera events over WebSocket for a specified duration. Returns a batch of events (motion, I/O changes, tampering, etc.). Useful for checking what's happening on a camera right now.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "duration": {
+          "type": "number",
+          "description": "How long to listen for events in seconds (1-30, default 5)",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 30
+        },
+        "topic_filter": {
+          "type": "string",
+          "description": "Optional ONVIF topic filter (e.g. \"tns1:Device/tnsaxis:IO/VirtualPort\", \"tns1:RuleEngine/MotionRegionDetector/Motion\")"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "ptz_home",
+    "description": "Return a PTZ camera to its home position.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "ptz_move",
+    "description": "Move a PTZ camera to an absolute pan/tilt/zoom position. Pan: -180 to 180 (degrees), Tilt: -180 to 180, Zoom: 1-9999.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "pan": {
+          "type": "number",
+          "description": "Pan angle in degrees (-180 to 180). Negative=left, positive=right."
+        },
+        "tilt": {
+          "type": "number",
+          "description": "Tilt angle in degrees (-180 to 180). Negative=down, positive=up."
+        },
+        "zoom": {
+          "type": "integer",
+          "description": "Zoom level (1=wide to 9999=telephoto)",
+          "minimum": 1,
+          "maximum": 9999
+        }
+      },
+      "required": [
+        "camera_id",
+        "pan",
+        "tilt",
+        "zoom"
+      ]
+    }
+  },
+  {
+    "name": "ptz_preset",
+    "description": "Move a PTZ camera to a named preset position.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "preset_name": {
+          "type": "string",
+          "description": "Name of the preset position (case-sensitive)"
+        }
+      },
+      "required": [
+        "camera_id",
+        "preset_name"
+      ]
+    }
+  },
+  {
+    "name": "ptz_relative",
+    "description": "Move a PTZ camera by a relative offset from its current position.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "rpan": {
+          "type": "number",
+          "description": "Relative pan offset",
+          "default": 0
+        },
+        "rtilt": {
+          "type": "number",
+          "description": "Relative tilt offset",
+          "default": 0
+        },
+        "rzoom": {
+          "type": "integer",
+          "description": "Relative zoom offset",
+          "default": 0
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "ptz_status",
+    "description": "Get the current pan/tilt/zoom position of a PTZ camera.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "reboot_camera",
+    "description": "Reboot an Axis camera. The camera will be unreachable for ~30-60 seconds. Uses firmwaremanagement.cgi (fw 7.40+) with fallback to legacy restart.cgi.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "remove_overlay",
+    "description": "Remove an overlay from the camera's video stream by its identity.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "identity": {
+          "type": "integer",
+          "description": "Overlay identity (from list_overlays or add_overlay)"
+        }
+      },
+      "required": [
+        "camera_id",
+        "identity"
+      ]
+    }
+  },
+  {
+    "name": "remove_privacy_mask",
+    "description": "Remove a privacy mask by name.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the mask to remove"
+        }
+      },
+      "required": [
+        "camera_id",
+        "name"
+      ]
+    }
+  },
+  {
+    "name": "remove_stream_profile",
+    "description": "Remove a video stream profile by name.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the profile to remove"
+        }
+      },
+      "required": [
+        "camera_id",
+        "name"
+      ]
+    }
+  },
+  {
+    "name": "reset_view_area_geometry",
+    "description": "Reset a view area's geometry back to its factory default (full canvas).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "view_area_id": {
+          "type": "integer",
+          "description": "View area ID from list_view_areas"
+        }
+      },
+      "required": [
+        "camera_id",
+        "view_area_id"
+      ]
+    }
+  },
+  {
+    "name": "restart_application",
+    "description": "Restart an ACAP application on a camera. Useful after configuration changes.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "package_name": {
+          "type": "string",
+          "description": "Application short name. Use list_applications to find names."
+        }
+      },
+      "required": [
+        "camera_id",
+        "package_name"
+      ]
+    }
+  },
+  {
+    "name": "set_analytics_producers",
+    "description": "Enable or disable specific analytics metadata producers per video channel. Pass the producers array with name and channel settings.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "producers": {
+          "type": "array",
+          "description": "List of producers to configure. Each: {name: \"producer_name\", videochannels: [{channel: 0, enabled: true}]}"
+        }
+      },
+      "required": [
+        "camera_id",
+        "producers"
+      ]
+    }
+  },
+  {
+    "name": "set_audio_settings",
+    "description": "Update audio device settings — change gain, mute, or input source. Pass the devices array from get_audio_settings with modifications.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "devices": {
+          "type": "array",
+          "description": "Array of device settings (structure from get_audio_settings)"
+        }
+      },
+      "required": [
+        "camera_id",
+        "devices"
+      ]
+    }
+  },
+  {
+    "name": "set_capture_mode",
+    "description": "Switch a camera to a different capture mode (resolution/FPS). WARNING: Requires camera reboot to take effect.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "channel": {
+          "type": "integer",
+          "description": "Video channel (default 0)",
+          "default": 0
+        },
+        "capture_mode_id": {
+          "type": "integer",
+          "description": "Capture mode ID from get_capture_modes"
+        }
+      },
+      "required": [
+        "camera_id",
+        "capture_mode_id"
+      ]
+    }
+  },
+  {
+    "name": "set_daynight_config",
+    "description": "Configure day/night switching behavior — thresholds for switching between day mode (color) and night mode (IR/B&W).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "channel": {
+          "type": "integer",
+          "description": "Video channel (default 0)",
+          "default": 0
+        },
+        "DayNightShiftLevel": {
+          "type": "integer",
+          "description": "Day→Night threshold (0-100, higher = darker before switching)",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "NightDayShiftLevel": {
+          "type": "integer",
+          "description": "Night→Day threshold (0-100)",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "DayNightDwellTime": {
+          "type": "integer",
+          "description": "Seconds to wait before day→night switch (1-600)",
+          "minimum": 1,
+          "maximum": 600
+        },
+        "NightDayDwellTime": {
+          "type": "integer",
+          "description": "Seconds to wait before night→day switch (1-600)",
+          "minimum": 1,
+          "maximum": 600
+        },
+        "Autotune": {
+          "type": "boolean",
+          "description": "Enable auto-tuning of shift levels"
+        },
+        "NightFilter": {
+          "type": "string",
+          "enum": [
+            "irpass",
+            "clear"
+          ],
+          "description": "Night filter mode: 'irpass' for IR, 'clear' for visible light"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "set_geolocation",
+    "description": "Set the camera's GPS coordinates and heading. Coordinates are WGS-84 decimal degrees.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "lat": {
+          "type": "number",
+          "description": "Latitude in decimal degrees"
+        },
+        "lng": {
+          "type": "number",
+          "description": "Longitude in decimal degrees"
+        },
+        "heading": {
+          "type": "number",
+          "description": "Compass heading in degrees (0-360)"
+        },
+        "text": {
+          "type": "string",
+          "description": "Location description text"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "set_io_port",
+    "description": "Set the state of a digital output port. Use \"closed\" to activate (energize relay) or \"open\" to deactivate.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "port": {
+          "type": "string",
+          "description": "Port ID (e.g. \"0\", \"1\"). Get from get_io_ports."
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "open",
+            "closed"
+          ],
+          "description": "\"open\" = deactivate/inactive, \"closed\" = activate/active"
+        }
+      },
+      "required": [
+        "camera_id",
+        "port",
+        "state"
+      ]
+    }
+  },
+  {
+    "name": "set_motion_config",
+    "description": "Set video motion detection (VMD4) configuration. Pass the full cameras and profiles arrays as returned by get_motion_config.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "cameras": {
+          "type": "array",
+          "description": "Camera configs array (from get_motion_config)"
+        },
+        "profiles": {
+          "type": "array",
+          "description": "Detection profile configs (zones, filters, triggers)"
+        }
+      },
+      "required": [
+        "camera_id",
+        "cameras",
+        "profiles"
+      ]
+    }
+  },
+  {
+    "name": "set_ntp_config",
+    "description": "Configure NTP time synchronization — enable/disable, set server source (static or DHCP), and configure NTP server addresses.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable or disable NTP client"
+        },
+        "servers_source": {
+          "type": "string",
+          "enum": [
+            "static",
+            "DHCP"
+          ],
+          "description": "Source of NTP servers"
+        },
+        "static_servers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of NTP server addresses (overwrites existing)"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "set_timezone",
+    "description": "Set the camera's timezone using an IANA timezone name (e.g. \"Europe/Stockholm\", \"America/New_York\", \"Asia/Tokyo\").",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "timezone": {
+          "type": "string",
+          "description": "IANA timezone name (e.g. \"Europe/Stockholm\")"
+        }
+      },
+      "required": [
+        "camera_id",
+        "timezone"
+      ]
+    }
+  },
+  {
+    "name": "set_view_area_geometry",
+    "description": "Set the crop geometry for a view area, digitally repositioning where the camera 'looks' without moving the physical lens. Coordinates must align to the camera's grid (usually 8px). Use list_view_areas first to get the view area ID, canvas size, and grid constraints.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "view_area_id": {
+          "type": "integer",
+          "description": "View area ID from list_view_areas"
+        },
+        "horizontal_offset": {
+          "type": "integer",
+          "description": "Left edge in pixels from canvas origin"
+        },
+        "vertical_offset": {
+          "type": "integer",
+          "description": "Top edge in pixels from canvas origin"
+        },
+        "horizontal_size": {
+          "type": "integer",
+          "description": "Width in pixels (must be >= min_size and <= canvas width)"
+        },
+        "vertical_size": {
+          "type": "integer",
+          "description": "Height in pixels (must be >= min_size and <= canvas height)"
+        }
+      },
+      "required": [
+        "camera_id",
+        "view_area_id",
+        "horizontal_offset",
+        "vertical_offset",
+        "horizontal_size",
+        "vertical_size"
+      ]
+    }
+  },
+  {
+    "name": "snapshot_all",
+    "description": "Capture a JPEG snapshot from every configured camera simultaneously. Returns images from all reachable cameras. Useful for a quick overview.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "resolution": {
+          "type": "string",
+          "description": "Image resolution (e.g. \"1280x720\"). Default: \"640x480\" for batch.",
+          "default": "640x480"
+        }
+      }
+    }
+  },
+  {
+    "name": "start_application",
+    "description": "Start a stopped ACAP application on a camera.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "package_name": {
+          "type": "string",
+          "description": "Application short name (e.g. 'objectanalytics', 'vmd'). Use list_applications to find names."
+        }
+      },
+      "required": [
+        "camera_id",
+        "package_name"
+      ]
+    }
+  },
+  {
+    "name": "start_clear_view",
+    "description": "Activate the camera's wiper or speed-dry function to clean the lens. Optional duration in seconds.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "service_id": {
+          "type": "integer",
+          "description": "Service ID from get_clear_view_info (default 0 = wiper)"
+        },
+        "duration": {
+          "type": "integer",
+          "description": "Duration in seconds (within min/max from service info)"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "start_guard_tour",
+    "description": "Start a guard tour (automated PTZ patrol). Use tour ID from list_guard_tours (e.g. \"G0\").",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "tour_id": {
+          "type": "string",
+          "description": "Guard tour ID (e.g. \"G0\"). Get from list_guard_tours."
+        }
+      },
+      "required": [
+        "camera_id",
+        "tour_id"
+      ]
+    }
+  },
+  {
+    "name": "status_all",
+    "description": "Get a quick status summary of all configured cameras — model, firmware, online/offline, and key capabilities.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "stop_application",
+    "description": "Stop a running ACAP application on a camera.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "package_name": {
+          "type": "string",
+          "description": "Application short name. Use list_applications to find names."
+        }
+      },
+      "required": [
+        "camera_id",
+        "package_name"
+      ]
+    }
+  },
+  {
+    "name": "stop_audio_clip",
+    "description": "Stop any currently playing audio clip on the camera.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "stop_clear_view",
+    "description": "Stop a running wiper/speed-dry operation (if stoppable).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "service_id": {
+          "type": "integer",
+          "description": "Service ID to stop (default 0 = wiper)"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "stop_guard_tour",
+    "description": "Stop a running guard tour.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "tour_id": {
+          "type": "string",
+          "description": "Guard tour ID (e.g. \"G0\")."
+        }
+      },
+      "required": [
+        "camera_id",
+        "tour_id"
+      ]
+    }
+  },
+  {
+    "name": "stop_siren",
+    "description": "Stop all active sirens and lights on a deterrence device.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Device identifier"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "toggle_light",
+    "description": "Turn a camera light on or off. Use get_lights first to find available light IDs (e.g. \"led0\").",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier"
+        },
+        "light_id": {
+          "type": "string",
+          "description": "Light identifier (e.g. \"led0\"). Get from get_lights."
+        },
+        "on": {
+          "type": "boolean",
+          "description": "true to turn on, false to turn off"
+        }
+      },
+      "required": [
+        "camera_id",
+        "light_id",
+        "on"
+      ]
+    }
+  }
+]

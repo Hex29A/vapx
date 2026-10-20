@@ -30,6 +30,16 @@ pub struct AcapApp {
     pub version: String,
     pub status: String,
     pub license: String,
+    pub license_name: String,
+    pub signature: String,
+    pub config_page: String,
+    pub resources: Vec<AcapResource>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AcapResource {
+    pub name: String,
+    pub used: String,
 }
 
 fn parse_application_list(xml: &str) -> anyhow::Result<Vec<AcapApp>> {
@@ -45,6 +55,17 @@ fn parse_application_list(xml: &str) -> anyhow::Result<Vec<AcapApp>> {
                 version: node.attribute("Version").unwrap_or("").to_string(),
                 status: node.attribute("Status").unwrap_or("").to_string(),
                 license: node.attribute("License").unwrap_or("").to_string(),
+                license_name: node.attribute("LicenseName").unwrap_or("").to_string(),
+                signature: node.attribute("SignatureStatus").unwrap_or("").to_string(),
+                config_page: node.attribute("ConfigurationPage").unwrap_or("").to_string(),
+                resources: node
+                    .descendants()
+                    .filter(|n| n.tag_name().name() == "Resource")
+                    .map(|r| AcapResource {
+                        name: r.attribute("name").unwrap_or("").to_string(),
+                        used: r.attribute("used").unwrap_or("").to_string(),
+                    })
+                    .collect(),
             });
         }
     }

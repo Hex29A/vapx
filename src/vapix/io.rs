@@ -66,3 +66,67 @@ pub fn trigger_port(client: &VapixClient, port_index: u8, active: bool) -> anyho
     }
     Ok(text)
 }
+
+/// I/O ports as a list of `{port, direction, name, state, ...}`.
+///
+/// Uses the `portmanagement.cgi` JSON API and, on cameras without it, the
+/// `param.cgi` + `io/port.cgi` pair. `state` is `open` or `closed`.
+pub fn get_port_list(client: &VapixClient) -> anyhow::Result<serde_json::Value> {
+    let modern = client.post_json(
+        "/axis-cgi/io/portmanagement.cgi",
+        &json!({"apiVersion": "1.0", "method": "getPorts"}),
+    );
+    if let Ok(resp) = modern {
+        let mut data = super::data_of(resp);
+        return Ok(data.get_mut("items").map(serde_json::Value::take).unwrap_or_else(|| json!([])));
+    }
+    let params = client.get_text("/axis-cgi/param.cgi", &[("action", "list"), ("group", "IOPort")])?;
+    let count = params.lines().filter(|l| l.contains(".Direction=")).count();
+    if count == 0 {
+        return Ok(json!([]));
+    }
+    let ids: Vec<String> = (1..=count).map(|i| i.to_string()).collect();
+    let states = client.get_text("/axis-cgi/io/port.cgi", &[("checkactive", &ids.join(","))])?;
+    Ok(parse_legacy_ports(&params, &states))
+}
+
+fn parse_legacy_ports(param_text: &str, state_text: &str) -> serde_json::Value {
+    let mut order: Vec<String> = Vec::new();
+    let mut ports: std::collections::HashMap<String, serde_json::Map<String, serde_json::Value>> =
+        std::collections::HashMap::new();
+    for line in param_text.lines() {
+        let Some((key, value)) = line.trim().split_once('=') else { continue };
+        let parts: Vec<&str> = key.split('.').collect();
+        if parts.len() < 4 || parts[1] != "IOPort" {
+            continue;
+        }
+        let id = parts[2].to_string();
+        if !ports.contains_key(&id) {
+            order.push(id.clone());
+            let mut m = serde_json::Map::new();
+            m.insert("port".into(), json!((order.len() - 1).to_string()));
+            ports.insert(id.clone(), m);
+        }
+        match parts[3] {
+            "Direction" => {
+                ports.get_mut(&id).unwrap().insert("direction".into(), json!(value.to_lowercase()));
+            }
+            "Usage" => {
+                ports.get_mut(&id).unwrap().insert("name".into(), json!(value));
+            }
+            _ => {}
+        }
+    }
+    let mut list: Vec<serde_json::Map<String, serde_json::Value>> =
+        order.iter().map(|id| ports.remove(id).unwrap()).collect();
+    for line in state_text.lines() {
+        let Some((key, value)) = line.trim().split_once('=') else { continue };
+        if let Some(n) = key.strip_prefix("port").and_then(|n| n.parse::<usize>().ok()) {
+            if let Some(port) = n.checked_sub(1).and_then(|i| list.get_mut(i)) {
+                let state = if value.trim() == "active" { "closed" } else { "open" };
+                port.insert("state".into(), json!(state));
+            }
+        }
+    }
+    serde_json::Value::Array(list.into_iter().map(serde_json::Value::Object).collect())
+}

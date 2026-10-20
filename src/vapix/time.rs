@@ -22,3 +22,21 @@ pub fn set_params(client: &VapixClient, assignments: &[(&str, &str)]) -> anyhow:
     }
     Ok(text)
 }
+
+/// Date, time and time zone as the camera reports them (`time.cgi`).
+pub fn get_date_time_info(client: &VapixClient) -> anyhow::Result<serde_json::Value> {
+    let resp = client.post_json(
+        "/axis-cgi/time.cgi",
+        &serde_json::json!({"apiVersion": "1.0", "method": "getDateTimeInfo"}),
+    )?;
+    Ok(super::data_of(resp))
+}
+
+/// NTP client state and servers (`ntp.cgi`).
+pub fn get_ntp_info(client: &VapixClient) -> anyhow::Result<serde_json::Value> {
+    let resp = client.post_json(
+        "/axis-cgi/ntp.cgi",
+        &serde_json::json!({"apiVersion": "1.0", "method": "getNTPInfo"}),
+    )?;
+    Ok(super::data_of(resp))
+}

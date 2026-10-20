@@ -147,6 +147,7 @@ The `host` argument can be an IP address, hostname, or a camera name defined in 
 | `config` | Manage cameras.yaml (path, check, list, init, add, rename, group) |
 | `enroll` | Set up a factory-default camera: create the initial account and add it to cameras.yaml |
 | `systemready` | Device readiness and factory-default state (works without credentials) |
+| `mcp` | MCP server for AI assistants: read-only camera tools over stdio or Streamable HTTP (see [MCP server](#mcp-server)) |
 | `completions` | Generate shell completions (bash, zsh, fish) |
 | `mangen` | Generate man pages |
 
@@ -496,6 +497,55 @@ a factory-default camera answers 401 on `basicdeviceinfo.cgi` and `param.cgi`.
 If you enroll an older device, `vapx systemready <host>` first will at least
 confirm `needsetup` and the passphrase policy, both of which work without
 credentials on AXIS OS 9.50 and later.
+
+## MCP server
+
+`vapx mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server built into the CLI, so an AI assistant can look at your cameras with the same code and the same `cameras.yaml` the CLI uses. It is being built up in steps (see the tracking issue): this release has the read-only tools, with the tool names, parameters and descriptions of the Python [vapx-mcp](https://github.com/Hex29A/vapx-mcp) server. Cameras are identified by their key in `cameras.yaml` (`camera_id`); the file is read on every call, so changes made with `vapx config` apply without a restart.
+
+Read-only tools: `list_cameras`, `get_camera_info`, `get_snapshot`, `status_all`, `get_temperature`, `get_time_info`, `get_ntp_status`, `get_system_log`, `get_audit_log`, `get_users`, `list_applications`, `list_stream_profiles`, `get_stream_status`, `get_io_ports`, `get_disk_status`, `list_recordings`, `get_recording_info`, `get_daynight_config`, `get_motion_config`, `get_lights`, `get_mqtt_config`, `list_overlays`, `list_privacy_masks`, `list_view_areas`, `get_capture_modes`, `get_orientation`, `get_geolocation`, `get_signed_video_status`, `get_audio_settings`, `list_audio_clips`, `list_guard_tours`, `ptz_status`, `get_siren_status`, `get_clear_view_info`, `list_analytics_producers`, `check_systemready`, `discover_apis`.
+
+`list_cameras` returns an empty `capabilities` list: the server does not probe cameras to list them, and a tool the camera does not support returns the camera's own error.
+
+### Client configuration: stdio
+
+The client starts the server itself. For Claude Desktop, Claude Code or any client that takes a command:
+
+```json
+{
+  "mcpServers": {
+    "vapx": { "command": "vapx", "args": ["mcp"] }
+  }
+}
+```
+
+Add `"--config", "/path/to/cameras.yaml"` to `args` to use a specific file (otherwise `$VAPX_CONFIG` or `~/.config/vapx/cameras.yaml`).
+
+### Client configuration: HTTP
+
+```bash
+# Paste a long random string (for example from `openssl rand -hex 32`) when asked.
+read -rs VAPX_MCP_TOKEN && export VAPX_MCP_TOKEN
+vapx mcp --transport http --bind 127.0.0.1:8080
+```
+
+The endpoint is `http://127.0.0.1:8080/mcp` (Streamable HTTP, no SSE). Every request needs `Authorization: Bearer <token>`:
+
+```json
+{
+  "mcpServers": {
+    "vapx": {
+      "type": "http",
+      "url": "http://127.0.0.1:8080/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+- The server refuses to start without `VAPX_MCP_TOKEN`; `--insecure-no-auth` switches authentication off and is only for a trusted loopback setup. Tokens are compared in constant time.
+- `--bind` is required: there is no default address, and nothing listens on all interfaces unless you pass `0.0.0.0` yourself.
+- Requests are accepted for the bind address, `localhost` and `127.0.0.1`. If clients reach the server by another name, add it with `--allowed-host <name>` (repeatable).
+- The connection is plain HTTP. Put a TLS-terminating proxy in front, or keep it on loopback or a private network.
 
 ## Configuration
 
