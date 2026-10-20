@@ -34,6 +34,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Unit tests
         run: cargo test --bin vapx
+      - name: Broken-pipe regression test
+        run: cargo test --test sigpipe
       - name: Build
         run: cargo build --release
       - name: Clippy

@@ -136,7 +136,23 @@ pub enum Commands {
     },
 }
 
+/// Rust's runtime sets SIGPIPE to "ignore", so writing to a pipe whose reader
+/// has gone (`vapx ... | head`) makes `println!` panic, and with `panic = "abort"`
+/// that ends in SIGABRT. Restore the default so vapx dies quietly like any other
+/// Unix tool.
+#[cfg(unix)]
+fn restore_sigpipe() {
+    // SAFETY: called first in main, before any thread exists; SIG_DFL is a valid handler.
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+}
+
+#[cfg(not(unix))]
+fn restore_sigpipe() {}
+
 fn main() {
+    restore_sigpipe();
     let cli = Cli::parse();
 
     // Set output filter before running commands

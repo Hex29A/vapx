@@ -1708,6 +1708,7 @@ dependencies = [
  "dirs",
  "indicatif",
  "keyring",
+ "libc",
  "rand 0.8.6",
  "rayon",
  "reqwest",
