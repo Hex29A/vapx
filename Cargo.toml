@@ -36,6 +36,9 @@ url = "2"
 keyring = { version = "3", optional = true }
 rand = "0.8"
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [features]
 default = []
 keyring = ["dep:keyring"]

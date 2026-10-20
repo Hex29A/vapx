@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Fixed
+- `vapx ... | head` no longer ends in `Aborted` (SIGABRT) when the reader closes the pipe early. vapx now restores the default SIGPIPE behaviour on Unix and stops quietly, like other command-line tools (#49).
+
 ### Changed
 - The README header matches vapx.29a.se: logo, the same one-line description and a link to the site.
 - The README opens with three short demos: adding a camera with `vapx config add`, `vapx info` with its default output, and a sensor round (system readiness, temperature, day/night, API discovery).
