@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- The README opens with three short demos: adding a camera with `vapx config add`, `vapx info` with its default output, and a sensor round (system readiness, temperature, day/night, API discovery).
+
 ## v0.28.2
 
 ### Security

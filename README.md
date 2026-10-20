@@ -4,6 +4,12 @@ Axis camera management CLI via VAPIX. Single static binary, no runtime dependenc
 
 **Not affiliated with Axis Communications AB. VAPIX is a trademark of Axis Communications AB.**
 
+![vapx config add registering a camera, then vapx config list](docs/demo/setup.gif)
+
+![vapx info showing a camera's model, firmware and serial number](docs/demo/info.gif)
+
+![vapx reading system readiness, temperature, day/night settings and available APIs](docs/demo/sensors.gif)
+
 ## Two tools, one config
 
 This project is part of a two-tool ecosystem for Axis cameras. Both tools read the same
