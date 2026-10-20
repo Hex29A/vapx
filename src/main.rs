@@ -152,7 +152,7 @@ fn restore_sigpipe() {
 fn restore_sigpipe() {}
 
 fn main() {
-    restore_sigpipe();
+    // restore_sigpipe();
     let cli = Cli::parse();
 
     // Set output filter before running commands
