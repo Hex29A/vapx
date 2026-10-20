@@ -860,3 +860,70 @@ fn certificates_stream_urls_selftest_and_zipstream() {
     let e = error_text(&mut s, 6, "stream_urls", json!({"camera_id": "cam1", "resolution": "big&evil"}));
     assert!(e.contains("1920x1080"), "{e}");
 }
+
+// ---- #65: nothing but JSON-RPC on stdout ----
+
+/// Log lines (retries, HTTP 500, unreachable cameras) must not reach stdout,
+/// which is the protocol channel in stdio mode, and must carry no colour codes
+/// when stderr is not a terminal.
+#[test]
+fn stdio_stdout_carries_only_json_rpc_even_when_cameras_fail() {
+    let (broken, _) = camera_stub(vec![], false); // answers 200 {} for everything
+    let (erroring, _) = {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { break };
+                thread::spawn(move || {
+                    use std::io::Read;
+                    let mut buf = [0u8; 4096];
+                    let _ = stream.read(&mut buf);
+                    let body = "Internal server error - AXIS";
+                    let _ = write!(stream, "HTTP/1.1 500 Internal Server Error\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+                });
+            }
+        });
+        (port, ())
+    };
+    let config = config_with_cameras("stdout-clean", &[("fine", broken), ("err500", erroring), ("gone", dead_port())]);
+
+    let mut child = vapx(&config).args(["-v", "mcp"]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    for msg in [
+        json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+            "protocolVersion": "2025-03-26", "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}}}),
+        json!({"jsonrpc": "2.0", "method": "notifications/initialized"}),
+        json!({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "status_all", "arguments": {}}}),
+        json!({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "get_motion_config", "arguments": {"camera_id": "err500"}}}),
+    ] {
+        writeln!(stdin, "{msg}").unwrap();
+    }
+    // Read stdout line by line until both calls are answered, then close stdin to end the session.
+    let stdout_pipe = child.stdout.take().unwrap();
+    let (tx, rx) = channel();
+    thread::spawn(move || {
+        for line in BufReader::new(stdout_pipe).lines().map_while(Result::ok) {
+            if tx.send(line).is_err() {
+                break;
+            }
+        }
+    });
+    let mut ids = Vec::new();
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while !(ids.contains(&json!(2)) && ids.contains(&json!(3))) {
+        let left = deadline.saturating_duration_since(Instant::now());
+        let line = rx.recv_timeout(left).expect("both calls must be answered");
+        let v: Value = serde_json::from_str(&line).unwrap_or_else(|e| panic!("non-JSON on stdout ({e}): {line:?}"));
+        assert_eq!(v["jsonrpc"], "2.0", "{line}");
+        ids.push(v["id"].clone());
+    }
+    drop(stdin);
+    for line in rx.iter() {
+        serde_json::from_str::<Value>(&line).unwrap_or_else(|e| panic!("non-JSON on stdout ({e}): {line:?}"));
+    }
+    let out = child.wait_with_output().unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("Retry"), "the retries should be logged on stderr: {stderr}");
+    assert!(!stderr.contains('\u{1b}'), "no colour codes when stderr is not a terminal: {stderr:?}");
+}
