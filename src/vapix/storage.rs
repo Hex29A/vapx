@@ -148,12 +148,65 @@ fn get_disk_properties_from_list(
 /// List recordings on storage. Parses the XML response into structured JSON.
 /// `max` controls the maximum number of recordings to fetch (default 1000).
 pub fn list_recordings(client: &VapixClient, max: u32) -> anyhow::Result<serde_json::Value> {
+    list_recordings_filtered(client, None, None, None, max)
+}
+
+/// Like [`list_recordings`], narrowed to one disk and/or a time range
+/// (ISO 8601, as `record/list.cgi` takes them).
+pub fn list_recordings_filtered(
+    client: &VapixClient,
+    disk_id: Option<&str>,
+    start_time: Option<&str>,
+    stop_time: Option<&str>,
+    max: u32,
+) -> anyhow::Result<serde_json::Value> {
     let max_str = max.to_string();
-    let text = client.get_text(
-        "/axis-cgi/record/list.cgi",
-        &[("recordingid", "all"), ("maxnumberofrecordings", &max_str)],
-    )?;
+    let mut params: Vec<(&str, &str)> = vec![("recordingid", "all"), ("maxnumberofrecordings", &max_str)];
+    if let Some(d) = disk_id {
+        params.push(("diskid", d));
+    }
+    if let Some(t) = start_time {
+        params.push(("starttime", t));
+    }
+    if let Some(t) = stop_time {
+        params.push(("stoptime", t));
+    }
+    let text = client.get_text("/axis-cgi/record/list.cgi", &params)?;
     parse_recordings_xml(&text)
+}
+
+/// Export properties (size, duration, format) of one recording.
+pub fn get_export_properties(
+    client: &VapixClient,
+    recording_id: &str,
+    disk_id: &str,
+    start_time: Option<&str>,
+    stop_time: Option<&str>,
+) -> anyhow::Result<serde_json::Value> {
+    let mut params: Vec<(&str, &str)> =
+        vec![("schemaversion", "1"), ("recordingid", recording_id), ("diskid", disk_id)];
+    if let Some(t) = start_time {
+        params.push(("starttime", t));
+    }
+    if let Some(t) = stop_time {
+        params.push(("stoptime", t));
+    }
+    let text = client.get_text("/axis-cgi/record/export/properties.cgi", &params)?;
+    parse_export_properties(&text)
+}
+
+fn parse_export_properties(xml: &str) -> anyhow::Result<serde_json::Value> {
+    let doc = roxmltree::Document::parse(xml)?;
+    if let Some(node) = doc.descendants().find(|n| n.has_tag_name("ExportProperties")) {
+        let attrs: serde_json::Map<String, serde_json::Value> =
+            node.attributes().map(|a| (a.name().to_string(), json!(a.value()))).collect();
+        return Ok(serde_json::Value::Object(attrs));
+    }
+    if let Some(node) = doc.descendants().find(|n| n.has_tag_name("GeneralError")) {
+        let attrs: Vec<String> = node.attributes().map(|a| format!("{}={}", a.name(), a.value())).collect();
+        anyhow::bail!("Export error: {}", attrs.join(" "));
+    }
+    Ok(json!({"raw": xml.trim()}))
 }
 
 /// Parse recordings XML into structured JSON.

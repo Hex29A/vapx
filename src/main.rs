@@ -2,6 +2,7 @@ use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{generate, Shell};
 
 mod cmd;
+mod mcp;
 mod config;
 mod enroll;
 mod output;
@@ -42,6 +43,8 @@ pub enum Commands {
     Snap(cmd::snap::SnapCmd),
     /// Firmware management
     Fw(cmd::fw::FwCmd),
+    /// MCP server for AI assistants (stdio or HTTP)
+    Mcp(mcp::McpCmd),
     /// ACAP application management
     Acap(cmd::acap::AcapCmd),
     /// PTZ control (pan, tilt, zoom)
@@ -195,6 +198,7 @@ fn main() {
         Commands::Info(cmd) => cmd.run(),
         Commands::Snap(cmd) => cmd.run(),
         Commands::Fw(cmd) => cmd.run(),
+        Commands::Mcp(cmd) => cmd.run(),
         Commands::Acap(cmd) => cmd.run(),
         Commands::Ptz(cmd) => cmd.run(),
         Commands::Param(cmd) => cmd.run(),

@@ -86,3 +86,43 @@ fn check_error(text: &str) -> anyhow::Result<()> {
     }
     Ok(())
 }
+
+/// Accounts created by Axis services rather than people.
+const SERVICE_ACCOUNTS: &[&str] = &["stsuser", "AxisDeviceMgmt", "pfagentvapix"];
+
+/// `{groups: {group: [user]}, users: [{username, groups, is_service_account}]}`
+/// from the `list` text (`users="root,viewer"` lines), users sorted by name.
+pub fn parse_users(text: &str) -> serde_json::Value {
+    let mut groups = serde_json::Map::new();
+    let mut by_user: std::collections::BTreeMap<String, Vec<String>> = std::collections::BTreeMap::new();
+    for line in text.lines() {
+        let Some((group, rest)) = line.trim().split_once('=') else { continue };
+        let group = group.trim();
+        let members: Vec<String> = rest
+            .trim_matches('"')
+            .split(',')
+            .map(|u| u.trim().to_string())
+            .filter(|u| !u.is_empty())
+            .collect();
+        for m in &members {
+            by_user.entry(m.clone()).or_default().push(group.to_string());
+        }
+        groups.insert(group.to_string(), serde_json::json!(members));
+    }
+    let users: Vec<serde_json::Value> = by_user
+        .into_iter()
+        .map(|(name, groups)| {
+            serde_json::json!({
+                "username": name,
+                "groups": groups,
+                "is_service_account": SERVICE_ACCOUNTS.contains(&name.as_str()),
+            })
+        })
+        .collect();
+    serde_json::json!({"groups": groups, "users": users})
+}
+
+/// Accounts with their groups (see [`parse_users`]).
+pub fn get_users(client: &VapixClient) -> anyhow::Result<serde_json::Value> {
+    Ok(parse_users(&list(client)?))
+}

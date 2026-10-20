@@ -139,3 +139,23 @@ fn ptz_command(client: &VapixClient, params: &[(&str, &str)]) -> anyhow::Result<
     }
     Ok(())
 }
+
+/// Current position as `{pan, tilt, zoom}` (numbers).
+pub fn position(client: &VapixClient) -> anyhow::Result<serde_json::Value> {
+    Ok(parse_position(&query(client, "position", None)?))
+}
+
+fn parse_position(text: &str) -> serde_json::Value {
+    let mut out = serde_json::Map::new();
+    for line in text.lines() {
+        if let Some((key, val)) = line.split_once('=') {
+            let key = key.trim().to_lowercase();
+            if matches!(key.as_str(), "pan" | "tilt" | "zoom") {
+                if let Some(n) = val.trim().parse::<f64>().ok().and_then(serde_json::Number::from_f64) {
+                    out.insert(key, serde_json::Value::Number(n));
+                }
+            }
+        }
+    }
+    serde_json::Value::Object(out)
+}
