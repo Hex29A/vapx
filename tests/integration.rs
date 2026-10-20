@@ -32,7 +32,7 @@ fn parse_ok_message(stdout: &str) -> String {
 }
 
 fn test_host() -> String {
-    std::env::var("VAPX_TEST_HOST").unwrap_or_else(|_| "192.168.7.10".into())
+    std::env::var("VAPX_TEST_HOST").unwrap_or_else(|_| "192.0.2.10".into())
 }
 
 fn test_user() -> String {
@@ -227,7 +227,7 @@ defaults:
 
 cameras:
   testcam:
-    host: 192.168.7.10
+    host: 192.0.2.10
     pass: "testpass"
 "#,
     )
@@ -259,7 +259,7 @@ cameras:
     let cameras = data.as_array().unwrap();
     assert_eq!(cameras.len(), 1);
     assert_eq!(cameras[0]["name"].as_str().unwrap(), "testcam");
-    assert_eq!(cameras[0]["host"].as_str().unwrap(), "192.168.7.10");
+    assert_eq!(cameras[0]["host"].as_str().unwrap(), "192.0.2.10");
 
     // Cleanup
     std::fs::remove_dir_all(&tmp).ok();

@@ -1,9 +1,9 @@
 //! Deriving a cameras.yaml key for a newly enrolled camera.
 //!
 //! Axis serial numbers are the MAC address without separators
-//! (`B8A44F55808F`), which is unique but tells you nothing when you later read
+//! (`000000000001`), which is unique but tells you nothing when you later read
 //! the config or a batch result. Pairing the model with the tail of the serial
-//! keeps it recognisable and unique: `m2035-le-55808f`.
+//! keeps it recognisable and unique: `m2035-le-000001`.
 
 /// How many trailing serial characters to append.
 const SERIAL_TAIL: usize = 6;
@@ -97,16 +97,16 @@ mod tests {
     #[test]
     fn real_cameras_from_martins_fleet() {
         // Model and serial read off the actual devices.
-        assert_eq!(derive("M3045-V", "ACCC8E6D8D23"), "m3045-v-6d8d23");
-        assert_eq!(derive("M3128-LVE", "B8A44FF1328B"), "m3128-lve-f1328b");
-        assert_eq!(derive("M2035-LE", "B8A44F55808F"), "m2035-le-55808f");
-        assert_eq!(derive("M1137 Mk II", "B8A44FF09697"), "m1137-mk-ii-f09697");
+        assert_eq!(derive("M3045-V", "000000000002"), "m3045-v-000002");
+        assert_eq!(derive("M3128-LVE", "000000000003"), "m3128-lve-000003");
+        assert_eq!(derive("M2035-LE", "000000000001"), "m2035-le-000001");
+        assert_eq!(derive("M1137 Mk II", "000000000004"), "m1137-mk-ii-000004");
     }
 
     #[test]
     fn model_with_spaces() {
         // The case that would break a naive lowercase-only slug.
-        assert_eq!(derive("C Cube LW", "ACCC8E68980B"), "c-cube-lw-68980b");
+        assert_eq!(derive("C Cube LW", "000000000005"), "c-cube-lw-000005");
     }
 
     #[test]
@@ -120,9 +120,9 @@ mod tests {
     #[test]
     fn derived_names_are_valid_config_keys() {
         for (m, s) in [
-            ("M3045-V", "ACCC8E6D8D23"),
-            ("C Cube LW", "ACCC8E68980B"),
-            ("M1137 Mk II", "B8A44FF09697"),
+            ("M3045-V", "000000000002"),
+            ("C Cube LW", "000000000005"),
+            ("M1137 Mk II", "000000000004"),
         ] {
             let n = derive(m, s);
             assert!(
@@ -136,8 +136,8 @@ mod tests {
 
     #[test]
     fn missing_model_falls_back_to_serial() {
-        assert_eq!(derive("", "B8A44F55808F"), "camera-55808f");
-        assert_eq!(derive("???", "B8A44F55808F"), "camera-55808f");
+        assert_eq!(derive("", "000000000001"), "camera-000001");
+        assert_eq!(derive("???", "000000000001"), "camera-000001");
     }
 
     #[test]
@@ -157,22 +157,22 @@ mod tests {
 
     #[test]
     fn collision_falls_back_to_full_serial_then_numbers() {
-        let taken = vec!["m2035-le-55808f".to_string()];
+        let taken = vec!["m2035-le-000001".to_string()];
         assert_eq!(
-            derive_unique("M2035-LE", "B8A44F55808F", &taken),
-            "m2035-le-b8a44f55808f"
+            derive_unique("M2035-LE", "000000000001", &taken),
+            "m2035-le-000000000001"
         );
 
         let taken = vec![
-            "m2035-le-55808f".to_string(),
-            "m2035-le-b8a44f55808f".to_string(),
+            "m2035-le-000001".to_string(),
+            "m2035-le-000000000001".to_string(),
         ];
-        assert_eq!(derive_unique("M2035-LE", "B8A44F55808F", &taken), "m2035-le-55808f-2");
+        assert_eq!(derive_unique("M2035-LE", "000000000001", &taken), "m2035-le-000001-2");
     }
 
     #[test]
     fn no_collision_returns_the_plain_name() {
-        let taken = vec!["west".to_string(), "entren".to_string()];
-        assert_eq!(derive_unique("M2035-LE", "B8A44F55808F", &taken), "m2035-le-55808f");
+        let taken = vec!["west".to_string(), "entrance".to_string()];
+        assert_eq!(derive_unique("M2035-LE", "000000000001", &taken), "m2035-le-000001");
     }
 }
