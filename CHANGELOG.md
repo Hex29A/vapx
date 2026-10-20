@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Changed
+- The README header matches vapx.29a.se: logo, the same one-line description and a link to the site.
 - The README opens with three short demos: adding a camera with `vapx config add`, `vapx info` with its default output, and a sensor round (system readiness, temperature, day/night, API discovery).
 
 ## v0.28.2

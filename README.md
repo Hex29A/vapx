@@ -1,6 +1,6 @@
-# vapx
+# <img src="docs/logo.svg" width="44" height="32" alt=""> vapx
 
-Axis camera management CLI via VAPIX. Single static binary, no runtime dependencies.
+Manage Axis network cameras from the command line: firmware, users, ACAP, network, batch jobs across many cameras. One static binary, no runtime. Install from [vapx.29a.se](https://vapx.29a.se).
 
 **Not affiliated with Axis Communications AB. VAPIX is a trademark of Axis Communications AB.**
 
