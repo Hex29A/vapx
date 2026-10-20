@@ -23,6 +23,19 @@ pub fn tail(text: &str, lines: Option<usize>) -> String {
     }
 }
 
+/// Reboot the camera: `firmwaremanagement.cgi`, or the legacy `restart.cgi` if
+/// that fails. Sent once; a connection that closes while the camera goes down
+/// counts as sent (see `VapixClient::post_json_once`).
+pub fn reboot(client: &VapixClient) -> anyhow::Result<serde_json::Value> {
+    match crate::vapix::firmware::reboot(client) {
+        Ok(_) => Ok(serde_json::json!({"status": "rebooting", "method": "firmwaremanagement"})),
+        Err(_) => {
+            client.get_text("/axis-cgi/restart.cgi", &[])?;
+            Ok(serde_json::json!({"status": "rebooting", "method": "restart.cgi (legacy)"}))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::tail;

@@ -57,6 +57,13 @@ pub struct CameraEntry {
     pub fw_timeout: Option<u64>,
     #[serde(default = "default_true")]
     pub enabled: bool,
+    /// Image rotation in degrees (0, 90, 180, 270), for converting privacy mask
+    /// coordinates from the displayed image to the sensor (`vapx mcp`).
+    #[serde(default)]
+    pub mask_rotation: u16,
+    /// Whether the image is mirrored (see `mask_rotation`).
+    #[serde(default)]
+    pub mask_mirror: bool,
 }
 
 fn default_true() -> bool {

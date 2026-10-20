@@ -75,6 +75,19 @@ fn parse_tours(text: &str) -> Value {
     Value::Array(tours.into_iter().map(Value::Object).collect())
 }
 
+/// Start or stop a tour by its ID (`G0`, `G1`, ...).
+pub fn set_running(client: &VapixClient, tour_id: &str, running: bool) -> anyhow::Result<()> {
+    let key = format!("GuardTour.{tour_id}.Running");
+    let reply = client.get_text(
+        "/axis-cgi/param.cgi",
+        &[("action", "update"), (&key, if running { "yes" } else { "no" })],
+    )?;
+    if reply.contains("Error") {
+        anyhow::bail!("param.cgi: {}", reply.trim());
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

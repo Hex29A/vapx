@@ -12,3 +12,12 @@ pub fn get_devices_settings(client: &VapixClient) -> anyhow::Result<Value> {
     )?;
     Ok(super::data_of(resp))
 }
+
+/// Update audio device settings; `devices` is the array from [`get_devices_settings`].
+pub fn set_devices_settings(client: &VapixClient, devices: &Value) -> anyhow::Result<()> {
+    client.post_json(
+        "/axis-cgi/audiodevicecontrol.cgi",
+        &json!({"apiVersion": "1.0", "method": "setDevicesSettings", "params": {"devices": devices}}),
+    )?;
+    Ok(())
+}

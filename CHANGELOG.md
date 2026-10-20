@@ -3,13 +3,19 @@
 ## Unreleased
 
 ### Added
+- `vapx mcp` has all 78 tools of the Python vapx-mcp server (#58, part of #61): the write tools (PTZ, I/O, lights, overlays, privacy masks, view areas, stream profiles, MQTT, day/night, motion detection, NTP and time zone, geolocation, capture mode, audio, analytics producers, guard tours, siren, Clear View, ACAP start/stop/restart), `snapshot_all`, `poll_events`, `export_recording` and `reboot_camera`. Arguments are validated against the tool schemas before a camera is called. Tools carry read-only/destructive annotations, and disruptive ones say so in their description. `reboot_camera` is sent once, like `vapx fw reboot`. `export_recording` only writes plain file names under `$VAPX_MCP_EXPORTS_DIR`.
+- `cameras.yaml` accepts `mask_rotation` and `mask_mirror` per camera, used by `vapx mcp` to convert privacy mask polygons.
 - **`vapx mcp`**, an MCP server inside the CLI (#57, part of #61). It serves over stdio or Streamable HTTP (`--transport http --bind <addr:port>`), with a bearer token from `VAPX_MCP_TOKEN` required for HTTP (`--insecure-no-auth` to opt out; no default bind address). This first step has the 37 read-only tools of the Python vapx-mcp server under the same names, parameters and descriptions. Write tools, CLI-only features and the switch-over follow in #58 to #60.
 - `vapix` library functions for the tools: system and audit log, date/time and NTP info, geolocation, orientation, capture modes, stream profiles, privacy masks, guard tours, siren, Clear View, analytics producers, light control, motion detection, day/night, audio devices, structured user and I/O port lists, a filtered recording list and recording export properties. ACAP application listings now also carry `license_name`, `signature`, `config_page` and `resources`.
+- `vapx reboot <camera>` is a top-level alias for `vapx fw reboot` (#55).
 
 ### Fixed
+- `vapx fw reboot` no longer prints `WARN Retryable error` / `Retry 1/2` on a successful reboot. Reboot and factory default are now sent exactly once: a connection that closes or times out after the request went out counts as accepted, since a rebooting camera drops the connection before it replies. Before, the retry could reboot the camera a second time (#55).
+- `vapx fw reboot --wait` first checks that the camera really goes down, polls quietly, and reports `Camera back online after N s`. If the camera keeps answering for 30 s it reports that the reboot may not have started (#55).
 - `vapx ... | head` no longer ends in `Aborted` (SIGABRT) when the reader closes the pipe early. vapx now restores the default SIGPIPE behaviour on Unix and stops quietly, like other command-line tools (#52).
 
 ### Changed
+- `vapx fw factory-default` asks for confirmation (type `yes`) and refuses to run without a terminal unless `--yes` is given (#55).
 - The README header matches vapx.29a.se: logo, the same one-line description and a link to the site.
 - The README opens with three short demos: adding a camera with `vapx config add`, `vapx info` with its default output, and a sensor round (system readiness, temperature, day/night, API discovery).
 

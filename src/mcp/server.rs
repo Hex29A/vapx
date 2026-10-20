@@ -28,7 +28,7 @@ impl VapxMcp {
 /// as the Python server did.
 pub fn run_tool(registry: &Registry, name: &str, args: Args) -> Vec<ContentBlock> {
     let result = match registry.handler(name) {
-        Some(handler) => handler(&args),
+        Some(handler) => registry.validate(name, &args).and_then(|()| handler(&args)),
         None => Err(anyhow::anyhow!("Unknown tool: {}", name)),
     };
     match result {
