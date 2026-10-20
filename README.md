@@ -279,7 +279,7 @@ vapx viewarea get 192.168.1.100 --id 1000001 -u admin -p secret
 # login, derives a name from model and serial, and writes cameras.yaml.
 # The password is generated to match the device's own passphrase policy.
 vapx enroll 192.168.0.90
-vapx enroll 192.168.0.90 --name entren --to-group alphyddan
+vapx enroll 192.168.0.90 --name entrance --to-group site-a
 vapx enroll 192.168.0.90 --dry-run            # plan only, touches nothing
 vapx enroll 192.168.0.90 --out creds.json     # full result to a 0600 file
 
@@ -304,7 +304,7 @@ vapx systemready mycam --until-ready 300 --after-bootid "$BOOT"
 
 # Rename a camera, updating its group memberships too. The name enroll
 # derives is provisional; real names describe where the camera is.
-vapx config rename p1447-le-9c57f2 entren
+vapx config rename p1447-le-000006 entrance
 
 # Group membership — groups are what `vapx batch` runs against
 vapx config group list
@@ -313,9 +313,9 @@ vapx config group remove work p1447
 
 # Decommission a camera: entry, group memberships, its own comments and its
 # keyring secret, in one step. Asks for the name back before it writes.
-vapx config remove nyckelboxen          # aliases: delete, rm
-vapx config remove nyckelboxen -y       # no prompt (required when not a TTY)
-vapx config remove nyckelboxen --keep-secret
+vapx config remove keybox          # aliases: delete, rm
+vapx config remove keybox -y       # no prompt (required when not a TTY)
+vapx config remove keybox --keep-secret
 
 # Show config file location
 vapx config path

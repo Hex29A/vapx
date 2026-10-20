@@ -81,7 +81,7 @@
 ## v0.23.0
 
 ### Added
-- **`vapx config rename <from> <to>`**: rename a camera and update every group that references it, in one step. The name `enroll` derives (`p1447-le-9c57f2`) is always provisional — real names describe where a camera is — and renaming previously meant hand-editing YAML. Same guarantees as the other config writes: validated by re-parsing (camera count, group membership and ordering must be preserved), atomic, backed up, chmod 600, comments intact. A camera whose name merely *contains* the old one is left alone.
+- **`vapx config rename <from> <to>`**: rename a camera and update every group that references it, in one step. The name `enroll` derives (`p1447-le-000006`) is always provisional — real names describe where a camera is — and renaming previously meant hand-editing YAML. Same guarantees as the other config writes: validated by re-parsing (camera count, group membership and ordering must be preserved), atomic, backed up, chmod 600, comments intact. A camera whose name merely *contains* the old one is left alone.
 - **`vapx user list --all`**, and role-group filtering by default: AXIS OS 10.x and older return all ~169 system groups, which buried the five that describe access. The default output now shows only role groups, with a note on stderr; `--all` restores the full listing. Newer firmware is unaffected.
 
 ### Fixed

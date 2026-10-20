@@ -780,11 +780,11 @@ groups: {}
         let yaml = r#"cameras:
   # Added 2026-07-06, replaces the old unit.
   west:
-    host: "192.168.1.20"
+    host: "192.0.2.20"
     pass: "a"
 
-  entren:
-    host: "192.168.1.21"
+  entrance:
+    host: "192.0.2.21"
     pass: "b"
 
 groups:
@@ -796,7 +796,7 @@ groups:
         let parsed = parse_config_str(&out).unwrap();
         assert_eq!(parsed.cameras.len(), 3);
         assert!(parsed.cameras.contains_key("west"));
-        assert!(parsed.cameras.contains_key("entren"));
+        assert!(parsed.cameras.contains_key("entrance"));
         assert_eq!(parsed.groups["site"], vec!["west".to_string()]);
     }
 
@@ -956,16 +956,16 @@ mod group_tests {
 
     const CFG: &str = r#"cameras:
   west:
-    host: "192.168.1.20"
+    host: "192.0.2.20"
     pass: "a"
-  nykamera:
-    host: "192.168.8.99"
+  newcam:
+    host: "192.0.2.99"
     pass: "b"
 
 groups:
-  alphyddan:
+  site-a:
     - west
-  hemma:
+  site-b:
     - west
 "#;
 
@@ -978,26 +978,26 @@ groups:
 
     #[test]
     fn appends_to_the_right_group() {
-        let out = insert_group_member(CFG, "alphyddan", "nykamera").unwrap();
+        let out = insert_group_member(CFG, "site-a", "newcam").unwrap();
         let p = parse_config_str(&out).unwrap();
-        assert_eq!(p.groups["alphyddan"], vec!["west", "nykamera"]);
-        assert_eq!(p.groups["hemma"], vec!["west"], "other group must be untouched");
+        assert_eq!(p.groups["site-a"], vec!["west", "newcam"]);
+        assert_eq!(p.groups["site-b"], vec!["west"], "other group must be untouched");
     }
 
     #[test]
     fn appends_to_the_last_group_in_the_file() {
-        let out = insert_group_member(CFG, "hemma", "nykamera").unwrap();
+        let out = insert_group_member(CFG, "site-b", "newcam").unwrap();
         let p = parse_config_str(&out).unwrap();
-        assert_eq!(p.groups["hemma"], vec!["west", "nykamera"]);
-        assert_eq!(p.groups["alphyddan"], vec!["west"]);
+        assert_eq!(p.groups["site-b"], vec!["west", "newcam"]);
+        assert_eq!(p.groups["site-a"], vec!["west"]);
     }
 
     #[test]
     fn cameras_section_is_untouched() {
-        let out = insert_group_member(CFG, "alphyddan", "nykamera").unwrap();
+        let out = insert_group_member(CFG, "site-a", "newcam").unwrap();
         let p = parse_config_str(&out).unwrap();
         assert_eq!(p.cameras.len(), 2);
-        assert_eq!(p.cameras["west"].host, "192.168.1.20");
+        assert_eq!(p.cameras["west"].host, "192.0.2.20");
     }
 
     #[test]
@@ -1006,9 +1006,9 @@ groups:
         let path = d.join("cameras.yaml");
         fs::write(&path, CFG).unwrap();
 
-        let err = add_to_group(&path, "hittepa", "nykamera").unwrap_err().to_string();
+        let err = add_to_group(&path, "hittepa", "newcam").unwrap_err().to_string();
         assert!(err.contains("does not exist"), "unexpected error: {}", err);
-        assert!(err.contains("alphyddan"), "should list existing groups: {}", err);
+        assert!(err.contains("site-a"), "should list existing groups: {}", err);
         assert_eq!(fs::read_to_string(&path).unwrap(), CFG, "file must be untouched");
 
         let _ = fs::remove_dir_all(&d);
@@ -1020,13 +1020,13 @@ groups:
         let path = d.join("cameras.yaml");
         fs::write(&path, CFG).unwrap();
 
-        add_to_group(&path, "alphyddan", "nykamera").unwrap();
+        add_to_group(&path, "site-a", "newcam").unwrap();
         let after_first = fs::read_to_string(&path).unwrap();
-        add_to_group(&path, "alphyddan", "nykamera").unwrap();
+        add_to_group(&path, "site-a", "newcam").unwrap();
         assert_eq!(fs::read_to_string(&path).unwrap(), after_first);
 
         let p = parse_config_str(&after_first).unwrap();
-        assert_eq!(p.groups["alphyddan"], vec!["west", "nykamera"]);
+        assert_eq!(p.groups["site-a"], vec!["west", "newcam"]);
 
         let _ = fs::remove_dir_all(&d);
     }
@@ -1036,7 +1036,7 @@ groups:
         let d = tmpdir("perm");
         let path = d.join("cameras.yaml");
         fs::write(&path, CFG).unwrap();
-        add_to_group(&path, "alphyddan", "nykamera").unwrap();
+        add_to_group(&path, "site-a", "newcam").unwrap();
         let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);
         let _ = fs::remove_dir_all(&d);
@@ -1050,20 +1050,20 @@ mod rename_tests {
     const CFG: &str = r#"# Kameror
 cameras:
   # Enrollad 2026-08-17
-  p1447-le-9c57f2:
+  p1447-le-000006:
     host: "10.0.0.1"
     pass: "a"
 
-  p1447-le-9c57f2-old:
+  p1447-le-000006-old:
     host: "10.0.0.2"
     pass: "b"
 
 groups:
   work:
-    - p1447-le-9c57f2
-    - p1447-le-9c57f2-old
-  hemma:
-    - p1447-le-9c57f2-old
+    - p1447-le-000006
+    - p1447-le-000006-old
+  site-b:
+    - p1447-le-000006-old
 "#;
 
     fn tmpdir(tag: &str) -> std::path::PathBuf {
@@ -1075,31 +1075,31 @@ groups:
 
     #[test]
     fn renames_key_and_group_memberships() {
-        let out = rename_in_text(CFG, "p1447-le-9c57f2", "entren");
+        let out = rename_in_text(CFG, "p1447-le-000006", "entrance");
         let p = parse_config_str(&out).unwrap();
-        assert!(p.cameras.contains_key("entren"));
-        assert!(!p.cameras.contains_key("p1447-le-9c57f2"));
-        assert_eq!(p.groups["work"], vec!["entren", "p1447-le-9c57f2-old"]);
+        assert!(p.cameras.contains_key("entrance"));
+        assert!(!p.cameras.contains_key("p1447-le-000006"));
+        assert_eq!(p.groups["work"], vec!["entrance", "p1447-le-000006-old"]);
     }
 
     #[test]
     fn a_name_that_merely_contains_the_old_one_is_untouched() {
         // The whole reason this is not a string replace.
-        let out = rename_in_text(CFG, "p1447-le-9c57f2", "entren");
+        let out = rename_in_text(CFG, "p1447-le-000006", "entrance");
         let p = parse_config_str(&out).unwrap();
-        assert!(p.cameras.contains_key("p1447-le-9c57f2-old"), "prefix match got renamed");
-        assert_eq!(p.groups["hemma"], vec!["p1447-le-9c57f2-old"]);
-        assert_eq!(p.cameras["p1447-le-9c57f2-old"].host, "10.0.0.2");
+        assert!(p.cameras.contains_key("p1447-le-000006-old"), "prefix match got renamed");
+        assert_eq!(p.groups["site-b"], vec!["p1447-le-000006-old"]);
+        assert_eq!(p.cameras["p1447-le-000006-old"].host, "10.0.0.2");
     }
 
     #[test]
     fn comments_and_other_fields_survive() {
-        let out = rename_in_text(CFG, "p1447-le-9c57f2", "entren");
+        let out = rename_in_text(CFG, "p1447-le-000006", "entrance");
         assert!(out.contains("# Kameror"));
         assert!(out.contains("# Enrollad 2026-08-17"));
         let p = parse_config_str(&out).unwrap();
-        assert_eq!(p.cameras["entren"].host, "10.0.0.1");
-        assert_eq!(p.cameras["entren"].pass.as_deref(), Some("a"));
+        assert_eq!(p.cameras["entrance"].host, "10.0.0.1");
+        assert_eq!(p.cameras["entrance"].pass.as_deref(), Some("a"));
     }
 
     #[test]
@@ -1108,12 +1108,12 @@ groups:
         let path = d.join("cameras.yaml");
         fs::write(&path, CFG).unwrap();
 
-        rename_camera(&path, "p1447-le-9c57f2", "entren").unwrap();
+        rename_camera(&path, "p1447-le-000006", "entrance").unwrap();
 
         let p = parse_config_str(&fs::read_to_string(&path).unwrap()).unwrap();
-        assert!(p.cameras.contains_key("entren"));
+        assert!(p.cameras.contains_key("entrance"));
         assert_eq!(p.cameras.len(), 2);
-        assert_eq!(p.groups["work"], vec!["entren", "p1447-le-9c57f2-old"]);
+        assert_eq!(p.groups["work"], vec!["entrance", "p1447-le-000006-old"]);
         assert_eq!(fs::read_to_string(d.join("cameras.yaml.bak")).unwrap(), CFG);
         assert_eq!(fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
 
@@ -1127,8 +1127,8 @@ groups:
         fs::write(&path, CFG).unwrap();
 
         assert!(rename_camera(&path, "finns-inte", "x").is_err());
-        assert!(rename_camera(&path, "p1447-le-9c57f2", "p1447-le-9c57f2-old").is_err());
-        assert!(rename_camera(&path, "p1447-le-9c57f2", "bad name").is_err());
+        assert!(rename_camera(&path, "p1447-le-000006", "p1447-le-000006-old").is_err());
+        assert!(rename_camera(&path, "p1447-le-000006", "bad name").is_err());
         assert_eq!(fs::read_to_string(&path).unwrap(), CFG, "file must be untouched");
 
         let _ = fs::remove_dir_all(&d);
@@ -1137,9 +1137,9 @@ groups:
     #[test]
     fn camera_in_no_group_renames_fine() {
         let yaml = "cameras:\n  solo:\n    host: \"1.1.1.1\"\n    pass: \"a\"\ngroups: {}\n";
-        let out = rename_in_text(yaml, "solo", "entren");
+        let out = rename_in_text(yaml, "solo", "entrance");
         let p = parse_config_str(&out).unwrap();
-        assert!(p.cameras.contains_key("entren"));
+        assert!(p.cameras.contains_key("entrance"));
     }
 }
 
@@ -1160,7 +1160,7 @@ groups:
     - b
   ensam:
     - a
-  hemma:
+  site-b:
     - b
 "#;
 
@@ -1177,7 +1177,7 @@ groups:
         let p = parse_config_str(&out).unwrap();
         assert_eq!(p.groups["work"], vec!["b"]);
         assert_eq!(p.groups["ensam"], vec!["a"], "same camera in another group must stay");
-        assert_eq!(p.groups["hemma"], vec!["b"]);
+        assert_eq!(p.groups["site-b"], vec!["b"]);
         assert_eq!(p.cameras.len(), 2, "cameras must be untouched");
     }
 
@@ -1225,14 +1225,14 @@ groups:
         let path = d.join("cameras.yaml");
         fs::write(&path, CFG).unwrap();
 
-        add_to_group(&path, "hemma", "a").unwrap();
+        add_to_group(&path, "site-b", "a").unwrap();
         assert_eq!(
-            parse_config_str(&fs::read_to_string(&path).unwrap()).unwrap().groups["hemma"],
+            parse_config_str(&fs::read_to_string(&path).unwrap()).unwrap().groups["site-b"],
             vec!["b", "a"]
         );
-        remove_from_group(&path, "hemma", "a").unwrap();
+        remove_from_group(&path, "site-b", "a").unwrap();
         assert_eq!(
-            parse_config_str(&fs::read_to_string(&path).unwrap()).unwrap().groups["hemma"],
+            parse_config_str(&fs::read_to_string(&path).unwrap()).unwrap().groups["site-b"],
             vec!["b"]
         );
         let _ = fs::remove_dir_all(&d);
@@ -1247,26 +1247,26 @@ mod remove_tests {
     const CFG: &str = r#"# Kameror
 cameras:
   west:
-    host: "192.168.1.20"
+    host: "192.0.2.20"
     pass: "a"
 
   # Ny 2026-07-06 (M2035-LE), ersätter nedtagna nyckelskap.
-  # Flyttas till 192.168.8.22 vid driftsättning.
-  nyckelboxen:
-    host: "192.168.8.22"
+  # Moves to 192.0.2.22 when it is deployed.
+  keybox:
+    host: "192.0.2.22"
     pass: "b"
     timeout: 30
 
-  nyckelboxen-old:
-    host: "192.168.8.29"
+  keybox-old:
+    host: "192.0.2.29"
     pass: "c"
 
 groups:
-  alphyddan:
+  site-a:
     - west
-    - nyckelboxen
-  hemma:
-    - nyckelboxen
+    - keybox
+  site-b:
+    - keybox
 "#;
 
     fn groups_of(content: &str) -> HashMap<String, Vec<String>> {
@@ -1282,16 +1282,16 @@ groups:
 
     #[test]
     fn removes_entry_and_group_memberships() {
-        let (out, _) = remove_camera_text(CFG, "nyckelboxen", &groups_of(CFG));
+        let (out, _) = remove_camera_text(CFG, "keybox", &groups_of(CFG));
         let p = parse_config_str(&out).unwrap();
-        assert!(!p.cameras.contains_key("nyckelboxen"));
+        assert!(!p.cameras.contains_key("keybox"));
         assert_eq!(p.cameras.len(), 2);
-        assert_eq!(p.groups["alphyddan"], vec!["west"]);
+        assert_eq!(p.groups["site-a"], vec!["west"]);
     }
 
     #[test]
     fn takes_the_comments_that_belong_to_it() {
-        let (out, comments) = remove_camera_text(CFG, "nyckelboxen", &groups_of(CFG));
+        let (out, comments) = remove_camera_text(CFG, "keybox", &groups_of(CFG));
         assert_eq!(comments, 2);
         assert!(!out.contains("Flyttas till"), "orphaned comment left behind:\n{}", out);
         assert!(!out.contains("ersätter nedtagna"), "orphaned comment left behind:\n{}", out);
@@ -1302,46 +1302,46 @@ groups:
     #[test]
     fn a_name_that_merely_contains_the_removed_one_survives() {
         // Same reason rename is not a string replace.
-        let (out, _) = remove_camera_text(CFG, "nyckelboxen", &groups_of(CFG));
+        let (out, _) = remove_camera_text(CFG, "keybox", &groups_of(CFG));
         let p = parse_config_str(&out).unwrap();
-        assert!(p.cameras.contains_key("nyckelboxen-old"), "prefix match got removed");
-        assert_eq!(p.cameras["nyckelboxen-old"].host, "192.168.8.29");
+        assert!(p.cameras.contains_key("keybox-old"), "prefix match got removed");
+        assert_eq!(p.cameras["keybox-old"].host, "192.0.2.29");
     }
 
     #[test]
     fn group_left_empty_is_written_as_an_empty_list() {
-        // A bare `hemma:` would parse as null and the config would refuse to load.
-        let (out, _) = remove_camera_text(CFG, "nyckelboxen", &groups_of(CFG));
-        assert!(out.contains("hemma: []"), "empty group not written as a list:\n{}", out);
+        // A bare `site-b:` would parse as null and the config would refuse to load.
+        let (out, _) = remove_camera_text(CFG, "keybox", &groups_of(CFG));
+        assert!(out.contains("site-b: []"), "empty group not written as a list:\n{}", out);
         let p = parse_config_str(&out).unwrap();
-        assert!(p.groups["hemma"].is_empty());
+        assert!(p.groups["site-b"].is_empty());
     }
 
     #[test]
     fn last_member_leaves_no_stray_list_item() {
-        // Regression: writing `hemma: []` while leaving the `- nyckelboxen`
+        // Regression: writing `site-b: []` while leaving the `- keybox`
         // line below it produced YAML that would not parse at all.
-        let (out, _) = remove_camera_text(CFG, "nyckelboxen", &groups_of(CFG));
+        let (out, _) = remove_camera_text(CFG, "keybox", &groups_of(CFG));
         assert!(
             parse_config_str(&out).is_ok(),
             "emptied group left a dangling member:\n{}",
             out
         );
-        assert!(!out.contains("- nyckelboxen\n"), "membership line survived:\n{}", out);
+        assert!(!out.contains("- keybox\n"), "membership line survived:\n{}", out);
     }
 
     #[test]
     fn does_not_leave_a_doubled_blank_line() {
-        let (out, _) = remove_camera_text(CFG, "nyckelboxen", &groups_of(CFG));
+        let (out, _) = remove_camera_text(CFG, "keybox", &groups_of(CFG));
         assert!(!out.contains("\n\n\n"), "blank lines stacked up:\n{}", out);
     }
 
     #[test]
     fn other_cameras_keep_their_settings() {
-        let (out, _) = remove_camera_text(CFG, "nyckelboxen", &groups_of(CFG));
+        let (out, _) = remove_camera_text(CFG, "keybox", &groups_of(CFG));
         let p = parse_config_str(&out).unwrap();
-        assert_eq!(p.cameras["west"].host, "192.168.1.20");
-        assert_eq!(p.groups["alphyddan"], vec!["west"]);
+        assert_eq!(p.cameras["west"].host, "192.0.2.20");
+        assert_eq!(p.groups["site-a"], vec!["west"]);
     }
 
     #[test]
@@ -1361,12 +1361,12 @@ groups:
         let path = d.join("cameras.yaml");
         fs::write(&path, CFG).unwrap();
 
-        let removed = remove_camera(&path, "nyckelboxen").unwrap();
-        assert_eq!(removed.groups, vec!["alphyddan", "hemma"]);
+        let removed = remove_camera(&path, "keybox").unwrap();
+        assert_eq!(removed.groups, vec!["site-a", "site-b"]);
         assert_eq!(removed.comment_lines, 2);
 
         let after = fs::read_to_string(&path).unwrap();
-        assert!(!after.contains("nyckelboxen:\n"));
+        assert!(!after.contains("keybox:\n"));
         assert!(parse_config_str(&after).is_ok());
         assert_eq!(
             fs::read_to_string(path.with_extension("yaml.bak")).unwrap(),
