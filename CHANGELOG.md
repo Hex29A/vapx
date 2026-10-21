@@ -14,6 +14,7 @@
 - `vapx reboot <camera>` is a top-level alias for `vapx fw reboot` (#55).
 
 ### Fixed
+- `vapx cert list` and `vapx cert info` (and the MCP tool `cert_list`) work on AXIS OS 12 and 13, where `certificate.cgi` no longer exists. They use the certificate REST API `/config/rest/cert/v1` and fall back to the old API only when the camera has no REST one. The list now shows subject, issuer, validity, serial and whether each certificate has expired, for server/client and CA certificates, plus the keystores; `cert info --id <alias>` adds the PEM text. `cert self-sign`, `cert csr` and `cert remove` still use the old API and need a separate change (#67).
 - Log messages (such as `WARN Retryable error`) go to stderr instead of stdout, so they no longer end up in the JSON a command prints (`vapx ... | jq`) or in the stdio stream of `vapx mcp` (#59).
 - `vapx fw reboot` no longer prints `WARN Retryable error` / `Retry 1/2` on a successful reboot. Reboot and factory default are now sent exactly once: a connection that closes or times out after the request went out counts as accepted, since a rebooting camera drops the connection before it replies. Before, the retry could reboot the camera a second time (#55).
 - `vapx fw reboot --wait` first checks that the camera really goes down, polls quietly, and reports `Camera back online after N s`. If the camera keeps answering for 30 s it reports that the reboot may not have started (#55).

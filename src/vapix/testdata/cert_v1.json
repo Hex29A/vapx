@@ -1,0 +1,52 @@
+{
+  "status": "success",
+  "data": {
+    "ca_certificates": [
+      {
+        "alias": "Example Root CA",
+        "certificate": "-----BEGIN CERTIFICATE-----\nMIIBvjCCAWWgAwIBAgIUUrhFGIepPwgn8xvq55ji7ecUOLYwCgYIKoZIzj0EAwIw\nNDEYMBYGA1UECgwPRXhhbXBsZSBSb290IENBMRgwFgYDVQQDDA9FeGFtcGxlIFJv\nb3QgQ0EwIBcNMjYxMDIwMTc0NDMzWhgPMjEyNjA5MjYxNzQ0MzNaMDQxGDAWBgNV\nBAoMD0V4YW1wbGUgUm9vdCBDQTEYMBYGA1UEAwwPRXhhbXBsZSBSb290IENBMFkw\nEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE2whCJEVSEhkFM6nIiljhqFbrZyrhPZU8\nWUhcla+5nUbfwvFUUJkCe6ckoWoQ09Kq0Xc0sY8kbGY4chXZHt+ONaNTMFEwHQYD\nVR0OBBYEFBPhxxCLkN5Qw7gSFwH1wKGvWOmxMB8GA1UdIwQYMBaAFBPhxxCLkN5Q\nw7gSFwH1wKGvWOmxMA8GA1UdEwEB/wQFMAMBAf8wCgYIKoZIzj0EAwIDRwAwRAIg\neBu7taJVYW/ypZcYoAvTVqk2cSuGEdWj5BU9CnuK0vUCIFA9qvRTmcoj1yl/2nDH\nsjrdCtHetKI5YOHRFg3kKjA/\n-----END CERTIFICATE-----\n"
+      },
+      {
+        "alias": "Example Expired CA",
+        "certificate": "-----BEGIN CERTIFICATE-----\nMIIBwTCCAWegAwIBAgIUWZXSLp1k/y0RvkT1wwfcrSYz/HowCgYIKoZIzj0EAwIw\nNjEXMBUGA1UECgwORXhhbXBsZSBPbGQgQ0ExGzAZBgNVBAMMEkV4YW1wbGUgRXhw\naXJlZCBDQTAeFw0yMDAxMDEwMDAwMDBaFw0yMTAxMDEwMDAwMDBaMDYxFzAVBgNV\nBAoMDkV4YW1wbGUgT2xkIENBMRswGQYDVQQDDBJFeGFtcGxlIEV4cGlyZWQgQ0Ew\nWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAASzWISwXroaFq0wnMR8nVSxvshOP1nz\nbwesTUn/NksGLw40zEhDEWdUR2Op5Qhe94LBQ+7jRq3ZmCtu6MaCmMswo1MwUTAd\nBgNVHQ4EFgQUOQXtactRtCU6P7YaKSIek+EgHnIwHwYDVR0jBBgwFoAUOQXtactR\ntCU6P7YaKSIek+EgHnIwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBF\nAiBceUFSVfJJ+/pJSqbxa5r+wkyaOUAXEzei2voULfPSTQIhAPftTM7zoLOE38kC\nM6JKvniNfPSuJqsd+UqI5wfY9nlJ\n-----END CERTIFICATE-----\n"
+      }
+    ],
+    "certificates": [
+      {
+        "alias": "Example device ID (802.1AR)",
+        "certificate": "-----BEGIN CERTIFICATE-----\nMIICAzCCAamgAwIBAgIUR58C+opt9V/mEDwcijz8PxW6MnYwCgYIKoZIzj0EAwIw\nVjELMAkGA1UEBhMCU0UxFTATBgNVBAoMDEV4YW1wbGUgQ29ycDEVMBMGA1UECwwM\nRXhhbXBsZSBVbml0MRkwFwYDVQQDDBBFeGFtcGxlIERldmljZSAxMCAXDTI2MTAy\nMDE3NDQzM1oYDzIxMjYwOTI2MTc0NDMzWjBWMQswCQYDVQQGEwJTRTEVMBMGA1UE\nCgwMRXhhbXBsZSBDb3JwMRUwEwYDVQQLDAxFeGFtcGxlIFVuaXQxGTAXBgNVBAMM\nEEV4YW1wbGUgRGV2aWNlIDEwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAR7MkFX\nY0vpU8Hnzx3LmJQrdDQIc+95SkGM/9ZF3uTk4EVsBqqZUlVOfS8Q0qiOT2SgO3DM\nisJTqtxsd3MW1hxQo1MwUTAdBgNVHQ4EFgQU6klrwfowwvwv41Z7tWdDrOUHGssw\nHwYDVR0jBBgwFoAU6klrwfowwvwv41Z7tWdDrOUHGsswDwYDVR0TAQH/BAUwAwEB\n/zAKBggqhkjOPQQDAgNIADBFAiBsxGY6T6aEx7tyryt0NztgoG4zQkDT3TffTsBF\nWetCHQIhAK+bB4xgGK207e62zFJHe2z1O2HrOBTckqrytTgXt7m/\n-----END CERTIFICATE-----\n",
+        "keystore": "SE0"
+      },
+      {
+        "alias": "client",
+        "certificate": "-----BEGIN CERTIFICATE-----\nMIICAjCCAamgAwIBAgIUZF4M1gwIifuqP+BXixG1CC9OjMYwCgYIKoZIzj0EAwIw\nVjELMAkGA1UEBhMCU0UxFTATBgNVBAoMDEV4YW1wbGUgQ29ycDEVMBMGA1UECwwM\nRXhhbXBsZSBVbml0MRkwFwYDVQQDDBBFeGFtcGxlIERldmljZSAyMCAXDTI2MTAy\nMDE3NDQzM1oYDzIxMjYwOTI2MTc0NDMzWjBWMQswCQYDVQQGEwJTRTEVMBMGA1UE\nCgwMRXhhbXBsZSBDb3JwMRUwEwYDVQQLDAxFeGFtcGxlIFVuaXQxGTAXBgNVBAMM\nEEV4YW1wbGUgRGV2aWNlIDIwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAR6ScjM\nS5EpMXSeWtKKNKNsJRw8iONl65d4x3Hqzah5IfX2qX526pVXSzivaOhIu5iAWR5f\nX3NVtkzotQeZDQMFo1MwUTAdBgNVHQ4EFgQUMF05xE+tqr+miu895z8IbhGtIIgw\nHwYDVR0jBBgwFoAUMF05xE+tqr+miu895z8IbhGtIIgwDwYDVR0TAQH/BAUwAwEB\n/zAKBggqhkjOPQQDAgNHADBEAiAvLMyMsYlengYOpgbJ9fmqSWE5Rzf7bRxtN5ro\naPfVAgIgQonr1+wgt/Sw3Si4qRvePg+venorGPU5BDq3kk7H3zE=\n-----END CERTIFICATE-----\n",
+        "keystore": "SE0"
+      }
+    ],
+    "keystores": [
+      {
+        "certifications": [],
+        "id": "TEE0",
+        "key_types": [
+          "RSA-2048",
+          "EC-P256"
+        ],
+        "security_level": "TRUSTED_ENVIRONMENT"
+      },
+      {
+        "certifications": [
+          "CC EAL6+"
+        ],
+        "id": "SE0",
+        "key_types": [
+          "RSA-2048",
+          "EC-P256"
+        ],
+        "security_level": "STRONG"
+      }
+    ],
+    "settings": {
+      "keystore": "SE0"
+    }
+  }
+}

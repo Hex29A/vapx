@@ -978,3 +978,48 @@ fn http_accepts_extra_hosts_from_the_environment_only() {
     assert!(ok.is_success() && other_ok.is_success(), "{ok} {other_ok}");
     assert!(refused.is_client_error(), "a Host that was not allowed must be refused: {refused}");
 }
+
+// ---- certificates on AXIS OS 12 and later (#67) ----
+
+/// A response recorded from `/config/rest/cert/v1`, with the certificates replaced by synthetic ones.
+const CERT_V1: &str = include_str!("../src/vapix/testdata/cert_v1.json");
+const CERT_V1_ONE: &str = include_str!("../src/vapix/testdata/cert_v1_one.json");
+
+fn cert_camera() -> (u16, Log) {
+    fake_camera(vec![
+        json_route("/config/rest/cert/v1", CERT_V1),
+        json_route("/config/rest/cert/v1/certificates/client", CERT_V1_ONE),
+    ])
+}
+
+#[test]
+fn cert_list_reads_the_rest_api_and_reports_expiry() {
+    let (port, log) = cert_camera();
+    let mut s = Stdio_::start(&config_with_camera("cert-rest", port));
+    s.initialize();
+
+    let v: Value = serde_json::from_str(&call_text(&mut s, 2, "cert_list", json!({"camera_id": "cam1"}))).unwrap();
+    assert_eq!(v["certificates"][0]["alias"], "Example device ID (802.1AR)", "{v}");
+    assert!(v["certificates"][0]["subject"].as_str().unwrap().contains("Example Device 1"));
+    assert_eq!(v["ca_certificates"][1]["expired"], true);
+    assert_eq!(v["default_keystore"], "SE0");
+    assert!(!v.to_string().contains("BEGIN CERTIFICATE"), "the list carries no PEM text");
+    assert!(requests(&log).iter().all(|r| !r.contains("certificate.cgi")), "{:?}", requests(&log));
+}
+
+#[test]
+fn the_cert_command_lists_and_shows_certificates_through_the_rest_api() {
+    let (port, _) = cert_camera();
+    let config = config_with_camera("cert-cli", port);
+    let run = |args: &[&str]| {
+        let out = vapx(&config).args(args).arg("cam1").output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        serde_json::from_slice::<Value>(&out.stdout).unwrap()
+    };
+    let list = run(&["cert", "list"]);
+    assert_eq!(list["data"]["certificates"].as_array().unwrap().len(), 2, "{list}");
+    let info = vapx(&config).args(["cert", "info", "cam1", "--id", "client"]).output().unwrap();
+    let info: Value = serde_json::from_slice(&info.stdout).unwrap();
+    assert_eq!(info["data"]["alias"], "client", "{info}");
+    assert!(info["data"]["certificate"].as_str().unwrap().starts_with("-----BEGIN CERTIFICATE-----"));
+}

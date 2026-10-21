@@ -114,7 +114,7 @@ The `host` argument can be an IP address, hostname, or a camera name defined in 
 | `stream` | Generate stream URLs (RTSP, MJPEG, snapshot) |
 | `template` | Apply/create parameter templates (desired-state config) |
 | `audit` | Security posture audit |
-| `cert` | Certificate management (list, self-sign, CSR, remove) |
+| `cert` | Certificate management (list, info, self-sign, CSR, remove). `list` and `info` use the certificate REST API of AXIS OS 12+; the others still use the legacy API |
 | `watch` | Watch events from multiple cameras |
 | `rule` | Action rule management (list, info, enable, disable, remove, templates) |
 | `storage` | Storage and SD card management (list, health, recordings, params) |
