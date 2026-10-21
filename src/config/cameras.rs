@@ -148,7 +148,7 @@ pub fn set_config_path(path: PathBuf) {
 
 /// Resolve the config file path. Search order:
 /// 1. --config flag (set via set_config_path)
-/// 2. $VAPX_CONFIG env var
+/// 2. $VAPX_CONFIG env var ($VAPIX_CONFIG, the Python vapx-mcp server's name, also works)
 /// 3. ~/.config/vapx/cameras.yaml (XDG)
 pub fn config_path() -> Option<PathBuf> {
     // Explicit --config flag
@@ -159,7 +159,7 @@ pub fn config_path() -> Option<PathBuf> {
     }
 
     // Explicit env var
-    if let Ok(path) = std::env::var("VAPX_CONFIG") {
+    if let Ok(path) = std::env::var("VAPX_CONFIG").or_else(|_| std::env::var("VAPIX_CONFIG")) {
         let p = PathBuf::from(path);
         if p.exists() {
             return Some(p);

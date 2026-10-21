@@ -10,25 +10,13 @@ Manage Axis network cameras from the command line: firmware, users, ACAP, networ
 
 ![vapx reading system readiness, temperature, day/night settings and available APIs](docs/demo/sensors.gif)
 
-## Two tools, one config
+## One tool: CLI and MCP server
 
-This project is part of a two-tool ecosystem for Axis cameras. Both tools read the same
-`cameras.yaml`, so a camera you add here is immediately available to the other.
+vapx manages Axis cameras from the command line, and as `vapx mcp` it is also the MCP server that lets an AI assistant look at and operate your cameras. Both use the same `cameras.yaml` and the same VAPIX code, so a camera you add with `vapx config add` is available to both, and a fix is made once.
 
-| Tool | Best at | Use when |
-|---|---|---|
-| **vapx** (this project) | CLI for administration | You need to set up, maintain, or batch-manage cameras |
-| **[vapx-mcp](https://github.com/Hex29A/vapx-mcp)** | AI-driven daily operations | You want an AI assistant to observe, react, and adjust cameras |
+vapx is for: firmware upgrades, network configuration, user management, ACAP installation, batch operations across many cameras, raw `param.cgi` access. `vapx mcp` is for: snapshots, PTZ, I/O, overlays, analytics, event monitoring, temperature, stream diagnostics, rebooting, log reading, fleet health and audits, driven by an assistant. See [MCP server](#mcp-server).
 
-**vapx** is for: firmware upgrades, network configuration, user management, ACAP installation,
-batch operations across many cameras, raw `param.cgi` access.
-
-**vapx-mcp** is for: snapshots, PTZ, I/O, overlays, analytics, event monitoring, temperature,
-stream diagnostics, rebooting, log reading.
-
-Neither tool requires the other. If you use both, note that `vapx` rewrites `cameras.yaml`
-atomically — mount the *directory* into a container, not the file, or the container will keep
-reading the copy that existed when it started.
+It replaces the separate Python server [vapx-mcp](https://github.com/Hex29A/vapx-mcp), which reimplemented VAPIX on its own. If you use it, see [Migrating from the Python vapx-mcp](#migrating-from-the-python-vapx-mcp).
 
 ## Install
 
@@ -659,6 +647,56 @@ The endpoint is `http://127.0.0.1:8080/mcp` (Streamable HTTP, no SSE). Every req
 - `--bind` is required: there is no default address, and nothing listens on all interfaces unless you pass `0.0.0.0` yourself.
 - Requests are accepted for the bind address, `localhost` and `127.0.0.1`. If clients reach the server by another name, add it with `--allowed-host <name>` (repeatable).
 - The connection is plain HTTP. Put a TLS-terminating proxy in front, or keep it on loopback or a private network.
+
+### Container
+
+The `Dockerfile` builds an image that runs `vapx mcp --transport http` as a non-root user. The camera list comes from a directory mounted at `/config` (`VAPX_CONFIG` points at `/config/cameras.yaml`; mount the directory, not the file, because vapx replaces `cameras.yaml` atomically), and `export_recording` and `backup_params` write to `/exports`.
+
+```bash
+docker build -t vapx-mcp .
+
+mkdir -p exports
+read -rs VAPX_MCP_TOKEN && export VAPX_MCP_TOKEN   # paste a long random string
+
+docker run -d --name vapx-mcp --restart unless-stopped \
+  --user "$(id -u):$(id -g)" \
+  -p 127.0.0.1:8080:8080 \
+  -v "$HOME/.config/vapx:/config:ro" \
+  -v "$PWD/exports:/exports" \
+  -e VAPX_MCP_TOKEN \
+  vapx-mcp
+```
+
+- `--user` makes the container read `cameras.yaml` as you, which matters when the file is readable by its owner only. Without it the container runs as user 10001.
+- The server listens on all interfaces *inside* the container; the example publishes the port on the host's loopback only. Publish on another address deliberately, and put TLS in front of it.
+- If clients reach the server by a name other than an IP address or `localhost`, add it with `-e VAPX_MCP_ALLOWED_HOSTS=mcp.example.org` (comma-separated).
+- Check it: `curl -s -X POST http://127.0.0.1:8080/mcp -H "Authorization: Bearer $VAPX_MCP_TOKEN" -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'` lists the tools; without the header the answer is `401`.
+
+### Migrating from the Python vapx-mcp
+
+The tool names, parameters and descriptions are the same, and so is `cameras.yaml` (the camera ID is the key in the file), so a client only needs a new server entry.
+
+| | Python vapx-mcp | `vapx mcp` |
+|---|---|---|
+| Start (stdio) | `python server.py` | `vapx mcp` |
+| Start (HTTP) | `python server.py --transport streamable-http --port 8080` | `vapx mcp --transport http --bind 127.0.0.1:8080` |
+| HTTP endpoint | `/mcp` (and `/sse`) | `/mcp` |
+| SSE transport | deprecated, still there | gone: use Streamable HTTP |
+| Token | `VAPX_MCP_TOKEN` for HTTP | the same; the server refuses to start without it |
+| Config file | `VAPIX_CONFIG` | `--config`, `VAPX_CONFIG`, or `VAPIX_CONFIG` as before |
+| Exports directory | `VAPIX_EXPORTS_DIR` (default `/exports`) | `VAPX_MCP_EXPORTS_DIR` (or `VAPIX_EXPORTS_DIR`); default `vapx/exports` in the user data directory, `/exports` in the container image |
+| Bind address | `--port`, all interfaces | `--bind <addr:port>`, required |
+
+Client configuration for stdio is `{"command": "vapx", "args": ["mcp"]}` instead of the `docker run` or `python` command; for HTTP, point the client at `http://<host>:<port>/mcp` with the same `Authorization: Bearer` header.
+
+What differs in behaviour:
+
+- `list_cameras` has an empty `capabilities` list and the server does not check capabilities before a call; an unsupported tool returns the camera's own error.
+- Some results follow the CLI's shapes instead of the Python server's (for example `get_temperature`, `list_recordings`, `get_disk_status`, `get_stream_status`).
+- Failed calls are marked `isError` (the text is still `Error: ...`).
+- Tools check their arguments against the input schema first, and `reboot_camera` is sent once without retries.
+- `export_recording` accepts plain file names only.
+- 15 tools are new (see the table above), and log output goes to stderr.
 
 ## Configuration
 

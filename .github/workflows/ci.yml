@@ -198,3 +198,30 @@ jobs:
           git diff --cached --quiet && { echo "formula unchanged"; exit 0; }
           git commit -m "vapx $version"
           git push
+
+  # The container from the README: build it and ask it for its tools.
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t vapx-mcp .
+      - name: Run it and call tools/list
+        env:
+          VAPX_MCP_TOKEN: ci-token
+        run: |
+          mkdir conf exports
+          printf 'cameras:\n  front:\n    host: 192.0.2.10\n    user: root\n    pass: pass\n' > conf/cameras.yaml
+          docker run -d --name vapx-mcp --user "$(id -u):$(id -g)" -p 127.0.0.1:8080:8080 \
+            -v "$PWD/conf:/config:ro" -v "$PWD/exports:/exports" -e VAPX_MCP_TOKEN vapx-mcp
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8080/mcp || true)
+            [ "$code" = "401" ] && break
+            sleep 1
+          done
+          test "$code" = "401"   # without the token
+          body='{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+          auth_header="Authorization: Bearer ${VAPX_MCP_TOKEN}"
+          curl -sf -X POST http://127.0.0.1:8080/mcp -H "$auth_header" \
+            -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+            -d "$body" | grep -q '"list_cameras"'
