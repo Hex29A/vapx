@@ -102,8 +102,8 @@ vapx mcp --transport http --bind 127.0.0.1:8080</code><button class="copy" data-
   </ul>
 
   <h2>Safety</h2>
-  <p class="note" style="margin:0">Tools that change a camera are marked as such, so your client can ask before it runs one; a firmware upgrade also needs an explicit confirmation. Passwords, users and network settings cannot be changed through MCP, and parameter values that look like secrets are shown as redacted. The HTTP server refuses requests without the token.</p>
-  <p class="note" style="margin:10px 0 32px">All 93 tools are listed in the <a href="https://github.com/Hex29A/vapx#tools">README</a>.</p>
+  <p class="note" style="margin:0">Tools that change a camera are marked as such, so your client can ask before it runs one; a firmware upgrade also needs an explicit confirmation. <code>disk_format</code> and <code>disk_encrypt</code> erase every recording on the SD card and only run with <code>confirm</code> set to true; their passphrase is never a tool argument. Passwords, users and network settings cannot be changed through MCP, and parameter values that look like secrets are shown as redacted. The HTTP server refuses requests without the token.</p>
+  <p class="note" style="margin:10px 0 32px">All 96 tools are listed in the <a href="https://github.com/Hex29A/vapx#tools">README</a>.</p>
 
   <footer>MIT licensed. Not affiliated with Axis Communications AB. VAPIX is a trademark of Axis Communications AB.</footer>
 </main>
