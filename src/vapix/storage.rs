@@ -108,7 +108,7 @@ pub fn get_disk_properties(client: &VapixClient, disk_id: &str) -> anyhow::Resul
 /// relies on this GET form and returns full size data — this mirrors that.
 /// Used as the data source for both storage-fallback paths below so neither
 /// silently drops size info again.
-fn list_disks_xml(client: &VapixClient) -> anyhow::Result<Vec<serde_json::Map<String, serde_json::Value>>> {
+pub(crate) fn list_disks_xml(client: &VapixClient) -> anyhow::Result<Vec<serde_json::Map<String, serde_json::Value>>> {
     let xml = client.get_text("/axis-cgi/disks/list.cgi", &[("diskid", "all")])?;
     let doc = roxmltree::Document::parse(&xml)?;
 

@@ -16,12 +16,12 @@ use super::write::{exports_dir, safe_filename};
 use super::{json_out, Args, Handler, Out};
 use crate::cmd::{audit, fw, health, param_to_json};
 use crate::mcp::camera::{self, Cam};
-use crate::vapix::{certs, data_of, firmware, image, params, selftest, streamurl, zipstream};
+use crate::vapix::{certs, data_of, disk, firmware, image, params, selftest, streamurl, zipstream};
 
 /// Tools in this file that do not change anything.
 pub const READ_ONLY: &[&str] = &[
     "firmware_status", "firmware_check", "param_get", "imaging_get", "fleet_health", "security_audit",
-    "diff_params", "cert_list", "stream_urls", "zipstream_status",
+    "diff_params", "cert_list", "stream_urls", "zipstream_status", "disk_status",
 ];
 
 pub fn handlers() -> Vec<(&'static str, Handler)> {
@@ -41,6 +41,9 @@ pub fn handlers() -> Vec<(&'static str, Handler)> {
         ("stream_urls", stream_urls),
         ("selftest", run_selftest),
         ("zipstream_status", zipstream_status),
+        ("disk_status", disk_status),
+        ("disk_format", disk_format),
+        ("disk_encrypt", disk_encrypt),
     ]
 }
 
@@ -365,6 +368,50 @@ fn run_selftest(args: &Args) -> anyhow::Result<Vec<Out>> {
 
 fn zipstream_status(args: &Args) -> anyhow::Result<Vec<Out>> {
     on_camera(args, |c| zipstream::parse_profiles(&zipstream::list_profiles(&c.client)?))
+}
+
+// ---- disks ----
+
+fn disk_status(args: &Args) -> anyhow::Result<Vec<Out>> {
+    let only = args.opt_str("disk_id")?.filter(|s| !s.is_empty());
+    on_camera(args, |c| disk::status(&c.client, only))
+}
+
+fn disk_wait(args: &Args) -> anyhow::Result<disk::Wait> {
+    let secs = args.opt_i64("wait_timeout")?.unwrap_or(900).clamp(30, 1800) as u64;
+    Ok(disk::Wait { timeout: std::time::Duration::from_secs(secs), ..Default::default() })
+}
+
+fn disk_id(args: &Args) -> anyhow::Result<&str> {
+    Ok(args.opt_str("disk_id")?.filter(|s| !s.is_empty()).unwrap_or(disk::DEFAULT_DISK))
+}
+
+fn disk_format(args: &Args) -> anyhow::Result<Vec<Out>> {
+    if args.opt_bool("confirm")? != Some(true) {
+        bail!("confirm must be true: formatting erases every recording on the disk");
+    }
+    let id = disk_id(args)?;
+    let filesystem = args.opt_str("filesystem")?.filter(|s| !s.is_empty()).unwrap_or("ext4");
+    let wait = disk_wait(args)?;
+    on_camera(args, |c| disk::format(&c.client, id, filesystem, wait, |_, _| {}))
+}
+
+/// The passphrase of the card comes from the server's own environment, never from a tool argument:
+/// arguments pass through the assistant and its logs.
+fn server_passphrase() -> anyhow::Result<disk::Secret> {
+    let file = std::env::var_os("VAPX_DISK_PASSPHRASE_FILE").map(std::path::PathBuf::from);
+    disk::secret_from(file.as_deref(), "VAPX_DISK_PASSPHRASE", "passphrase")
+}
+
+fn disk_encrypt(args: &Args) -> anyhow::Result<Vec<Out>> {
+    if args.opt_bool("confirm")? != Some(true) {
+        bail!("confirm must be true: switching encryption erases every recording on the disk");
+    }
+    let enable = args.bool("enable")?;
+    let id = disk_id(args)?;
+    let wait = disk_wait(args)?;
+    let passphrase = server_passphrase()?;
+    on_camera(args, |c| disk::set_encryption(&c.client, id, enable, &passphrase, wait, |_, _| {}))
 }
 
 #[cfg(test)]

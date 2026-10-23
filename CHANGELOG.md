@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- `vapx disk`, a command group for the SD card (#82): `status` (encryption, file system, health, usage, number of recordings and their dates), `format` (ext4 by default, xfs or vfat; follows the job to the end), `encrypt on|off` (unmount, switch, mount, and a check that the card reports the new state), `passphrase` (change the passphrase, the recordings stay), and separate `mount` and `unmount`. Disks of the network-share kind are refused.
+- `disk format` and `disk encrypt` erase every recording, so without `--yes` they only print what would be erased (number of recordings, used space in GB, oldest and newest start time) and change nothing. They work with `batch`, where the run without `--yes` shows the loss per camera.
+- The passphrase is never a command-line value: it comes from `VAPX_DISK_PASSPHRASE` (`VAPX_DISK_NEW_PASSPHRASE` for the new one), another variable named with `--passphrase-env`, or a file (`--passphrase-file`, refused on Unix if others can read it). It is sent in a POST body, never in a URL, and is not printed or logged.
+- MCP tools `disk_status` (read-only), `disk_format` and `disk_encrypt`. The last two only run with `confirm: true`, are marked destructive, and take no passphrase argument: the server reads `VAPX_DISK_PASSPHRASE` (or the file named by `VAPX_DISK_PASSPHRASE_FILE`) from its own environment. Changing the passphrase, mount and unmount stay CLI-only. The server now has 96 tools.
+
+### Notes
+- The encryption calls (`enablediskencryption.cgi`, `disablediskencryption.cgi`, `changediskpassphrase.cgi`), `format.cgi`, `job.cgi`, `mount.cgi` and `unmount.cgi` are written from the VAPIX Disk management and Disk properties descriptions and tested against stand-ins. Status was checked against a real camera; confirm the erasing calls on a test camera before relying on them.
+
 ## v0.29.1
 
 ### Security

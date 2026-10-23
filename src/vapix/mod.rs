@@ -10,6 +10,7 @@ pub mod client;
 pub mod daynight;
 pub mod device;
 pub mod discover;
+pub mod disk;
 pub mod events;
 pub mod firmware;
 pub mod geolocation;

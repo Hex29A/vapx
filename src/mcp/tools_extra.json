@@ -336,5 +336,112 @@
         "camera_id"
       ]
     }
+  },
+  {
+    "name": "disk_status",
+    "description": "Show the disks of a camera: file system, whether the disk is encrypted, status and health, used and free space, and how many recordings it holds (with the oldest and newest start time). Look at this before formatting or switching encryption.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier from list_cameras"
+        },
+        "disk_id": {
+          "type": "string",
+          "description": "Only this disk (default: all)"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "disk_format",
+    "description": "Format a disk of the camera and mount it again. Erases every recording on it. Only runs with confirm set to true. The call waits for the format job to finish.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier from list_cameras"
+        },
+        "disk_id": {
+          "type": "string",
+          "description": "Disk id, default SD_DISK (the card)",
+          "default": "SD_DISK"
+        },
+        "filesystem": {
+          "type": "string",
+          "enum": [
+            "ext4",
+            "xfs",
+            "vfat"
+          ],
+          "description": "File system",
+          "default": "ext4"
+        },
+        "confirm": {
+          "type": "boolean",
+          "enum": [
+            true
+          ],
+          "description": "Must be true: formatting erases every recording on the disk"
+        },
+        "wait_timeout": {
+          "type": "integer",
+          "description": "Seconds to wait for the format job",
+          "default": 900,
+          "minimum": 30,
+          "maximum": 1800
+        }
+      },
+      "required": [
+        "camera_id",
+        "confirm"
+      ]
+    }
+  },
+  {
+    "name": "disk_encrypt",
+    "description": "Turn encryption of a camera's disk on or off. Erases every recording on it (the camera formats the card), and a lost passphrase makes an encrypted card unreadable. Only runs with confirm set to true. The passphrase is not a parameter: the server reads it from the environment variable VAPX_DISK_PASSPHRASE or the file named by VAPX_DISK_PASSPHRASE_FILE. Changing the passphrase is CLI-only.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier from list_cameras"
+        },
+        "disk_id": {
+          "type": "string",
+          "description": "Disk id, default SD_DISK (the card)",
+          "default": "SD_DISK"
+        },
+        "enable": {
+          "type": "boolean",
+          "description": "true turns encryption on, false turns it off"
+        },
+        "confirm": {
+          "type": "boolean",
+          "enum": [
+            true
+          ],
+          "description": "Must be true: the switch erases every recording on the disk"
+        },
+        "wait_timeout": {
+          "type": "integer",
+          "description": "Seconds to wait for the job",
+          "default": 900,
+          "minimum": 30,
+          "maximum": 1800
+        }
+      },
+      "required": [
+        "camera_id",
+        "enable",
+        "confirm"
+      ]
+    }
   }
 ]
