@@ -313,10 +313,12 @@ fn camera_stub(routes: Vec<Route>, drop_connections: bool) -> (u16, Log) {
     let log: Log = Default::default();
     let shared = log.clone();
     let routes = std::sync::Arc::new(routes);
+    // Hits per route, for bodies that hold several answers separated by \x01.
+    let hits: std::sync::Arc<std::sync::Mutex<Vec<usize>>> = std::sync::Arc::new(std::sync::Mutex::new(vec![0; routes.len()]));
     thread::spawn(move || {
         for stream in listener.incoming() {
             let Ok(mut stream) = stream else { break };
-            let (routes, log) = (routes.clone(), shared.clone());
+            let (routes, log, hits) = (routes.clone(), shared.clone(), hits.clone());
             thread::spawn(move || {
                 use std::io::Read;
                 let mut data = Vec::new();
@@ -354,8 +356,14 @@ fn camera_stub(routes: Vec<Route>, drop_connections: bool) -> (u16, Log) {
                 let path = target.split('?').next().unwrap();
                 let (ctype, reply) = routes
                     .iter()
-                    .find(|r| r.0 == path)
-                    .map(|r| (r.1, r.2))
+                    .position(|r| r.0 == path)
+                    .map(|i| {
+                        let parts: Vec<&str> = routes[i].2.split('\u{1}').collect();
+                        let mut hits = hits.lock().unwrap();
+                        let answer = parts[hits[i].min(parts.len() - 1)];
+                        hits[i] += 1;
+                        (routes[i].1, answer)
+                    })
                     .unwrap_or(("application/json", r#"{"apiVersion":"1.0","data":{}}"#));
                 if ctype == "404" {
                     let _ = write!(stream, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
@@ -453,7 +461,7 @@ fn tools_list_has_the_write_tools_and_marks_the_disruptive_ones() {
     s.send(json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}));
     let r = s.response(2);
     let tools = r["result"]["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 93, "the 78 tools of the Python server and the 15 CLI tools");
+    assert_eq!(tools.len(), 96, "the 78 tools of the Python server and the 18 CLI tools");
     let reboot = tools.iter().find(|t| t["name"] == "reboot_camera").unwrap();
     assert_eq!(reboot["annotations"]["destructiveHint"], true, "{reboot}");
     assert_eq!(reboot["annotations"]["readOnlyHint"], false);
@@ -1204,4 +1212,129 @@ fn cert_remove_with_a_kind_still_checks_that_the_alias_is_there() {
     assert!(!ok);
     assert!(err.contains("No CA certificate with alias 'client'"), "{err}");
     assert!(reqs.iter().all(|r| !r.starts_with("DELETE")), "{reqs:?}");
+}
+
+// ---- disks (#82) ----
+
+fn disk_xml(status: &str, encrypted: bool) -> String {
+    format!(
+        r#"<root><disks><disk diskid="SD_DISK" name="" filesystem="ext4" status="{status}" diskencrypted="{encrypted}" encryptionenabled="{encrypted}" locked="no" readonly="no" full="no" totalsize="2097152" freesize="1048576"/></disks></root>"#
+    )
+}
+
+const DISK_PASSPHRASE: &str = "mcp-test-passphrase-123";
+const DISK_JOB_DONE: &str = r#"<root><job jobid="3" diskid="SD_DISK" status="completed" progress="100"/></root>"#;
+const DISK_RECORDINGS: &str = r#"<root><recordings totalnumberofrecordings="1"><recording recordingid="a" diskid="SD_DISK" starttime="2026-10-01T10:00:00Z"/></recordings></root>"#;
+
+fn leak(s: String) -> &'static str {
+    Box::leak(s.into_boxed_str())
+}
+
+#[test]
+fn disk_tools_are_listed_and_the_destructive_ones_need_confirm_and_take_no_passphrase() {
+    let mut s = Stdio_::start(&test_config("disk-list"));
+    s.initialize();
+    s.send(json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}));
+    let r = s.response(2);
+    let tools = r["result"]["tools"].as_array().unwrap();
+    let tool = |name: &str| tools.iter().find(|t| t["name"] == name).unwrap_or_else(|| panic!("missing {name}"));
+    assert_eq!(tool("disk_status")["annotations"]["readOnlyHint"], true);
+    for name in ["disk_format", "disk_encrypt"] {
+        let t = tool(name);
+        assert_eq!(t["annotations"]["destructiveHint"], true, "{name}");
+        assert_eq!(t["annotations"]["readOnlyHint"], false, "{name}");
+        assert!(t["description"].as_str().unwrap().contains("Destructive"), "{name}");
+        assert!(t["inputSchema"]["required"].as_array().unwrap().contains(&json!("confirm")), "{name}");
+        let props = t["inputSchema"]["properties"].as_object().unwrap();
+        assert!(props.keys().all(|k| !k.contains("pass")), "{name} must not take a passphrase: {props:?}");
+    }
+}
+
+#[test]
+fn disk_status_reports_encryption_usage_and_recordings() {
+    let ok = leak(disk_xml("OK", true));
+    let (port, _) = fake_camera(vec![
+        Route("/axis-cgi/disks/list.cgi", "text/xml", ok),
+        Route("/axis-cgi/record/list.cgi", "text/xml", DISK_RECORDINGS),
+    ]);
+    let mut s = Stdio_::start(&config_with_camera("disk-status", port));
+    s.initialize();
+    let v: Value = serde_json::from_str(&call_text(&mut s, 2, "disk_status", json!({"camera_id": "cam1"}))).unwrap();
+    let d = &v["disks"][0];
+    assert_eq!((d["id"].as_str(), d["encrypted"].as_bool()), (Some("SD_DISK"), Some(true)), "{v}");
+    assert_eq!(d["recordings"]["count"], 1);
+    assert_eq!(d["usedPercent"], 50.0);
+}
+
+#[test]
+fn disk_format_without_confirm_is_refused_before_any_request_is_made() {
+    let (port, log) = fake_camera(vec![]);
+    let mut s = Stdio_::start(&config_with_camera("disk-format-refused", port));
+    s.initialize();
+    for args in [json!({"camera_id": "cam1"}), json!({"camera_id": "cam1", "confirm": false})] {
+        let r = call(&mut s, 2, "disk_format", args);
+        assert_eq!(r["isError"], json!(true), "{r}");
+    }
+    assert!(requests(&log).is_empty(), "{:?}", requests(&log));
+}
+
+#[test]
+fn disk_format_with_confirm_unmounts_formats_and_mounts() {
+    let ok = leak(disk_xml("OK", false));
+    let (port, log) = fake_camera(vec![
+        Route("/axis-cgi/disks/list.cgi", "text/xml", ok),
+        Route("/axis-cgi/disks/unmount.cgi", "text/xml", "<root/>"),
+        Route("/axis-cgi/disks/format.cgi", "text/xml", DISK_JOB_DONE),
+        Route("/axis-cgi/disks/mount.cgi", "text/xml", "<root/>"),
+    ]);
+    let mut s = Stdio_::start(&config_with_camera("disk-format", port));
+    s.initialize();
+    let v: Value =
+        serde_json::from_str(&call_text(&mut s, 2, "disk_format", json!({"camera_id": "cam1", "confirm": true, "filesystem": "xfs"}))).unwrap();
+    assert_eq!((v["formatted"].as_bool(), v["status"].as_str()), (Some(true), Some("OK")), "{v}");
+    let reqs = requests(&log);
+    let at = |p: &str| reqs.iter().position(|r| r.contains(p)).unwrap_or_else(|| panic!("no {p}: {reqs:?}"));
+    assert!(at("unmount.cgi") < at("format.cgi") && at("format.cgi") < at("/mount.cgi"), "{reqs:?}");
+    assert!(reqs[at("format.cgi")].contains("filesystem=xfs"));
+}
+
+#[test]
+fn disk_encrypt_reads_the_passphrase_from_the_servers_environment_and_never_returns_it() {
+    let plain = disk_xml("OK", false);
+    let locked = disk_xml("disconnected", true);
+    let done = disk_xml("OK", true);
+    let sequence = leak(format!("{plain}\u{1}{locked}\u{1}{done}"));
+    let (port, log) = fake_camera(vec![
+        Route("/axis-cgi/disks/list.cgi", "text/xml", sequence),
+        Route("/axis-cgi/param.cgi", "text/plain", "root.Properties.LocalStorage.DiskEncryption=yes\n"),
+        Route("/axis-cgi/disks/unmount.cgi", "text/xml", "<root/>"),
+        Route("/axis-cgi/disks/enablediskencryption.cgi", "text/xml", DISK_JOB_DONE),
+        Route("/axis-cgi/disks/mount.cgi", "text/xml", "<root/>"),
+    ]);
+    let config = config_with_camera("disk-encrypt", port);
+    let mut s = Stdio_::start_env(&config, &[("VAPX_DISK_PASSPHRASE", DISK_PASSPHRASE)]);
+    s.initialize();
+    let text = call_text(&mut s, 2, "disk_encrypt", json!({"camera_id": "cam1", "enable": true, "confirm": true}));
+    assert!(!text.contains(DISK_PASSPHRASE), "{text}");
+    let v: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(v["encrypted"], true, "{v}");
+    let reqs = requests(&log);
+    let post = reqs.iter().find(|r| r.starts_with("POST /axis-cgi/disks/enablediskencryption.cgi")).expect("the switch was sent");
+    assert!(post.contains(&format!("passphrase={DISK_PASSPHRASE}")), "{post}");
+    assert!(reqs.iter().all(|r| !r.split_whitespace().nth(1).unwrap_or("").contains(DISK_PASSPHRASE)), "passphrase in a URL: {reqs:?}");
+}
+
+#[test]
+fn disk_encrypt_without_a_server_passphrase_changes_nothing() {
+    let plain = leak(disk_xml("OK", false));
+    let (port, log) = fake_camera(vec![
+        Route("/axis-cgi/disks/list.cgi", "text/xml", plain),
+        Route("/axis-cgi/param.cgi", "text/plain", "root.Properties.LocalStorage.DiskEncryption=yes\n"),
+    ]);
+    let config = config_with_camera("disk-encrypt-nopass", port);
+    let mut s = Stdio_::start_env(&config, &[]);
+    s.initialize();
+    let msg = error_text(&mut s, 2, "disk_encrypt", json!({"camera_id": "cam1", "enable": true, "confirm": true}));
+    assert!(msg.contains("VAPX_DISK_PASSPHRASE"), "{msg}");
+    assert!(requests(&log).iter().all(|r| !r.starts_with("POST") && !r.contains("unmount.cgi")), "{:?}", requests(&log));
 }

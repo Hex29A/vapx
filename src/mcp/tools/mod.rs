@@ -131,6 +131,7 @@ const DESTRUCTIVE: &[&str] = &[
     "reboot_camera", "delete_audio_clip", "remove_overlay", "remove_privacy_mask", "remove_stream_profile",
     "stop_application", "restart_application", "set_capture_mode", "set_motion_config",
     "set_analytics_producers", "set_audio_settings", "export_recording", "firmware_upgrade", "param_set",
+    "disk_format", "disk_encrypt",
 ];
 
 /// Warnings added to a tool's description, so a client (and the person behind
@@ -145,6 +146,7 @@ fn notice(name: &str) -> Option<&'static str> {
         "set_capture_mode" => "Disruptive: the camera must be rebooted for the new mode to apply.",
         "export_recording" => "Writes a file on the machine running this server.",
         "firmware_upgrade" => "Disruptive: uploads firmware and reboots the camera. Runs only with confirm set to true. Confirm with the user first.",
+        "disk_format" | "disk_encrypt" => "Destructive: erases every recording on the disk and cannot be undone. Runs only with confirm set to true. Check disk_status and confirm with the user first.",
         "param_set" => "Changes camera configuration. Keys under root.Network, root.Users and root.Properties are refused. Confirm with the user first.",
         "backup_params" => "Writes a file (which may contain secrets) on the machine running this server.",
         _ => return None,
@@ -414,7 +416,7 @@ mod tests {
     const CLI_TOOLS: &[&str] = &[
         "firmware_status", "firmware_check", "firmware_upgrade", "param_get", "param_set", "imaging_get",
         "imaging_set", "fleet_health", "security_audit", "backup_params", "diff_params", "cert_list",
-        "stream_urls", "selftest", "zipstream_status",
+        "stream_urls", "selftest", "zipstream_status", "disk_status", "disk_format", "disk_encrypt",
     ];
 
     #[test]

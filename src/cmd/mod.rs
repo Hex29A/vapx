@@ -9,6 +9,7 @@ pub mod config;
 pub mod daynight;
 pub mod diff;
 pub mod discover;
+pub mod disk;
 pub mod enroll;
 pub mod events;
 pub mod fw;

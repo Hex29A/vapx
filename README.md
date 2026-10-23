@@ -126,6 +126,7 @@ The `host` argument can be an IP address, hostname, or a camera name defined in 
 | `watch` | Watch events from multiple cameras |
 | `rule` | Action rule management (list, info, enable, disable, remove, templates) |
 | `storage` | Storage and SD card management (list, health, recordings, params) |
+| `disk` | SD card status, format, mount/unmount and encryption (erasing commands need `--yes`) |
 | `health` | Fleet health check (parallel, model/firmware/latency/issues) |
 | `temp` | Temperature sensor readings |
 | `daynight` | Day/night IR-cut filter mode |
@@ -395,6 +396,18 @@ vapx storage list 192.168.1.100 -u admin -p secret
 vapx storage recordings 192.168.1.100 -u admin -p secret
 vapx storage health 192.168.1.100 -u admin -p secret
 
+# Disk (SD card): status, format, encryption
+vapx disk status 192.168.1.100                  # encryption, file system, health, usage, recordings
+vapx disk format 192.168.1.100                  # dry run: what would be erased
+vapx disk format 192.168.1.100 --yes            # ext4 by default; follows the job until it is done
+vapx disk mount 192.168.1.100                   # and: vapx disk unmount
+export VAPX_DISK_PASSPHRASE=...                 # or --passphrase-file <file>; never a command-line value
+vapx disk encrypt on 192.168.1.100              # dry run
+vapx disk encrypt on 192.168.1.100 --yes        # unmount, switch (the camera formats the card), mount
+vapx disk passphrase 192.168.1.100              # change it: VAPX_DISK_PASSPHRASE is the current one,
+                                                # VAPX_DISK_NEW_PASSPHRASE the new one; the recordings stay
+vapx batch building_a disk format             # a group: without --yes it shows, per camera, what would be erased
+
 # Fleet health check
 vapx health cam1 cam2 cam3 -u admin -p secret
 vapx health building_a -u admin -p secret
@@ -503,7 +516,7 @@ credentials on AXIS OS 9.50 and later.
 
 ### Tools
 
-93 tools: the 78 of the Python server, plus 15 for features of the CLI it never had (firmware, parameters, imaging, fleet health, audits, backups, diffs, certificates, stream URLs, self test, ZipStream). "read" tools only look; "write" tools change a camera, run something on it, or write a file on the machine running the server.
+96 tools: the 78 of the Python server, plus 18 for features of the CLI it never had (firmware, parameters, imaging, fleet health, audits, backups, diffs, certificates, stream URLs, self test, ZipStream, disks). "read" tools only look; "write" tools change a camera, run something on it, or write a file on the machine running the server.
 
 | Tool | Access | What it does |
 |---|---|---|
@@ -519,6 +532,9 @@ credentials on AXIS OS 9.50 and later.
 | `diff_params` | read | Compare the parameters of two cameras and list what differs. |
 | `disable_mqtt` | write | Disable (deactivate) the MQTT client on a camera — disconnects from the broker. |
 | `discover_apis` | read | List all VAPIX APIs supported by an Axis device. |
+| `disk_encrypt` | write | Turn encryption of a camera's disk on or off. Erases every recording; only runs with `confirm`. |
+| `disk_format` | write | Format a camera's disk and mount it again. Erases every recording; only runs with `confirm`. |
+| `disk_status` | read | Show the disks of a camera: file system, encryption, health, usage and number of recordings. |
 | `enable_mqtt` | write | Enable (activate) the MQTT client on a camera — connects to the configured broker. |
 | `export_recording` | write | Export a recording from the camera's edge storage as a .mkv file. |
 | `firmware_check` | read | Check the camera's firmware version against an expected version, or against another camera. |
@@ -605,6 +621,7 @@ credentials on AXIS OS 9.50 and later.
 - Arguments are checked against each tool's input schema before anything is sent to a camera.
 - `reboot_camera` sends the request once: a connection that closes while the camera goes down counts as sent.
 - `firmware_upgrade` uploads a `.bin` file from the server's disk and reboots the camera. It only runs with `confirm: true`, never factory-defaults, and commits only with `auto_commit` (which needs `wait`).
+- `disk_format` and `disk_encrypt` erase every recording on the disk. They only run with `confirm: true`, so look at `disk_status` first (it shows how many recordings the disk holds and from when). `disk_encrypt` has no passphrase parameter, because arguments pass through the assistant and its logs: the server reads the passphrase from the environment variable `VAPX_DISK_PASSPHRASE`, or from the file named by `VAPX_DISK_PASSPHRASE_FILE`. Changing the passphrase, mount and unmount are CLI-only.
 - `param_set` takes explicit keys only (no wildcards or groups, at most 50) and refuses keys under `root.Network`, `root.Users` and `root.Properties`.
 - `param_get` and `diff_params` show the values of secrets (passwords, tokens, community strings) as `[redacted]`. `backup_params` keeps them, which is why it saves a file readable only by its owner instead of returning the parameters.
 - `export_recording` and `backup_params` write under `$VAPX_MCP_EXPORTS_DIR` (the Python server's `$VAPIX_EXPORTS_DIR` also works), by default `vapx/exports` in your user data directory, and only accept plain file names.
@@ -868,6 +885,7 @@ src/
     watch.rs           # vapx watch — multi-camera event monitoring
     rule.rs            # vapx rule — action rule management
     storage.rs         # vapx storage — SD card/edge storage management
+    disk.rs            # vapx disk — SD card status, format, mount, encryption
     health.rs          # vapx health — fleet health check
     temp.rs            # vapx temp — temperature sensor readings
     daynight.rs        # vapx daynight — IR-cut filter mode

@@ -42,6 +42,8 @@ jobs:
         run: cargo test --test reboot
       - name: Trusted roots test
         run: cargo test --test trust_roots
+      - name: Disk command tests
+        run: cargo test --test disk
       - name: Build
         run: cargo build --release
       - name: Clippy
@@ -49,6 +51,8 @@ jobs:
       # The CLI-only build (no MCP server) must keep compiling and passing its tests.
       - name: Unit tests without the mcp feature
         run: cargo test --no-default-features --bin vapx
+      - name: Disk command tests without the mcp feature
+        run: cargo test --no-default-features --test disk
       - name: Missing-feature message test
         run: cargo test --no-default-features --test no_mcp
       - name: Clippy without the mcp feature
