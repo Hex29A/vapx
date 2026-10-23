@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.30.0
 
 ### Added
 - `vapx disk`, a command group for the SD card (#82): `status` (encryption, file system, health, usage, number of recordings and their dates), `format` (ext4 by default, xfs or vfat; follows the job to the end), `encrypt on|off` (unmount, switch, mount, and a check that the card reports the new state), `passphrase` (change the passphrase, the recordings stay), and separate `mount` and `unmount`. Disks of the network-share kind are refused.
