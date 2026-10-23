@@ -1,7 +1,12 @@
+// Part of the VAPIX layer is called only from the MCP tools. Without the `mcp` feature those functions
+// are unused, which is expected.
+#![cfg_attr(not(feature = "mcp"), allow(dead_code))]
+
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{generate, Shell};
 
 mod cmd;
+#[cfg(feature = "mcp")]
 mod mcp;
 mod config;
 mod enroll;
@@ -44,7 +49,11 @@ pub enum Commands {
     /// Firmware management
     Fw(cmd::fw::FwCmd),
     /// MCP server for AI assistants (stdio or HTTP)
+    #[cfg(feature = "mcp")]
     Mcp(mcp::McpCmd),
+    /// MCP server for AI assistants (not available: this build has no MCP support)
+    #[cfg(not(feature = "mcp"))]
+    Mcp(NoMcp),
     /// Reboot the camera (same as `fw reboot`)
     Reboot(cmd::fw::RebootArgs),
     /// ACAP application management
@@ -156,6 +165,15 @@ fn restore_sigpipe() {
 #[cfg(not(unix))]
 fn restore_sigpipe() {}
 
+// `vapx mcp` in a build without the `mcp` feature: accepts any arguments so the
+// message below is what the user sees, not a parse error.
+#[cfg(not(feature = "mcp"))]
+#[derive(clap::Args)]
+pub struct NoMcp {
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
+    _args: Vec<String>,
+}
+
 fn main() {
     restore_sigpipe();
     let cli = Cli::parse();
@@ -204,7 +222,12 @@ fn main() {
         Commands::Info(cmd) => cmd.run(),
         Commands::Snap(cmd) => cmd.run(),
         Commands::Fw(cmd) => cmd.run(),
+        #[cfg(feature = "mcp")]
         Commands::Mcp(cmd) => cmd.run(),
+        #[cfg(not(feature = "mcp"))]
+        Commands::Mcp(_) => Err(anyhow::anyhow!(
+            "this build of vapx was compiled without MCP support; use a release binary, or `cargo install --git https://github.com/Hex29A/vapx` with the default features"
+        )),
         Commands::Reboot(args) => cmd::fw::run_reboot(args),
         Commands::Acap(cmd) => cmd.run(),
         Commands::Ptz(cmd) => cmd.run(),
