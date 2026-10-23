@@ -40,6 +40,8 @@ jobs:
         run: cargo test --test mcp
       - name: Reboot regression test
         run: cargo test --test reboot
+      - name: Trusted roots test
+        run: cargo test --test trust_roots
       - name: Build
         run: cargo build --release
       - name: Clippy
