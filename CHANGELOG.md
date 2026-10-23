@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.29.0
 
 ### Added
 - `vapx mcp` is now the recommended MCP server (#60, closes #61): the README has a migration section for users of the Python vapx-mcp (same tool names and parameters; SSE is gone; HTTP needs a token) and a container example. A `Dockerfile` builds an image that runs `vapx mcp --transport http` as a non-root user with the config directory mounted at `/config` and no `VOLUME` over it, and CI builds it and calls `tools/list` with and without the token.
@@ -22,6 +22,7 @@
 - `vapx ... | head` no longer ends in `Aborted` (SIGABRT) when the reader closes the pipe early. vapx now restores the default SIGPIPE behaviour on Unix and stops quietly, like other command-line tools (#52).
 
 ### Changed
+- Release builds unwind on a panic instead of aborting (`panic = "abort"` is gone from the release profile). In `vapx mcp` a panic inside one tool call is now answered as an error for that call, as the server already intended, and the server keeps running for the other cameras and clients; before, it took the whole process down. The binary is a little larger.
 - `vapx fw factory-default` asks for confirmation (type `yes`) and refuses to run without a terminal unless `--yes` is given (#55).
 - The README header matches vapx.29a.se: logo, the same one-line description and a link to the site.
 - The README opens with three short demos: adding a camera with `vapx config add`, `vapx info` with its default output, and a sensor round (system readiness, temperature, day/night, API discovery).
