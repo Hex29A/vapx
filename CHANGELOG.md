@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## v0.29.1
+
+### Security
+- Updated `webpki-roots` from 1.0.7 to 1.0.10. The release binaries embed their trusted roots through this crate, and 1.0.7 still trusted emSign ECC Root CA - G3, which browsers and operating systems have distrusted after eight of its intermediate CAs were found to have recoverable private keys (October 2026) (#80). The practical risk is low, since cameras mostly present self-signed or private-CA certificates, but an attacker on the network path could have presented a certificate issued under those intermediates. A test now checks the locked version.
 
 ### Changed
 - The MCP server is now an optional Cargo feature, `mcp`, on by default (#77). Release binaries are unchanged. `cargo install --git https://github.com/Hex29A/vapx --no-default-features` builds a CLI-only binary, about 2 MB smaller (5.2 MB instead of 7.1 MB, x86_64 Linux release profile); `vapx mcp` in such a build says that it was compiled without MCP support. CI builds, tests and lints the CLI-only variant too.
