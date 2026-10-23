@@ -73,6 +73,14 @@ cargo build --release
 cp target/release/vapx ~/.local/bin/
 ```
 
+**Smaller binary:** the MCP server (`vapx mcp`) is a Cargo feature that is on by default, and release
+binaries include it. If you only want the CLI, build without it; the binary is about 2 MB smaller
+(roughly 5 MB instead of 7 MB for x86_64 Linux), and `vapx mcp` then says that MCP support is missing:
+
+```sh
+cargo install --git https://github.com/Hex29A/vapx --no-default-features
+```
+
 Static musl build (Linux):
 
 ```sh

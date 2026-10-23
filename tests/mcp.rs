@@ -1,6 +1,8 @@
 //! End-to-end tests for `vapx mcp` (#57): stdio and HTTP transports, token auth,
 //! tool listing and a camera-less tool call. They need no camera.
 
+#![cfg(feature = "mcp")]
+
 use std::io::{BufRead, BufReader, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::PathBuf;

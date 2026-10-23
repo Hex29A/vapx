@@ -44,6 +44,13 @@ jobs:
         run: cargo build --release
       - name: Clippy
         run: cargo clippy -- -D warnings
+      # The CLI-only build (no MCP server) must keep compiling and passing its tests.
+      - name: Unit tests without the mcp feature
+        run: cargo test --no-default-features --bin vapx
+      - name: Missing-feature message test
+        run: cargo test --no-default-features --test no_mcp
+      - name: Clippy without the mcp feature
+        run: cargo clippy --no-default-features -- -D warnings
 
   # Windows and macOS are only built at release time, so check on every PR that
   # they still compile — Unix-only code would otherwise surface at tag time.
