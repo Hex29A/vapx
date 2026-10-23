@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>vapx MCP</title>
+<meta name="description" content="Let an AI assistant look at and operate your Axis cameras: the MCP server built into vapx, with copy-ready setup for Claude Code, Claude Desktop and HTTP.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#121516">
+<style>
+:root{--bg:#f6f7f7;--fg:#16191b;--mute:#626a6e;--line:#dde1e2;--code:#fff;--accent:#0B7F88}
+@media (prefers-color-scheme:dark){:root{--bg:#121516;--fg:#e6eaeb;--mute:#8d979a;--line:#262c2e;--code:#1a1f20;--accent:#3FD2DD}}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:max(32px,10vh) 16px 32px;
+  background:var(--bg);color:var(--fg);font:16px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{width:100%;max-width:560px}
+header{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+header .logo{width:44px;height:32px}
+header .pages{margin-left:auto;display:flex;gap:4px}
+header .pages a{font-size:13px;padding:5px 12px;border-radius:6px;color:var(--mute);text-decoration:none;border:1px solid transparent}
+header .pages a:hover{color:var(--fg)}
+header .pages a[aria-current=page]{background:var(--code);border-color:var(--line);color:var(--fg)}
+h1{margin:0;font-size:30px;letter-spacing:-.02em}
+p.lede{margin:0 0 28px;color:var(--mute)}
+.tabs{display:flex;gap:4px;margin-bottom:-1px}
+.tabs button{font:inherit;font-size:13px;padding:6px 12px;border:1px solid transparent;border-bottom:none;border-radius:6px 6px 0 0;
+  background:none;color:var(--mute);cursor:pointer}
+.tabs button[aria-selected=true]{background:var(--code);border-color:var(--line);color:var(--fg)}
+.cmd{display:flex;align-items:center;gap:8px;background:var(--code);border:1px solid var(--line);border-radius:0 8px 8px 8px;padding:12px 12px 12px 16px}
+.cmd code{flex:1;-webkit-user-select:all;user-select:all;font:14px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow-x:auto;white-space:nowrap}
+.cmd button{flex:none;font:inherit;font-size:12px;padding:4px 10px;border:1px solid var(--line);border-radius:6px;background:none;color:var(--mute);cursor:pointer}
+.cmd button:hover{color:var(--fg)}
+.note{font-size:13px;color:var(--mute);margin:10px 0 32px}
+.note a{color:inherit}
+nav.links{display:flex;flex-wrap:wrap;gap:18px}
+nav.links a{display:flex;align-items:center;gap:7px;color:var(--mute);text-decoration:none;font-size:14px}
+nav.links a:hover{color:var(--accent)}
+nav.links svg{width:18px;height:18px;fill:currentColor}
+h2{margin:0 0 4px;font-size:17px}
+.try{display:grid;grid-template-columns:2fr 1fr 1.4fr;gap:8px;margin:12px 0 10px}
+.try input{font:14px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:8px 10px;border:1px solid var(--line);border-radius:6px;
+  background:var(--code);color:var(--fg);min-width:0}
+.try input:focus{outline:2px solid var(--accent);outline-offset:-1px}
+.try + .cmd{border-radius:8px}
+@media (max-width:480px){.try{grid-template-columns:1fr 1fr}.try input:first-child{grid-column:1/-1}}
+.note code{font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+footer{margin-top:40px;font-size:12px;color:var(--mute)}
+
+h2{margin:28px 0 4px;font-size:17px}
+p.lede + h2{margin-top:0}
+.cmd.block{align-items:flex-start;border-radius:8px}
+.cmd.block code{white-space:pre;font-size:13px}
+.cmd.block button{margin-top:-2px}
+ul.asks{margin:10px 0 0;padding-left:20px}
+ul.asks li{margin:4px 0}
+.note.after{margin:10px 0 0}
+p.lede code{font:14px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+</style>
+</head>
+<body>
+<main>
+  <header><svg class="logo" viewBox="0 6 48 34" aria-hidden="true"><path d="M6 20 H42 A18 18 0 0 1 6 20 Z" fill="currentColor"/><rect x="6" y="12" width="36" height="5" rx="2.5" fill="currentColor"/><circle cx="24" cy="25" r="5" fill="var(--accent)"/></svg><h1>vapx</h1>
+    <nav class="pages" aria-label="Pages"><a href="/">CLI</a><a href="/mcp" aria-current="page">MCP</a></nav></header>
+  <p class="lede">Let an AI assistant look at and operate your Axis cameras. <code>vapx mcp</code> is a Model Context Protocol server built into vapx; it reads the same <code>cameras.yaml</code> as the command line, so there is nothing more to configure.</p>
+
+  <p class="note" style="margin-top:0">You need vapx on the machine that runs your assistant (see <a href="/">install</a>) and at least one camera added with <code>vapx config add</code>.</p>
+
+  <h2>Claude Code</h2>
+  <div class="cmd"><code id="c1">claude mcp add vapx -- vapx mcp</code><button class="copy" data-for="c1" type="button">Copy</button></div>
+
+  <h2>Claude Desktop and other stdio clients</h2>
+  <p class="note" style="margin:0 0 10px">Add this to the client's MCP configuration. The client starts vapx itself.</p>
+  <div class="cmd block"><code id="c2">{
+  "mcpServers": {
+    "vapx": { "command": "vapx", "args": ["mcp"] }
+  }
+}</code><button class="copy" data-for="c2" type="button">Copy</button></div>
+
+  <h2>Over HTTP</h2>
+  <p class="note" style="margin:0 0 10px">For a client on another machine, or a server that keeps running. HTTP needs a token: paste a long random string when asked (for example from <code>openssl rand -hex 32</code>).</p>
+  <div class="cmd block"><code id="c3">read -rs VAPX_MCP_TOKEN && export VAPX_MCP_TOKEN
+vapx mcp --transport http --bind 127.0.0.1:8080</code><button class="copy" data-for="c3" type="button">Copy</button></div>
+  <p class="note after">Then point the client at it, with the same token in the header:</p>
+  <div class="cmd block"><code id="c4">{
+  "mcpServers": {
+    "vapx": {
+      "type": "http",
+      "url": "http://127.0.0.1:8080/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}</code><button class="copy" data-for="c4" type="button">Copy</button></div>
+
+  <h2>Things to ask</h2>
+  <ul class="asks">
+    <li>Take a snapshot from every camera.</li>
+    <li>Which cameras run outdated firmware?</li>
+    <li>Move the PTZ camera to its home position.</li>
+    <li>Are all my cameras online, and how warm are they?</li>
+    <li>Compare the settings of two cameras and show what differs.</li>
+  </ul>
+
+  <h2>Safety</h2>
+  <p class="note" style="margin:0">Tools that change a camera are marked as such, so your client can ask before it runs one; a firmware upgrade also needs an explicit confirmation. Passwords, users and network settings cannot be changed through MCP, and parameter values that look like secrets are shown as redacted. The HTTP server refuses requests without the token.</p>
+  <p class="note" style="margin:10px 0 32px">All 93 tools are listed in the <a href="https://github.com/Hex29A/vapx#tools">README</a>.</p>
+
+  <footer>MIT licensed. Not affiliated with Axis Communications AB. VAPIX is a trademark of Axis Communications AB.</footer>
+</main>
+<script>
+// The textarea copy runs first and synchronously: iOS browsers (Brave, Telegram's
+// in-app one) only allow it inside the tap itself, and an awaited clipboard
+// promise that fails first would already have used the tap up. iOS only copies
+// a selection made with setSelectionRange.
+const copyText = async (text) => {
+  const t = document.createElement("textarea");
+  t.value = text;
+  t.setAttribute("readonly", "");
+  t.style.cssText = "position:fixed;top:0;left:0;opacity:0;font-size:16px";
+  document.body.appendChild(t);
+  t.focus();
+  t.setSelectionRange(0, text.length);
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch (e) {}
+  t.remove();
+  if (ok) return true;
+  try { await navigator.clipboard.writeText(text); return true; } catch (e) { return false; }
+};
+document.querySelectorAll(".copy").forEach((copy) => copy.addEventListener("click", async () => {
+  const code = document.getElementById(copy.dataset.for);
+  if (await copyText(code.textContent)) copy.textContent = "Copied";
+  else { getSelection().selectAllChildren(code); copy.textContent = "Selected"; }
+  setTimeout(() => (copy.textContent = "Copy"), 1500);
+}));
+</script>
+</body>
+</html>
