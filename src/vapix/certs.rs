@@ -161,12 +161,92 @@ fn parse_pem(pem: &str) -> anyhow::Result<serde_json::Map<String, serde_json::Va
     Ok(m)
 }
 
-/// Create a self-signed certificate.
+/// Whether the camera has the certificate REST API (AXIS OS 12 and later). The write commands use it when it
+/// is there and report its errors as they are; only a camera without it is asked through the legacy API.
+fn rest_available(client: &VapixClient) -> bool {
+    client.rest_json("GET", REST_BASE, None).is_ok()
+}
+
+/// An RFC 4514 distinguished name `CN=<common name>`, with the characters that have a meaning in a DN escaped.
+fn subject_dn(attributes: &[(&str, &str)]) -> String {
+    fn escape(value: &str) -> String {
+        let mut out = String::new();
+        let last = value.chars().count().saturating_sub(1);
+        for (i, c) in value.chars().enumerate() {
+            let special = matches!(c, ',' | '+' | '"' | '\\' | '<' | '>' | ';' | '=')
+                || (i == 0 && matches!(c, '#' | ' '))
+                || (i == last && c == ' ');
+            if special {
+                out.push('\\');
+            }
+            out.push(c);
+        }
+        out
+    }
+    attributes
+        .iter()
+        .map(|(k, v)| format!("{}={}", k, escape(v)))
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn check_alias(alias: &str) -> anyhow::Result<()> {
+    if alias.trim().is_empty() || alias.len() > 128 || alias.chars().any(|c| c.is_control()) {
+        anyhow::bail!("The certificate alias must be 1 to 128 characters without control characters");
+    }
+    Ok(())
+}
+
+/// Options of `create_certificate` besides the alias and the subject.
+#[derive(Default)]
+pub struct SelfSignOptions<'a> {
+    /// Key type, for example `EC-P256` or `RSA-2048`; the camera picks one when left out.
+    pub key_type: Option<&'a str>,
+    /// Keystore that holds the private key; the camera's default when left out.
+    pub keystore: Option<&'a str>,
+}
+
+/// Request body of `POST /config/rest/cert/v1/create_certificate`; `valid_to` is seconds since the Unix epoch.
+fn create_body(alias: &str, subject: &str, valid_to: u64, opts: &SelfSignOptions) -> serde_json::Value {
+    let mut data = serde_json::Map::new();
+    data.insert("alias".into(), json!(alias));
+    data.insert("subject".into(), json!(subject));
+    data.insert("valid_to".into(), json!(valid_to));
+    if let Some(k) = opts.key_type {
+        data.insert("key_type".into(), json!(k));
+    }
+    if let Some(k) = opts.keystore {
+        data.insert("keystore".into(), json!(k));
+    }
+    json!({"data": data})
+}
+
+/// Create a self-signed certificate. On AXIS OS 12 and later the camera makes the key pair (in `opts.keystore`
+/// or its default one) and the certificate is stored under `alias`; cameras without the REST API use the legacy
+/// call, which takes neither alias nor options.
 pub fn create_self_signed(
     client: &VapixClient,
     common_name: &str,
+    alias: &str,
     days: u32,
+    opts: &SelfSignOptions,
 ) -> anyhow::Result<serde_json::Value> {
+    if days == 0 {
+        anyhow::bail!("--days must be at least 1");
+    }
+    check_alias(alias)?;
+    if rest_available(client) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_secs();
+        let body = create_body(alias, &subject_dn(&[("CN", common_name)]), now + u64::from(days) * 86_400, opts);
+        client.rest_json("POST", &format!("{}/create_certificate", REST_BASE), Some(&body))?;
+        // What the camera stored, read back, so that the output does not depend on the shape of the answer.
+        return Ok(match info(client, alias) {
+            Ok(resp) => resp,
+            Err(_) => json!({"data": {"alias": alias}}),
+        });
+    }
     legacy_request(
         client,
         &json!({
@@ -180,8 +260,67 @@ pub fn create_self_signed(
     )
 }
 
-/// Remove a certificate by ID.
-pub fn remove(client: &VapixClient, cert_id: &str) -> anyhow::Result<serde_json::Value> {
+/// Which collection of the REST API an alias lives in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Kind {
+    /// Server and client certificates (`certificates`).
+    Certificate,
+    /// CA certificates (`ca_certificates`).
+    Ca,
+}
+
+impl Kind {
+    fn collection(self) -> &'static str {
+        match self {
+            Kind::Certificate => "certificates",
+            Kind::Ca => "ca_certificates",
+        }
+    }
+}
+
+/// Whether the REST API has `alias` in `kind`'s collection.
+fn exists(client: &VapixClient, kind: Kind, alias: &str) -> anyhow::Result<bool> {
+    match client.rest_json("GET", &alias_path(kind.collection(), alias)?, None) {
+        Ok(resp) => Ok(resp.get("data").is_some_and(|d| d.get("certificate").is_some())),
+        Err(e) if e.to_string().contains("Item does not exist") => Ok(false),
+        Err(e) => Err(e),
+    }
+}
+
+/// Remove a certificate by alias (REST) or ID (legacy). With `kind` left out, both collections are searched and
+/// an alias found in both is refused, since the caller has to say which one is meant. Returns the collection
+/// the certificate was removed from (`None` for the legacy API).
+pub fn remove(client: &VapixClient, cert_id: &str, kind: Option<Kind>) -> anyhow::Result<Option<Kind>> {
+    if rest_available(client) {
+        let kind = match kind {
+            Some(k) => {
+                if !exists(client, k, cert_id)? {
+                    anyhow::bail!("No {} with alias '{}' (see 'vapx cert list')", describe_kind(k), cert_id);
+                }
+                k
+            }
+            None => {
+                let found: Vec<Kind> = [Kind::Certificate, Kind::Ca]
+                    .into_iter()
+                    .filter_map(|k| exists(client, k, cert_id).map(|e| e.then_some(k)).transpose())
+                    .collect::<anyhow::Result<_>>()?;
+                match found.as_slice() {
+                    [k] => *k,
+                    [] => anyhow::bail!("No certificate with alias '{}' (see 'vapx cert list')", cert_id),
+                    _ => anyhow::bail!(
+                        "'{}' is both a certificate and a CA certificate; nothing was removed. \
+                         Say which one with --kind certificate or --kind ca",
+                        cert_id
+                    ),
+                }
+            }
+        };
+        client.rest_json("DELETE", &alias_path(kind.collection(), cert_id)?, None)?;
+        return Ok(Some(kind));
+    }
+    if kind == Some(Kind::Ca) {
+        anyhow::bail!("This camera has no certificate REST API, so there is no separate CA collection to remove from");
+    }
     legacy_request(
         client,
         &json!({
@@ -191,16 +330,62 @@ pub fn remove(client: &VapixClient, cert_id: &str) -> anyhow::Result<serde_json:
                 "id": cert_id,
             },
         }),
-    )
+    )?;
+    Ok(None)
+}
+
+fn describe_kind(kind: Kind) -> &'static str {
+    match kind {
+        Kind::Certificate => "certificate",
+        Kind::Ca => "CA certificate",
+    }
+}
+
+/// Request body of `POST .../certificates/<alias>/get_csr`: the subject is only sent when something is given.
+fn csr_body(common_name: Option<&str>, country: Option<&str>, organization: Option<&str>) -> serde_json::Value {
+    let mut attributes = Vec::new();
+    if let Some(cn) = common_name {
+        attributes.push(("CN", cn));
+    }
+    if let Some(o) = organization {
+        attributes.push(("O", o));
+    }
+    if let Some(c) = country {
+        attributes.push(("C", c));
+    }
+    if attributes.is_empty() {
+        json!({"data": {}})
+    } else {
+        json!({"data": {"subject": subject_dn(&attributes)}})
+    }
 }
 
 /// Create a Certificate Signing Request (CSR).
+///
+/// With the REST API (AXIS OS 12 and later) the CSR is made for the key of an existing certificate, so `alias`
+/// is needed (`cert self-sign` makes a certificate with a new key); the subject is the one given, or the
+/// certificate's own when nothing is given. The legacy API makes a key and a CSR in one step and needs
+/// `common_name`.
 pub fn create_csr(
     client: &VapixClient,
-    common_name: &str,
+    alias: Option<&str>,
+    common_name: Option<&str>,
     country: Option<&str>,
     organization: Option<&str>,
 ) -> anyhow::Result<serde_json::Value> {
+    if rest_available(client) {
+        let alias = alias.ok_or_else(|| {
+            anyhow::anyhow!(
+                "On AXIS OS 12 and later a CSR is made for the key of an existing certificate: pass --alias \
+                 (see 'vapx cert list'; 'vapx cert self-sign' creates a certificate with a new key)"
+            )
+        })?;
+        let body = csr_body(common_name, country, organization);
+        let path = format!("{}/get_csr", alias_path("certificates", alias)?);
+        let resp = client.rest_json("POST", &path, Some(&body))?;
+        return Ok(json!({"data": {"alias": alias, "csr": resp.get("data").cloned().unwrap_or_default()}}));
+    }
+    let common_name = common_name.ok_or_else(|| anyhow::anyhow!("--cn is needed for this camera"))?;
     let mut params = serde_json::Map::new();
     params.insert("commonName".to_string(), json!(common_name));
     if let Some(c) = country {
@@ -281,5 +466,38 @@ mod tests {
         );
         // A slash in an alias must not open a new path level.
         assert_eq!(alias_path("certificates", "a/b").unwrap(), "/config/rest/cert/v1/certificates/a%2Fb");
+    }
+    #[test]
+    fn a_subject_escapes_what_a_dn_gives_a_meaning() {
+        assert_eq!(subject_dn(&[("CN", "camera.example")]), "CN=camera.example");
+        assert_eq!(subject_dn(&[("CN", "a,b+c")]), "CN=a\\,b\\+c");
+        assert_eq!(subject_dn(&[("CN", " x ")]), "CN=\\ x\\ ");
+        assert_eq!(subject_dn(&[("CN", "#1")]), "CN=\\#1");
+        assert_eq!(subject_dn(&[("CN", "x"), ("O", "Example, Inc."), ("C", "SE")]), "CN=x,O=Example\\, Inc.,C=SE");
+    }
+
+    #[test]
+    fn create_certificate_carries_alias_subject_validity_and_only_the_options_given() {
+        let body = create_body("web", "CN=camera.example", 1_800_000_000, &SelfSignOptions::default());
+        assert_eq!(body, json!({"data": {"alias": "web", "subject": "CN=camera.example", "valid_to": 1_800_000_000u64}}));
+        let body = create_body("web", "CN=x", 1, &SelfSignOptions { key_type: Some("EC-P256"), keystore: Some("SE0") });
+        assert_eq!(body["data"]["key_type"], "EC-P256");
+        assert_eq!(body["data"]["keystore"], "SE0");
+    }
+
+    #[test]
+    fn a_csr_subject_is_only_sent_when_one_is_given() {
+        assert_eq!(csr_body(None, None, None), json!({"data": {}}));
+        assert_eq!(csr_body(Some("x"), Some("SE"), Some("Org")), json!({"data": {"subject": "CN=x,O=Org,C=SE"}}));
+        assert_eq!(csr_body(None, Some("SE"), None), json!({"data": {"subject": "C=SE"}}));
+    }
+
+    #[test]
+    fn aliases_with_control_characters_or_no_text_are_refused() {
+        assert!(check_alias("web").is_ok());
+        assert!(check_alias("").is_err());
+        assert!(check_alias("  ").is_err());
+        assert!(check_alias("a\nb").is_err());
+        assert!(check_alias(&"x".repeat(129)).is_err());
     }
 }

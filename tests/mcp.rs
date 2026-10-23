@@ -295,6 +295,11 @@ fn json_route(path: &'static str, body: &'static str) -> Route {
     Route(path, "application/json", body)
 }
 
+/// A path the camera answers with 404, as a camera without that API does.
+fn missing_route(path: &'static str) -> Route {
+    Route(path, "404", "")
+}
+
 /// A camera stand-in. It answers by request path (no authentication
 /// challenge), `{"data":{}}` for paths it has no route for, and records each
 /// request as `METHOD target body`. With `drop_connections` it records the
@@ -350,6 +355,10 @@ fn camera_stub(routes: Vec<Route>, drop_connections: bool) -> (u16, Log) {
                     .find(|r| r.0 == path)
                     .map(|r| (r.1, r.2))
                     .unwrap_or(("application/json", r#"{"apiVersion":"1.0","data":{}}"#));
+                if ctype == "404" {
+                    let _ = write!(stream, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                    return;
+                }
                 let _ = write!(
                     stream,
                     "HTTP/1.1 200 OK\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{reply}",
@@ -1022,4 +1031,175 @@ fn the_cert_command_lists_and_shows_certificates_through_the_rest_api() {
     let info: Value = serde_json::from_slice(&info.stdout).unwrap();
     assert_eq!(info["data"]["alias"], "client", "{info}");
     assert!(info["data"]["certificate"].as_str().unwrap().starts_with("-----BEGIN CERTIFICATE-----"));
+}
+
+// ---- certificate writes on AXIS OS 12 and later (#72) ----
+
+/// Run `vapx cert <args> cam1` against a camera stand-in; returns the exit status, stdout, stderr and the requests it saw.
+fn cert_run(tag: &str, routes: Vec<Route>, args: &[&str]) -> (bool, String, String, Vec<String>) {
+    let (port, log) = fake_camera(routes);
+    let config = config_with_camera(tag, port);
+    let out = vapx(&config).arg("cert").args(args).arg("cam1").output().unwrap();
+    (
+        out.status.success(),
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+        requests(&log),
+    )
+}
+
+fn cert_rest_routes() -> Vec<Route> {
+    vec![
+        json_route("/config/rest/cert/v1", CERT_V1),
+        json_route("/config/rest/cert/v1/certificates/client", CERT_V1_ONE),
+    ]
+}
+
+/// The one request whose method and path start with `prefix`, with its body parsed.
+fn sent(reqs: &[String], prefix: &str) -> Value {
+    let hits: Vec<&String> = reqs.iter().filter(|r| r.starts_with(prefix)).collect();
+    assert_eq!(hits.len(), 1, "{prefix}: {reqs:?}");
+    let body = hits[0].splitn(3, ' ').nth(2).unwrap_or("");
+    serde_json::from_str(body).unwrap_or(Value::Null)
+}
+
+#[test]
+fn cert_self_sign_posts_create_certificate_and_shows_what_was_stored() {
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+    let (ok, out, err, reqs) = cert_run(
+        "cert-self-sign",
+        cert_rest_routes(),
+        &["self-sign", "--cn", "camera.example", "--days", "10", "--alias", "client", "--key-type", "EC-P256", "--keystore", "SE0"],
+    );
+    assert!(ok, "{err}");
+    let body = sent(&reqs, "POST /config/rest/cert/v1/create_certificate ");
+    assert_eq!(body["data"]["alias"], "client");
+    assert_eq!(body["data"]["subject"], "CN=camera.example");
+    assert_eq!(body["data"]["key_type"], "EC-P256");
+    assert_eq!(body["data"]["keystore"], "SE0");
+    let valid_to = body["data"]["valid_to"].as_u64().unwrap();
+    assert!((now + 10 * 86_400..=now + 10 * 86_400 + 120).contains(&valid_to), "{valid_to} vs {now}");
+    assert!(reqs.iter().all(|r| !r.contains("certificate.cgi")), "{reqs:?}");
+    let v: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v["data"]["alias"], "client", "{out}");
+}
+
+#[test]
+fn cert_self_sign_defaults_the_alias_to_the_common_name() {
+    let (ok, _, err, reqs) = cert_run("cert-self-sign-alias", cert_rest_routes(), &["self-sign", "--cn", "camera.example"]);
+    assert!(ok, "{err}");
+    let body = sent(&reqs, "POST /config/rest/cert/v1/create_certificate ");
+    assert_eq!(body["data"]["alias"], "camera.example");
+    assert!(body["data"].get("key_type").is_none() && body["data"].get("keystore").is_none(), "{body}");
+}
+
+#[test]
+fn cert_self_sign_on_a_camera_without_the_rest_api_uses_the_legacy_call() {
+    let (ok, _, err, reqs) = cert_run(
+        "cert-self-sign-legacy",
+        vec![missing_route("/config/rest/cert/v1"), json_route("/axis-cgi/certificate/certificate.cgi", r#"{"data":{"id":"c9"}}"#)],
+        &["self-sign", "--cn", "camera.example", "--days", "30"],
+    );
+    assert!(ok, "{err}");
+    let body = sent(&reqs, "POST /axis-cgi/certificate/certificate.cgi ");
+    assert_eq!(body["method"], "generateSelfSignedCertificate");
+    assert_eq!(body["params"]["validDays"], 30);
+    assert!(reqs.iter().all(|r| !r.contains("create_certificate")), "{reqs:?}");
+}
+
+#[test]
+fn cert_csr_asks_for_the_csr_of_an_existing_certificate() {
+    let (ok, out, err, reqs) = cert_run(
+        "cert-csr",
+        cert_rest_routes(),
+        &["csr", "--alias", "client", "--cn", "camera.example", "--org", "Example, Inc.", "--country", "SE"],
+    );
+    assert!(ok, "{err}");
+    let body = sent(&reqs, "POST /config/rest/cert/v1/certificates/client/get_csr ");
+    assert_eq!(body["data"]["subject"], "CN=camera.example,O=Example\\, Inc.,C=SE");
+    let v: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v["data"]["alias"], "client", "{out}");
+}
+
+#[test]
+fn cert_csr_without_alias_explains_what_the_new_api_needs() {
+    let (ok, _, err, reqs) = cert_run("cert-csr-alias", cert_rest_routes(), &["csr", "--cn", "camera.example"]);
+    assert!(!ok);
+    assert!(err.contains("--alias") && err.contains("self-sign"), "{err}");
+    assert!(reqs.iter().all(|r| !r.starts_with("POST")), "nothing is sent: {reqs:?}");
+}
+
+#[test]
+fn cert_csr_on_a_camera_without_the_rest_api_uses_the_legacy_call() {
+    let (ok, _, err, reqs) = cert_run(
+        "cert-csr-legacy",
+        vec![missing_route("/config/rest/cert/v1"), json_route("/axis-cgi/certificate/certificate.cgi", r#"{"data":{"csr":"x"}}"#)],
+        &["csr", "--cn", "camera.example", "--country", "SE"],
+    );
+    assert!(ok, "{err}");
+    let body = sent(&reqs, "POST /axis-cgi/certificate/certificate.cgi ");
+    assert_eq!(body["method"], "generateCertificateSigningRequest");
+    assert_eq!(body["params"]["commonName"], "camera.example");
+}
+
+#[test]
+fn cert_remove_deletes_the_alias_from_the_collection_that_has_it() {
+    let (ok, out, err, reqs) = cert_run("cert-remove", cert_rest_routes(), &["remove", "--id", "client"]);
+    assert!(ok, "{err}");
+    assert_eq!(reqs.iter().filter(|r| r.starts_with("DELETE ")).collect::<Vec<_>>(), ["DELETE /config/rest/cert/v1/certificates/client "]);
+    assert!(out.contains("Certificate client removed"), "{out}");
+}
+
+#[test]
+fn cert_remove_refuses_an_alias_that_is_both_a_certificate_and_a_ca_certificate() {
+    let mut routes = cert_rest_routes();
+    routes.push(json_route("/config/rest/cert/v1/ca_certificates/client", CERT_V1_ONE));
+    let (ok, _, err, reqs) = cert_run("cert-remove-both", routes, &["remove", "--id", "client"]);
+    assert!(!ok);
+    assert!(err.contains("--kind"), "{err}");
+    assert!(reqs.iter().all(|r| !r.starts_with("DELETE")), "{reqs:?}");
+
+    let mut routes = cert_rest_routes();
+    routes.push(json_route("/config/rest/cert/v1/ca_certificates/client", CERT_V1_ONE));
+    let (ok, out, err, reqs) = cert_run("cert-remove-ca", routes, &["remove", "--id", "client", "--kind", "ca"]);
+    assert!(ok, "{err}");
+    assert_eq!(reqs.iter().filter(|r| r.starts_with("DELETE ")).collect::<Vec<_>>(), ["DELETE /config/rest/cert/v1/ca_certificates/client "]);
+    assert!(out.contains("CA certificate client removed"), "{out}");
+}
+
+#[test]
+fn cert_remove_of_an_unknown_alias_deletes_nothing() {
+    let (ok, _, err, reqs) = cert_run("cert-remove-none", cert_rest_routes(), &["remove", "--id", "nothing"]);
+    assert!(!ok);
+    assert!(err.contains("No certificate with alias 'nothing'"), "{err}");
+    assert!(reqs.iter().all(|r| !r.starts_with("DELETE")), "{reqs:?}");
+}
+
+#[test]
+fn cert_remove_on_a_camera_without_the_rest_api_uses_the_legacy_call() {
+    let (ok, _, err, reqs) = cert_run(
+        "cert-remove-legacy",
+        vec![missing_route("/config/rest/cert/v1"), json_route("/axis-cgi/certificate/certificate.cgi", r#"{"data":{}}"#)],
+        &["remove", "--id", "c9"],
+    );
+    assert!(ok, "{err}");
+    let body = sent(&reqs, "POST /axis-cgi/certificate/certificate.cgi ");
+    assert_eq!(body["method"], "removeCertificate");
+    assert_eq!(body["params"]["id"], "c9");
+}
+
+#[test]
+fn cert_self_sign_refuses_zero_days_and_sends_nothing() {
+    let (ok, _, err, reqs) = cert_run("cert-self-sign-zero", cert_rest_routes(), &["self-sign", "--cn", "camera.example", "--days", "0"]);
+    assert!(!ok);
+    assert!(err.contains("--days"), "{err}");
+    assert!(reqs.iter().all(|r| !r.starts_with("POST")), "{reqs:?}");
+}
+
+#[test]
+fn cert_remove_with_a_kind_still_checks_that_the_alias_is_there() {
+    let (ok, _, err, reqs) = cert_run("cert-remove-kind", cert_rest_routes(), &["remove", "--id", "client", "--kind", "ca"]);
+    assert!(!ok);
+    assert!(err.contains("No CA certificate with alias 'client'"), "{err}");
+    assert!(reqs.iter().all(|r| !r.starts_with("DELETE")), "{reqs:?}");
 }
