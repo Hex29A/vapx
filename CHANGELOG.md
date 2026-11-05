@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.33.0
+
+### Added
+- `vapx acap install` and `vapx acap upgrade`: install an ACAP application from a .eap package (a file or an https URL), or replace the installed one. The package's manifest.json or package.conf is read first, so vapx says whether it is an install, an upgrade (from which version to which), a reinstall or a downgrade before anything is sent; `--dry-run` stops there. The camera allows downgrades, vapx asks for `--allow-downgrade`. `upgrade` refuses an app that is not installed. Give `--eap` once per architecture and each camera gets the package that fits (`Properties.System.Architecture`), also in `vapx batch`. After the upload the listed version is checked; `--start` starts a new install. Every `Error: N` from the camera is explained (unsigned package, not compatible, vendor mismatch, another upload in progress …).
+- `vapx acap license --app NAME --key FILE` (or `--remove`) installs or removes a license key, with the camera's error codes explained.
+- `vapx acap unsigned status|on|off`: the AllowUnsigned setting (AXIS OS 11.2 and later; unsigned apps are refused by default from AXIS OS 12). `on` needs `--yes`.
+- MCP tool `install_application` (100 tools): .eap files on the server, one per architecture; `dry_run` shows the plan, otherwise it needs `confirm`.
+
 ## v0.32.1
 
 ### Fixed

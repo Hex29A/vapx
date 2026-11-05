@@ -131,7 +131,7 @@ const DESTRUCTIVE: &[&str] = &[
     "reboot_camera", "delete_audio_clip", "remove_overlay", "remove_privacy_mask", "remove_stream_profile",
     "stop_application", "restart_application", "set_capture_mode", "set_motion_config",
     "set_analytics_producers", "set_audio_settings", "export_recording", "firmware_upgrade", "param_set",
-    "disk_format", "disk_encrypt", "disk_retention",
+    "disk_format", "disk_encrypt", "disk_retention", "install_application",
 ];
 
 /// Warnings added to a tool's description, so a client (and the person behind
@@ -146,6 +146,7 @@ fn notice(name: &str) -> Option<&'static str> {
         "set_capture_mode" => "Disruptive: the camera must be rebooted for the new mode to apply.",
         "export_recording" => "Writes a file on the machine running this server.",
         "firmware_upgrade" => "Disruptive: uploads firmware and reboots the camera. Runs only with confirm set to true. Confirm with the user first.",
+        "install_application" => "Installs or replaces an application on the camera (the app with the same name is replaced and restarted; a failed upgrade removes the app until it is installed again). Runs only with confirm set to true; dry_run shows the plan. Confirm with the user first.",
         "o3c_mode" => "Changes whether the camera connects to the O3C cloud. Turning it off cuts cloud access and runs only with confirm set to true. Confirm with the user first.",
         "disk_retention" => "Changes how long recordings are kept. A new or shorter age limit makes the camera remove older recordings, so such a change runs only with confirm set to true. Check disk_status and confirm with the user first.",
         "disk_format" | "disk_encrypt" => "Destructive: erases every recording on the disk and cannot be undone. Runs only with confirm set to true. Check disk_status and confirm with the user first.",
@@ -419,7 +420,7 @@ mod tests {
         "firmware_status", "firmware_check", "firmware_upgrade", "param_get", "param_set", "imaging_get",
         "imaging_set", "fleet_health", "security_audit", "backup_params", "diff_params", "cert_list",
         "stream_urls", "selftest", "zipstream_status", "disk_status", "disk_format", "disk_encrypt",
-        "disk_retention", "o3c_status", "o3c_mode",
+        "disk_retention", "o3c_status", "o3c_mode", "install_application",
     ];
 
     #[test]

@@ -461,7 +461,7 @@ fn tools_list_has_the_write_tools_and_marks_the_disruptive_ones() {
     s.send(json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}));
     let r = s.response(2);
     let tools = r["result"]["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 99, "the 78 tools of the Python server and the 21 CLI tools");
+    assert_eq!(tools.len(), 100, "the 78 tools of the Python server and the 22 CLI tools");
     let reboot = tools.iter().find(|t| t["name"] == "reboot_camera").unwrap();
     assert_eq!(reboot["annotations"]["destructiveHint"], true, "{reboot}");
     assert_eq!(reboot["annotations"]["readOnlyHint"], false);

@@ -103,7 +103,7 @@ The `host` argument can be an IP address, hostname, or a camera name defined in 
 | `info` | Device info (model, firmware, serial, architecture) |
 | `snap` | JPEG snapshot to file (supports time-lapse) |
 | `fw` | Firmware management (status, upgrade, commit, rollback, reboot, factory-default, check) |
-| `acap` | ACAP application management (list, start, stop, restart, remove) |
+| `acap` | ACAP application management (list, start, stop, restart, remove, install/upgrade from .eap, license keys, unsigned apps) |
 | `ptz` | PTZ control (move, goto, preset, query, info) |
 | `param` | Parameter management (list, get, set) |
 | `user` | User account management (list, add, update, remove) |
@@ -178,6 +178,16 @@ vapx acap start 192.168.1.100 vdo_larod -u root -p <password>
 vapx acap stop 192.168.1.100 vdo_larod -u root -p <password>
 vapx acap restart 192.168.1.100 vdo_larod -u root -p <password>
 vapx acap remove 192.168.1.100 vdo_larod -u root -p <password>
+
+# Install or upgrade ACAP applications from a .eap (a file or an https URL)
+vapx acap install 192.168.1.100 --eap app.eap --dry-run    # says: install, upgrade 1.2 -> 1.3, reinstall or downgrade
+vapx acap install 192.168.1.100 --eap app.eap --start      # install, check the listed version, start it
+vapx acap upgrade 192.168.1.100 --eap app.eap              # only if it is already installed
+vapx acap install 192.168.1.100 --eap old.eap --allow-downgrade   # the camera allows downgrades; vapx asks for this flag
+vapx batch building_a acap upgrade --eap app_aarch64.eap --eap app_armv7hf.eap   # each camera gets its architecture
+vapx acap license 192.168.1.100 --app myapp --key license.xml     # or --remove
+vapx acap unsigned status 192.168.1.100                    # AllowUnsigned: refused by default from AXIS OS 12
+vapx acap unsigned on 192.168.1.100 --yes                  # allow unsigned apps (off to refuse them again)
 
 # PTZ control
 vapx ptz move 192.168.1.100 home -u root -p <password>
@@ -533,7 +543,7 @@ credentials on AXIS OS 9.50 and later.
 
 ### Tools
 
-99 tools: the 78 of the Python server, plus 21 for features of the CLI it never had (firmware, parameters, imaging, fleet health, audits, backups, diffs, certificates, stream URLs, self test, ZipStream, disks, O3C). "read" tools only look; "write" tools change a camera, run something on it, or write a file on the machine running the server.
+100 tools: the 78 of the Python server, plus 22 for features of the CLI it never had (firmware, parameters, imaging, fleet health, audits, backups, diffs, certificates, stream URLs, self test, ZipStream, disks, O3C, ACAP install). "read" tools only look; "write" tools change a camera, run something on it, or write a file on the machine running the server.
 
 | Tool | Access | What it does |
 |---|---|---|
@@ -584,6 +594,7 @@ credentials on AXIS OS 9.50 and later.
 | `get_users` | read | List all user accounts on a camera with their group memberships (admin, operator, viewer, ptz). |
 | `imaging_get` | read | Read the image sensor settings (brightness, contrast, exposure, WDR and others) as parameters. |
 | `imaging_set` | write | Change image sensor settings. |
+| `install_application` | write | Install or upgrade an ACAP app from a .eap on the server (one per architecture). Says install/upgrade/downgrade; a downgrade needs `allow_downgrade`; only runs with `confirm`. |
 | `list_analytics_producers` | read | List analytics metadata producers (object detection, motion, etc.) and whether they are enabled per video channel. |
 | `list_applications` | read | List all installed ACAP applications on a camera with their status (Running/Stopped/Idle), license validity, vendor, version, and resources used. |
 | `list_audio_clips` | read | List audio clips stored on a camera. |
@@ -884,7 +895,7 @@ src/
     info.rs            # vapx info — device identification
     snap.rs            # vapx snap — JPEG snapshot (+ time-lapse)
     fw.rs              # vapx fw — firmware management
-    acap.rs            # vapx acap — ACAP app management
+    acap.rs            # vapx acap — ACAP app management, install/upgrade, licenses
     ptz.rs             # vapx ptz — PTZ control
     param.rs           # vapx param — parameter management
     user.rs            # vapx user — user account management

@@ -10,6 +10,7 @@ pub mod client;
 pub mod daynight;
 pub mod device;
 pub mod discover;
+pub mod acap_install;
 pub mod disk;
 pub mod o3c;
 pub mod events;
