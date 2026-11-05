@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 
 use crate::cmd::CameraArgs;
 use crate::output::format;
-use crate::vapix::disk::{self, Job, Wait, DEFAULT_DISK};
+use crate::vapix::disk::{self, Job, Policy, Retention, Wait, DEFAULT_DISK};
 
 #[derive(Args)]
 pub struct DiskCmd {
@@ -48,6 +48,23 @@ pub struct PassphraseArgs {
 impl PassphraseArgs {
     fn read(&self) -> anyhow::Result<disk::Secret> {
         disk::secret_from(self.passphrase_file.as_deref(), &self.passphrase_env, "passphrase")
+    }
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+pub enum PolicyArg {
+    /// The camera removes the oldest recordings (after the max age, and when the disk is full)
+    Fifo,
+    /// Recordings are only removed by hand, so the disk fills up
+    None,
+}
+
+impl From<PolicyArg> for Policy {
+    fn from(p: PolicyArg) -> Self {
+        match p {
+            PolicyArg::Fifo => Policy::Fifo,
+            PolicyArg::None => Policy::None,
+        }
     }
 }
 
@@ -132,6 +149,28 @@ pub enum DiskCommands {
 
         #[command(flatten)]
         wait: WaitArgs,
+    },
+    /// Show or change how long recordings are kept. Without --max-age or --policy it only shows.
+    /// A change that can remove recordings (a new or shorter age limit) needs --yes
+    Retention {
+        #[command(flatten)]
+        cam: CameraArgs,
+
+        /// Disk id, or `all` for every disk (default: all when showing, SD_DISK when changing)
+        #[arg(long)]
+        disk: Option<String>,
+
+        /// Days to keep recordings, 0 to 7000. 0 is no age limit: the oldest go only when the disk is full
+        #[arg(long)]
+        max_age: Option<u32>,
+
+        /// Cleanup policy
+        #[arg(long, value_enum)]
+        policy: Option<PolicyArg>,
+
+        /// Allow a change that makes the camera remove recordings it keeps today
+        #[arg(short, long)]
+        yes: bool,
     },
     /// Mount a disk
     Mount {
@@ -230,6 +269,33 @@ impl DiskCmd {
                 let client = cam.client()?;
                 let result = disk::change_passphrase(&client, &id, &current, &new, wait.wait())?;
                 format::output(&result, cam.plain);
+            }
+            DiskCommands::Retention { cam, disk: id, max_age, policy, yes } => {
+                let change = Retention { max_age, policy: policy.map(Policy::from) };
+                let client = cam.client()?;
+                if change.is_empty() {
+                    let disks = disk::select(&client, id.as_deref().unwrap_or("all"))?;
+                    let shown: Vec<Value> = disks.iter().map(|d| json!({"disk": d.id, "retention": d.retention()})).collect();
+                    format::output(&json!({"disks": shown}), cam.plain);
+                    return Ok(());
+                }
+                change.check()?;
+                let disks = disk::select(&client, id.as_deref().unwrap_or(DEFAULT_DISK))?;
+                let risky: Vec<&str> = disks.iter().filter(|d| change.may_remove(d)).map(|d| d.id.as_str()).collect();
+                if !risky.is_empty() && !yes {
+                    let out = json!({
+                        "performed": false,
+                        "disks": disks.iter().map(|d| json!({"disk": d.id, "retention": d.retention(), "mayRemoveRecordings": change.may_remove(d)})).collect::<Vec<_>>(),
+                        "note": format!("Nothing was changed. The new age limit can remove recordings on {}; run again with --yes.", risky.join(", ")),
+                    });
+                    format::output(&out, cam.plain);
+                    return Ok(());
+                }
+                let mut results = Vec::new();
+                for d in &disks {
+                    results.push(disk::set_retention(&client, d, change)?);
+                }
+                format::output(&json!({"performed": true, "disks": results}), cam.plain);
             }
             DiskCommands::Mount { cam, disk: id, wait } => {
                 let client = cam.client()?;

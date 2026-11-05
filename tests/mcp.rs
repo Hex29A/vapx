@@ -461,7 +461,7 @@ fn tools_list_has_the_write_tools_and_marks_the_disruptive_ones() {
     s.send(json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}));
     let r = s.response(2);
     let tools = r["result"]["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 96, "the 78 tools of the Python server and the 18 CLI tools");
+    assert_eq!(tools.len(), 97, "the 78 tools of the Python server and the 19 CLI tools");
     let reboot = tools.iter().find(|t| t["name"] == "reboot_camera").unwrap();
     assert_eq!(reboot["annotations"]["destructiveHint"], true, "{reboot}");
     assert_eq!(reboot["annotations"]["readOnlyHint"], false);
@@ -1337,4 +1337,39 @@ fn disk_encrypt_without_a_server_passphrase_changes_nothing() {
     let msg = error_text(&mut s, 2, "disk_encrypt", json!({"camera_id": "cam1", "enable": true, "confirm": true}));
     assert!(msg.contains("VAPX_DISK_PASSPHRASE"), "{msg}");
     assert!(requests(&log).iter().all(|r| !r.starts_with("POST") && !r.contains("unmount.cgi")), "{:?}", requests(&log));
+}
+
+// ---- disk retention (#87) ----
+
+const RETENTION_LIST_NO_LIMIT: &str = r#"<root><disks><disk diskid="SD_DISK" name="" group="S0" filesystem="ext4" status="OK" cleanuppolicy="fifo" cleanupmaxage="0" locked="no" readonly="no" full="no" totalsize="2097152" freesize="1048576"/></disks></root>"#;
+const RETENTION_OK: &str = r#"<DiskPropertiesResponse SchemaVersion="1.0"><Success><GeneralSuccess /></Success></DiskPropertiesResponse>"#;
+
+#[test]
+fn disk_retention_sets_no_age_limit_through_the_disk_properties_api() {
+    let (port, log) = fake_camera(vec![
+        Route("/axis-cgi/disks/list.cgi", "text/xml", RETENTION_LIST_NO_LIMIT),
+        Route("/axis-cgi/disks/properties/setcleanupmaxage.cgi", "text/xml", RETENTION_OK),
+    ]);
+    let mut s = Stdio_::start(&config_with_camera("disk-retention", port));
+    s.initialize();
+    let v: Value =
+        serde_json::from_str(&call_text(&mut s, 2, "disk_retention", json!({"camera_id": "cam1", "max_age_days": 0}))).unwrap();
+    assert_eq!(v["disks"][0]["after"]["maxAgeDays"], 0, "{v}");
+    assert_eq!(v["disks"][0]["verified"], true);
+    let reqs = requests(&log);
+    assert!(reqs.iter().any(|r| r.contains("setcleanupmaxage.cgi") && r.contains("maxage=0") && r.contains("diskid=SD_DISK")), "{reqs:?}");
+}
+
+#[test]
+fn disk_retention_with_a_new_age_limit_needs_confirm() {
+    let (port, log) = fake_camera(vec![Route("/axis-cgi/disks/list.cgi", "text/xml", RETENTION_LIST_NO_LIMIT)]);
+    let mut s = Stdio_::start(&config_with_camera("disk-retention-confirm", port));
+    s.initialize();
+    let r = call(&mut s, 2, "disk_retention", json!({"camera_id": "cam1", "max_age_days": 7}));
+    assert_eq!(r["isError"], json!(true), "{r}");
+    assert!(requests(&log).iter().all(|q| !q.contains("setcleanup")), "{:?}", requests(&log));
+    let r = call(&mut s, 3, "disk_retention", json!({"camera_id": "cam1", "max_age_days": 7001}));
+    assert_eq!(r["isError"], json!(true), "{r}");
+    let r = call(&mut s, 4, "disk_retention", json!({"camera_id": "cam1"}));
+    assert_eq!(r["isError"], json!(true), "{r}");
 }

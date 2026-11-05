@@ -1,5 +1,5 @@
-//! Edge storage disk management: status, format, mount, unmount and SD card
-//! encryption (`disks/*.cgi`, Disk management and Disk properties APIs).
+//! Edge storage disk management: status, format, mount, unmount, SD card
+//! encryption and retention (`disks/*.cgi`, Disk management and Disk properties APIs).
 //!
 //! Format and the encryption switch erase every recording on the card, so the
 //! callers show [`impact`] first and only go on with a confirmation. The
@@ -24,6 +24,12 @@ const UNMOUNT: &str = "/axis-cgi/disks/unmount.cgi";
 const ENABLE_ENCRYPTION: &str = "/axis-cgi/disks/enablediskencryption.cgi";
 const DISABLE_ENCRYPTION: &str = "/axis-cgi/disks/disablediskencryption.cgi";
 const CHANGE_PASSPHRASE: &str = "/axis-cgi/disks/changediskpassphrase.cgi";
+// Retention (Disk properties API). These replace the Storage.Sn.CleanupMaxAge and
+// Storage.Sn.CleanupPolicyActive parameters, which AXIS OS 13 removed.
+const SET_MAX_AGE: &str = "/axis-cgi/disks/properties/setcleanupmaxage.cgi";
+const SET_POLICY: &str = "/axis-cgi/disks/properties/setcleanuppolicy.cgi";
+/// The longest max age the camera takes, in days. 0 means no age limit.
+pub const MAX_AGE_LIMIT: u32 = 7000;
 
 /// The card slot of a camera.
 pub const DEFAULT_DISK: &str = "SD_DISK";
@@ -93,6 +99,13 @@ pub struct Disk {
     pub total_kb: u64,
     pub free_kb: u64,
     pub name: String,
+    /// The parameter group of the disk (S0, S1), used by the param.cgi fallback.
+    pub group: String,
+    /// Days that unlocked recordings are kept (with the fifo policy); 0 is no age limit.
+    /// None when the camera does not report it.
+    pub max_age: Option<u32>,
+    /// `fifo` (the camera removes old recordings) or `none` (only by hand). Empty when not reported.
+    pub policy: String,
 }
 
 impl Disk {
@@ -111,7 +124,25 @@ impl Disk {
             total_kb: num("totalsize"),
             free_kb: num("freesize"),
             name: text("name"),
+            group: text("group"),
+            max_age: text("cleanupmaxage").parse::<u32>().ok(),
+            policy: text("cleanuppolicy").to_ascii_lowercase(),
         }
+    }
+
+    /// Retention as `disk status` and `disk retention` show it.
+    pub fn retention(&self) -> Value {
+        let removes = match (self.policy.as_str(), self.max_age) {
+            ("none", _) => "never: recordings must be removed by hand, so the disk fills up".to_string(),
+            ("fifo", Some(0)) => "the oldest recordings, when the disk is full".to_string(),
+            ("fifo", Some(n)) => format!("recordings older than {n} days, and the oldest sooner when the disk is full"),
+            _ => "unknown (the camera does not report it)".to_string(),
+        };
+        json!({
+            "policy": if self.policy.is_empty() { Value::Null } else { json!(self.policy) },
+            "maxAgeDays": self.max_age,
+            "removes": removes,
+        })
     }
 
     pub fn used_kb(&self) -> u64 {
@@ -211,6 +242,7 @@ pub fn status(client: &VapixClient, only: Option<&str>) -> anyhow::Result<Value>
             "usedKb": used,
             "usedPercent": percent,
             "health": {"status": d.status, "details": details},
+            "retention": d.retention(),
             "recordings": recordings,
         }));
     }
@@ -242,6 +274,150 @@ pub fn impact(client: &VapixClient, disk: &Disk) -> anyhow::Result<Value> {
         "datesComplete": recordings["datesComplete"],
         "usedGb": kb_to_gb(disk.used_kb()),
         "totalGb": kb_to_gb(disk.total_kb),
+    }))
+}
+
+// ---- retention ----
+
+/// The cleanup policy of a disk.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Policy {
+    /// The camera removes the oldest recordings: after the max age, and when the disk is full.
+    Fifo,
+    /// Recordings are only removed by hand.
+    None,
+}
+
+impl Policy {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Policy::Fifo => "fifo",
+            Policy::None => "none",
+        }
+    }
+}
+
+/// A change of retention. Unset fields stay as they are.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Retention {
+    pub max_age: Option<u32>,
+    pub policy: Option<Policy>,
+}
+
+impl Retention {
+    pub fn is_empty(&self) -> bool {
+        self.max_age.is_none() && self.policy.is_none()
+    }
+
+    /// Refuse values the camera does not take, before anything is sent.
+    pub fn check(&self) -> anyhow::Result<()> {
+        if self.is_empty() {
+            bail!("nothing to change: give a max age, a policy or both");
+        }
+        if let Some(days) = self.max_age {
+            if days > MAX_AGE_LIMIT {
+                bail!("max age {days} is out of range: 0 to {MAX_AGE_LIMIT} days (0 is no age limit)");
+            }
+        }
+        Ok(())
+    }
+
+    /// Can this change make the camera remove recordings it keeps today? That is when the
+    /// disk ends up with fifo and an age limit that is new or shorter than before.
+    pub fn may_remove(&self, disk: &Disk) -> bool {
+        let policy_after = self.policy.map(Policy::as_str).unwrap_or(disk.policy.as_str());
+        let age_after = self.max_age.or(disk.max_age);
+        if policy_after != "fifo" {
+            return false;
+        }
+        let Some(after) = age_after.filter(|d| *d > 0) else { return false };
+        let limit_before = if disk.policy == "fifo" { disk.max_age } else { None };
+        match limit_before {
+            Some(before) if before > 0 => after < before,
+            // No limit before (0, policy none or not reported): any limit is new.
+            _ => true,
+        }
+    }
+}
+
+/// The disks a retention command is about: one id, or every disk for `all`.
+pub fn select(client: &VapixClient, id: &str) -> anyhow::Result<Vec<Disk>> {
+    if id.eq_ignore_ascii_case("all") {
+        let disks = list(client)?;
+        if disks.is_empty() {
+            bail!("this camera reports no disks");
+        }
+        Ok(disks)
+    } else {
+        Ok(vec![find(client, id)?])
+    }
+}
+
+/// How a setting reached the camera.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Via {
+    DiskProperties,
+    ParamCgi,
+}
+
+/// Set one cleanup property: the Disk properties API, or, when the camera does not have
+/// it (404), the old `root.Storage.<group>.<key>` parameter.
+fn set_cleanup(client: &VapixClient, disk: &Disk, path: &str, arg: &str, value: &str, legacy_key: &str) -> anyhow::Result<Via> {
+    let query = [("schemaversion", "1"), ("diskid", disk.id.as_str()), (arg, value)];
+    match client.get_text(path, &query) {
+        Ok(body) => {
+            check_error(&body)?;
+            Ok(Via::DiskProperties)
+        }
+        Err(e) if e.to_string().contains("HTTP 404") => {
+            debug!("{path} returned 404, using param.cgi for {}", disk.id);
+            if disk.group.is_empty() {
+                bail!("the camera has no {path} and does not report a parameter group for disk {}", disk.id);
+            }
+            let key = format!("root.Storage.{}.{}", disk.group, legacy_key);
+            params::update(client, &[(key.as_str(), value)])?;
+            Ok(Via::ParamCgi)
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// Change the retention of one disk and read it back. The policy is set first, since the
+/// max age only counts with fifo.
+pub fn set_retention(client: &VapixClient, disk: &Disk, change: Retention) -> anyhow::Result<Value> {
+    change.check()?;
+    let before = disk.retention();
+    let mut via = Vec::new();
+    if let Some(policy) = change.policy {
+        via.push(set_cleanup(client, disk, SET_POLICY, "cleanuppolicy", policy.as_str(), "CleanupPolicyActive")?);
+    }
+    if let Some(days) = change.max_age {
+        let days = days.to_string();
+        via.push(set_cleanup(client, disk, SET_MAX_AGE, "maxage", &days, "CleanupMaxAge")?);
+    }
+    let after = find(client, &disk.id)?;
+    let mut checked = true;
+    if let Some(days) = change.max_age {
+        match after.max_age {
+            Some(got) if got != days => bail!("disk {}: the camera reports max age {} days after setting {}", disk.id, got, days),
+            None => checked = false,
+            _ => {}
+        }
+    }
+    if let Some(policy) = change.policy {
+        if after.policy.is_empty() {
+            checked = false;
+        } else if after.policy != policy.as_str() {
+            bail!("disk {}: the camera reports policy {} after setting {}", disk.id, after.policy, policy.as_str());
+        }
+    }
+    let api = if via.contains(&Via::ParamCgi) { "param.cgi (Storage parameters)" } else { "disk properties API" };
+    Ok(json!({
+        "disk": disk.id,
+        "before": before,
+        "after": after.retention(),
+        "via": api,
+        "verified": checked,
     }))
 }
 
@@ -605,6 +781,54 @@ mod tests {
         let wait = Wait { interval: Duration::ZERO, timeout: Duration::ZERO };
         let err = follow(|| Ok(job(JobState::Running)), wait, |_| {}).unwrap_err().to_string();
         assert!(err.contains("still running") && err.contains("goes on"), "{err}");
+    }
+
+    fn disk_with(policy: &str, max_age: Option<u32>) -> Disk {
+        let mut attrs: Map<String, Value> = serde_json::from_value(json!({
+            "diskid": "SD_DISK", "group": "S0", "filesystem": "ext4", "status": "OK", "cleanuppolicy": policy
+        }))
+        .unwrap();
+        if let Some(d) = max_age {
+            attrs.insert("cleanupmaxage".into(), json!(d.to_string()));
+        }
+        Disk::from_attrs(&attrs)
+    }
+
+    #[test]
+    fn retention_is_read_from_list_attributes() {
+        let d = disk_with("fifo", Some(30));
+        assert_eq!((d.group.as_str(), d.max_age, d.policy.as_str()), ("S0", Some(30), "fifo"));
+        assert_eq!(d.retention()["maxAgeDays"], 30);
+        assert!(d.retention()["removes"].as_str().unwrap().contains("older than 30 days"));
+        assert!(disk_with("fifo", Some(0)).retention()["removes"].as_str().unwrap().contains("when the disk is full"));
+        assert!(disk_with("none", Some(7)).retention()["removes"].as_str().unwrap().starts_with("never"));
+        assert_eq!(disk_with("", None).retention()["policy"], Value::Null);
+    }
+
+    #[test]
+    fn a_retention_change_must_change_something_and_stay_in_range() {
+        assert!(Retention::default().check().is_err());
+        assert!(Retention { max_age: Some(MAX_AGE_LIMIT + 1), policy: None }.check().is_err());
+        assert!(Retention { max_age: Some(MAX_AGE_LIMIT), policy: None }.check().is_ok());
+        assert!(Retention { max_age: Some(0), policy: None }.check().is_ok());
+        assert!(Retention { max_age: None, policy: Some(Policy::None) }.check().is_ok());
+    }
+
+    #[test]
+    fn only_a_new_or_shorter_age_limit_may_remove_recordings() {
+        let age = |d: u32| Retention { max_age: Some(d), policy: None };
+        // Longer, or no limit at all: nothing goes earlier than before.
+        assert!(!age(60).may_remove(&disk_with("fifo", Some(30))));
+        assert!(!age(0).may_remove(&disk_with("fifo", Some(30))));
+        assert!(!age(30).may_remove(&disk_with("fifo", Some(30))));
+        // Shorter, or a limit where there was none.
+        assert!(age(7).may_remove(&disk_with("fifo", Some(30))));
+        assert!(age(7).may_remove(&disk_with("fifo", Some(0))));
+        // From none to fifo turns the old limit on.
+        assert!(Retention { max_age: None, policy: Some(Policy::Fifo) }.may_remove(&disk_with("none", Some(7))));
+        assert!(!Retention { max_age: None, policy: Some(Policy::Fifo) }.may_remove(&disk_with("none", Some(0))));
+        // Policy none removes nothing.
+        assert!(!Retention { max_age: Some(1), policy: Some(Policy::None) }.may_remove(&disk_with("fifo", Some(0))));
     }
 
     #[test]

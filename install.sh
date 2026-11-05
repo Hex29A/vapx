@@ -52,7 +52,7 @@ case "$os" in
       x86_64|amd64)   target="x86_64-unknown-linux-musl" ;;
       aarch64|arm64)  target="aarch64-unknown-linux-musl" ;;
       armv7l|armv7*)  target="armv7-unknown-linux-musleabihf" ;;
-      *) die "no prebuilt binary for Linux $arch; build from source with cargo install vapx" ;;
+      *) die "no prebuilt binary for Linux $arch; build from source with: cargo install --git https://github.com/Hex29A/vapx" ;;
     esac
     ;;
   Darwin)
