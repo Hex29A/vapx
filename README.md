@@ -127,6 +127,7 @@ The `host` argument can be an IP address, hostname, or a camera name defined in 
 | `rule` | Action rule management (list, info, enable, disable, remove, templates) |
 | `storage` | Storage and SD card management (list, health, recordings, params) |
 | `disk` | SD card status, format, mount/unmount, encryption and retention (erasing commands need `--yes`) |
+| `o3c` (alias `cloud`) | O3C cloud connection: status, mode (always/oneclick/off) and the owner authentication key |
 | `health` | Fleet health check (parallel, model/firmware/latency/issues) |
 | `temp` | Temperature sensor readings |
 | `daynight` | Day/night IR-cut filter mode |
@@ -424,6 +425,19 @@ vapx completions fish > ~/.config/fish/completions/vapx.fish
 vapx mangen /usr/local/share/man/man1/
 ```
 
+### O3C (One-Click Cloud Connection)
+
+```bash
+vapx o3c status 192.168.1.100                  # mode, dispatcher or assigned to a service, proxy
+vapx o3c mode oneclick 192.168.1.100           # always | oneclick | off (off needs --yes)
+vapx o3c oak 192.168.1.100                     # serial number and owner authentication key
+vapx o3c oak 192.168.1.100 --only-oak          # just the key
+vapx batch building_a o3c oak                  # one line per camera, to register a group
+```
+
+The OAK proves ownership of the camera: keep it like a password. It is only available in the CLI, not as an MCP tool. Retrieving it needs administrator rights and direct internet access from the camera (a proxy makes it fail).
+
+
 ### Global Options
 
 | Flag | Description |
@@ -519,7 +533,7 @@ credentials on AXIS OS 9.50 and later.
 
 ### Tools
 
-97 tools: the 78 of the Python server, plus 19 for features of the CLI it never had (firmware, parameters, imaging, fleet health, audits, backups, diffs, certificates, stream URLs, self test, ZipStream, disks). "read" tools only look; "write" tools change a camera, run something on it, or write a file on the machine running the server.
+99 tools: the 78 of the Python server, plus 21 for features of the CLI it never had (firmware, parameters, imaging, fleet health, audits, backups, diffs, certificates, stream URLs, self test, ZipStream, disks, O3C). "read" tools only look; "write" tools change a camera, run something on it, or write a file on the machine running the server.
 
 | Tool | Access | What it does |
 |---|---|---|
@@ -580,6 +594,8 @@ credentials on AXIS OS 9.50 and later.
 | `list_recordings` | read | List recordings stored on the camera's edge storage (SD card or network share). |
 | `list_stream_profiles` | read | List video stream profiles — preset configurations for resolution, codec, FPS, and other streaming parameters. |
 | `list_view_areas` | read | List all view areas (virtual channels) on a camera. |
+| `o3c_mode` | write | Set when the camera connects to the O3C cloud (always, oneclick, off). Off needs `confirm`. |
+| `o3c_status` | read | O3C mode, whether the camera is assigned to a service, and proxy. |
 | `param_get` | read | Read camera parameters by key or group, e.g. |
 | `param_set` | write | Set camera parameters by explicit key. |
 | `play_audio_clip` | write | Trigger playback of an audio clip on the camera's built-in speaker. |
@@ -626,6 +642,7 @@ credentials on AXIS OS 9.50 and later.
 - `reboot_camera` sends the request once: a connection that closes while the camera goes down counts as sent.
 - `firmware_upgrade` uploads a `.bin` file from the server's disk and reboots the camera. It only runs with `confirm: true`, never factory-defaults, and commits only with `auto_commit` (which needs `wait`).
 - `disk_format` and `disk_encrypt` erase every recording on the disk. They only run with `confirm: true`, so look at `disk_status` first (it shows how many recordings the disk holds and from when). `disk_encrypt` has no passphrase parameter, because arguments pass through the assistant and its logs: the server reads the passphrase from the environment variable `VAPX_DISK_PASSPHRASE`, or from the file named by `VAPX_DISK_PASSPHRASE_FILE`. Changing the passphrase, mount and unmount are CLI-only.
+- `o3c_mode` changes whether the camera connects to the O3C cloud; `off` cuts cloud access and only runs with `confirm: true`. The owner authentication key is deliberately not a tool, because it proves ownership and arguments and results pass through the assistant and its logs: use `vapx o3c oak`.
 - `disk_retention` sets the max age (0 to 7000 days, 0 is no age limit) and the cleanup policy (`fifo` or `none`). It uses the Disk properties API, which AXIS OS 13 requires since the `Storage.Sn.Cleanup*` parameters are gone there, and falls back to those parameters on older firmware. A change that can make the camera remove recordings it keeps today (a new or shorter age limit) only runs with `confirm: true`.
 - `param_set` takes explicit keys only (no wildcards or groups, at most 50) and refuses keys under `root.Network`, `root.Users` and `root.Properties`.
 - `param_get` and `diff_params` show the values of secrets (passwords, tokens, community strings) as `[redacted]`. `backup_params` keeps them, which is why it saves a file readable only by its owner instead of returning the parameters.
@@ -891,6 +908,7 @@ src/
     rule.rs            # vapx rule — action rule management
     storage.rs         # vapx storage — SD card/edge storage management
     disk.rs            # vapx disk — SD card status, format, mount, encryption, retention
+    o3c.rs             # vapx o3c — O3C cloud connection: status, mode, OAK
     health.rs          # vapx health — fleet health check
     temp.rs            # vapx temp — temperature sensor readings
     daynight.rs        # vapx daynight — IR-cut filter mode

@@ -461,7 +461,7 @@ fn tools_list_has_the_write_tools_and_marks_the_disruptive_ones() {
     s.send(json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}));
     let r = s.response(2);
     let tools = r["result"]["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 97, "the 78 tools of the Python server and the 19 CLI tools");
+    assert_eq!(tools.len(), 99, "the 78 tools of the Python server and the 21 CLI tools");
     let reboot = tools.iter().find(|t| t["name"] == "reboot_camera").unwrap();
     assert_eq!(reboot["annotations"]["destructiveHint"], true, "{reboot}");
     assert_eq!(reboot["annotations"]["readOnlyHint"], false);
@@ -1372,4 +1372,38 @@ fn disk_retention_with_a_new_age_limit_needs_confirm() {
     assert_eq!(r["isError"], json!(true), "{r}");
     let r = call(&mut s, 4, "disk_retention", json!({"camera_id": "cam1"}));
     assert_eq!(r["isError"], json!(true), "{r}");
+}
+
+// ---- O3C (#89) ----
+
+#[test]
+fn o3c_tools_are_listed_without_an_oak_tool_and_off_needs_confirm() {
+    let mut s = Stdio_::start(&test_config("o3c-list"));
+    s.initialize();
+    s.send(json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}));
+    let r = s.response(2);
+    let names: Vec<&str> = r["result"]["tools"].as_array().unwrap().iter().filter_map(|t| t["name"].as_str()).collect();
+    assert!(names.contains(&"o3c_status") && names.contains(&"o3c_mode"), "{names:?}");
+    assert!(names.iter().all(|n| !n.contains("oak")), "the OAK must not be a tool: {names:?}");
+
+    let (port, log) = fake_camera(vec![]);
+    let mut s = Stdio_::start(&config_with_camera("o3c-off", port));
+    s.initialize();
+    let r = call(&mut s, 2, "o3c_mode", json!({"camera_id": "cam1", "mode": "off"}));
+    assert_eq!(r["isError"], json!(true), "{r}");
+    assert!(requests(&log).is_empty(), "{:?}", requests(&log));
+}
+
+#[test]
+fn o3c_status_reports_the_mode() {
+    let (port, _) = fake_camera(vec![Route(
+        "/axis-cgi/param.cgi",
+        "text/plain",
+        "root.RemoteService.Enabled=oneclick\nroot.RemoteService.ServerList=dispatchse1-st.axis.com:443\n",
+    )]);
+    let mut s = Stdio_::start(&config_with_camera("o3c-status", port));
+    s.initialize();
+    let v: Value = serde_json::from_str(&call_text(&mut s, 2, "o3c_status", json!({"camera_id": "cam1"}))).unwrap();
+    assert_eq!(v["mode"], "oneclick", "{v}");
+    assert_eq!(v["servers"]["kind"], "dispatcher");
 }

@@ -44,6 +44,8 @@ jobs:
         run: cargo test --test trust_roots
       - name: Disk command tests
         run: cargo test --test disk
+      - name: O3C command tests
+        run: cargo test --test o3c
       - name: Build
         run: cargo build --release
       - name: Clippy
@@ -53,6 +55,8 @@ jobs:
         run: cargo test --no-default-features --bin vapx
       - name: Disk command tests without the mcp feature
         run: cargo test --no-default-features --test disk
+      - name: O3C command tests without the mcp feature
+        run: cargo test --no-default-features --test o3c
       - name: Missing-feature message test
         run: cargo test --no-default-features --test no_mcp
       - name: Clippy without the mcp feature

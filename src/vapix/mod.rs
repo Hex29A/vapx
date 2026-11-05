@@ -11,6 +11,7 @@ pub mod daynight;
 pub mod device;
 pub mod discover;
 pub mod disk;
+pub mod o3c;
 pub mod events;
 pub mod firmware;
 pub mod geolocation;

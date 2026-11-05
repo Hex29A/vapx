@@ -16,12 +16,12 @@ use super::write::{exports_dir, safe_filename};
 use super::{json_out, Args, Handler, Out};
 use crate::cmd::{audit, fw, health, param_to_json};
 use crate::mcp::camera::{self, Cam};
-use crate::vapix::{certs, data_of, disk, firmware, image, params, selftest, streamurl, zipstream};
+use crate::vapix::{certs, data_of, disk, firmware, image, o3c, params, selftest, streamurl, zipstream};
 
 /// Tools in this file that do not change anything.
 pub const READ_ONLY: &[&str] = &[
     "firmware_status", "firmware_check", "param_get", "imaging_get", "fleet_health", "security_audit",
-    "diff_params", "cert_list", "stream_urls", "zipstream_status", "disk_status",
+    "diff_params", "cert_list", "stream_urls", "zipstream_status", "disk_status", "o3c_status",
 ];
 
 pub fn handlers() -> Vec<(&'static str, Handler)> {
@@ -45,6 +45,8 @@ pub fn handlers() -> Vec<(&'static str, Handler)> {
         ("disk_format", disk_format),
         ("disk_encrypt", disk_encrypt),
         ("disk_retention", disk_retention),
+        ("o3c_status", o3c_status),
+        ("o3c_mode", o3c_mode),
     ]
 }
 
@@ -402,6 +404,27 @@ fn disk_format(args: &Args) -> anyhow::Result<Vec<Out>> {
 fn server_passphrase() -> anyhow::Result<disk::Secret> {
     let file = std::env::var_os("VAPX_DISK_PASSPHRASE_FILE").map(std::path::PathBuf::from);
     disk::secret_from(file.as_deref(), "VAPX_DISK_PASSPHRASE", "passphrase")
+}
+
+// ---- O3C ----
+// The OAK is deliberately not a tool: it proves ownership of the camera and would pass
+// through the assistant and its logs. `vapx o3c oak` is the way to get it.
+
+fn o3c_status(args: &Args) -> anyhow::Result<Vec<Out>> {
+    on_camera(args, |c| o3c::status(&c.client))
+}
+
+fn o3c_mode(args: &Args) -> anyhow::Result<Vec<Out>> {
+    let mode = match args.str("mode")? {
+        "always" => o3c::Mode::Always,
+        "oneclick" => o3c::Mode::OneClick,
+        "off" => o3c::Mode::Off,
+        other => bail!("mode must be always, oneclick or off, not {other}"),
+    };
+    if mode == o3c::Mode::Off && args.opt_bool("confirm")? != Some(true) {
+        bail!("confirm must be true: turning O3C off cuts cloud access to the camera");
+    }
+    on_camera(args, |c| o3c::set_mode(&c.client, mode))
 }
 
 fn disk_retention(args: &Args) -> anyhow::Result<Vec<Out>> {

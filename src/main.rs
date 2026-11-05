@@ -102,8 +102,11 @@ pub enum Commands {
     Rule(cmd::rule::RuleCmd),
     /// Storage and SD card management
     Storage(cmd::storage::StorageCmd),
-    /// Disk (SD card) status, format, mount and encryption
+    /// Disk (SD card) status, format, mount, encryption and retention
     Disk(cmd::disk::DiskCmd),
+    /// O3C cloud connection: status, mode and the owner authentication key (OAK)
+    #[command(visible_alias = "cloud")]
+    O3c(cmd::o3c::O3cCmd),
     /// Fleet health check
     Health(cmd::health::HealthCmd),
     /// Temperature sensor readings
@@ -255,6 +258,7 @@ fn main() {
         Commands::Rule(cmd) => cmd.run(),
         Commands::Storage(cmd) => cmd.run(),
         Commands::Disk(cmd) => cmd.run(),
+        Commands::O3c(cmd) => cmd.run(),
         Commands::Health(cmd) => cmd.run(),
         Commands::Temp(cmd) => cmd.run(),
         Commands::Daynight(cmd) => cmd.run(),
