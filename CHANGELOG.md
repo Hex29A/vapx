@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.32.0
+
+### Added
+- `vapx o3c` (alias `cloud`), a command group for O3C, the One-Click Cloud Connection (#89): `status` (the mode, whether the server list still points at the Axis dispatcher or has been assigned to a service, and the proxy), `mode always|oneclick|off` (sets `root.RemoteService.Enabled` and reads it back; `off` needs `--yes`) and `oak` (the owner authentication key from `oak.cgi`, printed with the serial number since registration needs both; `--only-oak` prints just the key).
+- MCP tools `o3c_status` and `o3c_mode` (99 tools); `off` needs `confirm`. The OAK is CLI-only on purpose.
+
 ## v0.31.0
 
 ### Added

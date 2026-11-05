@@ -482,5 +482,51 @@
         "camera_id"
       ]
     }
+  },
+  {
+    "name": "o3c_status",
+    "description": "Show the O3C (One-Click Cloud Connection) state of a camera: the mode (always, oneclick or off), whether its server list still points at the Axis dispatcher or has been assigned to a service (with the service domains), and the proxy. The owner authentication key (OAK) is not available as a tool; use the CLI command vapx o3c oak.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier from list_cameras"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
+  },
+  {
+    "name": "o3c_mode",
+    "description": "Set when a camera connects to the O3C cloud: always, oneclick (after the control button is pressed) or off. Off cuts cloud access and only runs with confirm set to true. The result is read back from the camera.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier from list_cameras"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "always",
+            "oneclick",
+            "off"
+          ],
+          "description": "always, oneclick or off"
+        },
+        "confirm": {
+          "type": "boolean",
+          "description": "Needed for off"
+        }
+      },
+      "required": [
+        "camera_id",
+        "mode"
+      ]
+    }
   }
 ]

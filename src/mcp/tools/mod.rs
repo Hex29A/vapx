@@ -146,6 +146,7 @@ fn notice(name: &str) -> Option<&'static str> {
         "set_capture_mode" => "Disruptive: the camera must be rebooted for the new mode to apply.",
         "export_recording" => "Writes a file on the machine running this server.",
         "firmware_upgrade" => "Disruptive: uploads firmware and reboots the camera. Runs only with confirm set to true. Confirm with the user first.",
+        "o3c_mode" => "Changes whether the camera connects to the O3C cloud. Turning it off cuts cloud access and runs only with confirm set to true. Confirm with the user first.",
         "disk_retention" => "Changes how long recordings are kept. A new or shorter age limit makes the camera remove older recordings, so such a change runs only with confirm set to true. Check disk_status and confirm with the user first.",
         "disk_format" | "disk_encrypt" => "Destructive: erases every recording on the disk and cannot be undone. Runs only with confirm set to true. Check disk_status and confirm with the user first.",
         "param_set" => "Changes camera configuration. Keys under root.Network, root.Users and root.Properties are refused. Confirm with the user first.",
@@ -418,7 +419,7 @@ mod tests {
         "firmware_status", "firmware_check", "firmware_upgrade", "param_get", "param_set", "imaging_get",
         "imaging_set", "fleet_health", "security_audit", "backup_params", "diff_params", "cert_list",
         "stream_urls", "selftest", "zipstream_status", "disk_status", "disk_format", "disk_encrypt",
-        "disk_retention",
+        "disk_retention", "o3c_status", "o3c_mode",
     ];
 
     #[test]
