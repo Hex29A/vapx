@@ -44,6 +44,7 @@ pub fn handlers() -> Vec<(&'static str, Handler)> {
         ("disk_status", disk_status),
         ("disk_format", disk_format),
         ("disk_encrypt", disk_encrypt),
+        ("disk_retention", disk_retention),
     ]
 }
 
@@ -401,6 +402,42 @@ fn disk_format(args: &Args) -> anyhow::Result<Vec<Out>> {
 fn server_passphrase() -> anyhow::Result<disk::Secret> {
     let file = std::env::var_os("VAPX_DISK_PASSPHRASE_FILE").map(std::path::PathBuf::from);
     disk::secret_from(file.as_deref(), "VAPX_DISK_PASSPHRASE", "passphrase")
+}
+
+fn disk_retention(args: &Args) -> anyhow::Result<Vec<Out>> {
+    let max_age = match args.opt_i64("max_age_days")? {
+        Some(d) if !(0..=disk::MAX_AGE_LIMIT as i64).contains(&d) => {
+            bail!("max_age_days {d} is out of range: 0 to {} (0 is no age limit)", disk::MAX_AGE_LIMIT)
+        }
+        Some(d) => Some(d as u32),
+        None => None,
+    };
+    let policy = match args.opt_str("policy")? {
+        None | Some("") => None,
+        Some("fifo") => Some(disk::Policy::Fifo),
+        Some("none") => Some(disk::Policy::None),
+        Some(other) => bail!("policy must be fifo or none, not {other}"),
+    };
+    let change = disk::Retention { max_age, policy };
+    change.check()?;
+    let id = disk_id(args)?;
+    let confirmed = args.opt_bool("confirm")? == Some(true);
+    on_camera(args, |c| {
+        let disks = disk::select(&c.client, id)?;
+        let risky: Vec<&str> = disks.iter().filter(|d| change.may_remove(d)).map(|d| d.id.as_str()).collect();
+        if !risky.is_empty() && !confirmed {
+            bail!(
+                "the new age limit can remove recordings on {} (now: {}); look at disk_status, ask the user, and call again with confirm set to true",
+                risky.join(", "),
+                disks.iter().map(|d| format!("{} {}", d.id, d.retention()["removes"].as_str().unwrap_or(""))).collect::<Vec<_>>().join("; ")
+            );
+        }
+        let mut results = Vec::new();
+        for d in &disks {
+            results.push(disk::set_retention(&c.client, d, change)?);
+        }
+        Ok(serde_json::json!({"disks": results}))
+    })
 }
 
 fn disk_encrypt(args: &Args) -> anyhow::Result<Vec<Out>> {

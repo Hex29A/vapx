@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.31.0
+
+### Added
+- `vapx disk retention` shows and sets how long recordings are kept on a disk (#87): `--max-age` (0 to 7000 days, 0 is no age limit) and `--policy fifo|none`, for one disk or `--disk all`. It uses the Disk properties API (`disks/properties/setcleanupmaxage.cgi` and `setcleanuppolicy.cgi`), which AXIS OS 13 requires because the `Storage.Sn.CleanupMaxAge` and `CleanupPolicyActive` parameters were removed there, and falls back to those parameters on firmware without the API. The result is read back from the camera. A change that can remove recordings the camera keeps today (a new or shorter age limit) needs `--yes`.
+- `vapx disk status` shows each disk's retention.
+- MCP tool `disk_retention` (97 tools); a new or shorter age limit needs `confirm`.
+
 ## v0.30.0
 
 ### Added

@@ -477,3 +477,166 @@ fn a_camera_error_answer_becomes_an_error() {
     assert!(!r.ok);
     assert!(r.err.contains("Disk is in use"), "{}", r.err);
 }
+
+// ---- retention (#87) ----
+
+/// A disk list with retention attributes; `policy`/`max_age` are what the camera reports.
+fn retention_xml(policy: &str, max_age: u32) -> String {
+    format!(
+        r#"<root><disks><disk diskid="SD_DISK" name="" group="S0" filesystem="ext4" status="OK" cleanuppolicy="{policy}" cleanupmaxage="{max_age}" locked="no" readonly="no" full="no" totalsize="2097152" freesize="1048576"/><disk diskid="NetworkShare" name="" group="S1" filesystem="cifs" status="disconnected" cleanuppolicy="{policy}" cleanupmaxage="{max_age}" totalsize="0" freesize="0"/></disks></root>"#
+    )
+}
+
+const PROPS_OK: &str = r#"<?xml version="1.0" encoding="UTF-8" ?><DiskPropertiesResponse xmlns="http://www.axis.com/vapix/http_cgi/disks/properties1" SchemaVersion="1.0"><Success><GeneralSuccess /></Success></DiskPropertiesResponse>"#;
+const PROPS_ERROR: &str = r#"<?xml version="1.0" encoding="UTF-8" ?><DiskPropertiesResponse SchemaVersion="1.0"><Error><GeneralError><ErrorCode>20</ErrorCode><ErrorDescription>Invalid request.</ErrorDescription></GeneralError></Error></DiskPropertiesResponse>"#;
+
+#[test]
+fn retention_without_a_change_shows_every_disk_and_sends_nothing_else() {
+    let list = retention_xml("fifo", 30);
+    let r = run("ret-show", vec![route("/axis-cgi/disks/list.cgi", &[&list])], &[], &["retention"]);
+    assert!(r.ok, "{}", r.err);
+    let v = r.json();
+    let disks = v["data"]["disks"].as_array().unwrap();
+    assert_eq!(disks.len(), 2, "{v}");
+    assert_eq!(disks[0]["retention"]["maxAgeDays"], 30);
+    assert_eq!(disks[0]["retention"]["policy"], "fifo");
+    assert!(r.reqs.iter().all(|q| q.contains("/disks/list.cgi")), "{:?}", r.reqs);
+}
+
+#[test]
+fn status_shows_retention() {
+    let list = retention_xml("fifo", 0);
+    let r = run(
+        "ret-status",
+        vec![route("/axis-cgi/disks/list.cgi", &[&list]), route("/axis-cgi/record/list.cgi", &[RECORDINGS])],
+        &[],
+        &["status", "--disk", "SD_DISK"],
+    );
+    assert!(r.ok, "{}", r.err);
+    let d = &r.json()["data"]["disks"][0];
+    assert_eq!(d["retention"]["maxAgeDays"], 0);
+    assert!(d["retention"]["removes"].as_str().unwrap().contains("when the disk is full"), "{d}");
+}
+
+#[test]
+fn no_age_limit_goes_through_the_disk_properties_api_and_is_read_back() {
+    let (before, after) = (retention_xml("fifo", 30), retention_xml("fifo", 0));
+    let r = run(
+        "ret-set",
+        vec![
+            route("/axis-cgi/disks/list.cgi", &[&before, &after]),
+            route("/axis-cgi/disks/properties/setcleanupmaxage.cgi", &[PROPS_OK]),
+        ],
+        &[],
+        &["retention", "--max-age", "0"],
+    );
+    assert!(r.ok, "{}", r.err);
+    let v = r.json();
+    let d = &v["data"]["disks"][0];
+    assert_eq!(v["data"]["performed"], true);
+    assert_eq!(d["disk"], "SD_DISK");
+    assert_eq!(d["after"]["maxAgeDays"], 0);
+    assert_eq!(d["verified"], true);
+    assert_eq!(d["via"], "disk properties API");
+    let set = r.hits("GET /axis-cgi/disks/properties/setcleanupmaxage.cgi");
+    assert_eq!(set.len(), 1, "{:?}", r.reqs);
+    let t = target_of(set[0]);
+    assert!(t.contains("schemaversion=1") && t.contains("diskid=SD_DISK") && t.contains("maxage=0"), "{t}");
+    assert!(r.hits("GET /axis-cgi/param.cgi").is_empty(), "{:?}", r.reqs);
+}
+
+#[test]
+fn all_disks_get_the_policy_before_the_max_age() {
+    let (before, after) = (retention_xml("none", 0), retention_xml("fifo", 0));
+    let r = run(
+        "ret-all",
+        vec![
+            route("/axis-cgi/disks/list.cgi", &[&before, &after]),
+            route("/axis-cgi/disks/properties/setcleanuppolicy.cgi", &[PROPS_OK]),
+            route("/axis-cgi/disks/properties/setcleanupmaxage.cgi", &[PROPS_OK]),
+        ],
+        &[],
+        &["retention", "--disk", "all", "--policy", "fifo", "--max-age", "0"],
+    );
+    assert!(r.ok, "{}", r.err);
+    assert_eq!(r.json()["data"]["disks"].as_array().unwrap().len(), 2);
+    assert_eq!(r.hits("GET /axis-cgi/disks/properties/setcleanupmaxage.cgi").len(), 2, "{:?}", r.reqs);
+    assert!(r.at("GET /axis-cgi/disks/properties/setcleanuppolicy.cgi") < r.at("GET /axis-cgi/disks/properties/setcleanupmaxage.cgi"));
+    assert!(r.reqs.iter().any(|q| q.contains("setcleanuppolicy.cgi") && q.contains("diskid=NetworkShare") && q.contains("cleanuppolicy=fifo")));
+}
+
+#[test]
+fn without_the_disk_properties_api_the_storage_parameter_is_set() {
+    let (before, after) = (retention_xml("fifo", 181), retention_xml("fifo", 0));
+    let r = run(
+        "ret-legacy",
+        vec![route("/axis-cgi/disks/list.cgi", &[&before, &after]), route("/axis-cgi/param.cgi", &["OK"])],
+        &[],
+        &["retention", "--max-age", "0"],
+    );
+    assert!(r.ok, "{}", r.err);
+    let d = &r.json()["data"]["disks"][0];
+    assert_eq!(d["via"], "param.cgi (Storage parameters)");
+    let set = r.hits("GET /axis-cgi/param.cgi");
+    assert_eq!(set.len(), 1, "{:?}", r.reqs);
+    let t = target_of(set[0]);
+    assert!(t.contains("action=update") && t.contains("root.Storage.S0.CleanupMaxAge=0"), "{t}");
+}
+
+#[test]
+fn a_shorter_age_limit_needs_yes_and_sends_nothing_without_it() {
+    let list = retention_xml("fifo", 0);
+    let r = run("ret-shorter", vec![route("/axis-cgi/disks/list.cgi", &[&list])], &[], &["retention", "--max-age", "7"]);
+    assert!(r.ok, "{}", r.err);
+    let v = r.json();
+    assert_eq!(v["data"]["performed"], false, "{v}");
+    assert_eq!(v["data"]["disks"][0]["mayRemoveRecordings"], true);
+    assert!(r.hits("GET /axis-cgi/disks/properties").is_empty() && r.hits("GET /axis-cgi/param.cgi").is_empty(), "{:?}", r.reqs);
+
+    let after = retention_xml("fifo", 7);
+    let r = run(
+        "ret-shorter-yes",
+        vec![
+            route("/axis-cgi/disks/list.cgi", &[&list, &after]),
+            route("/axis-cgi/disks/properties/setcleanupmaxage.cgi", &[PROPS_OK]),
+        ],
+        &[],
+        &["retention", "--max-age", "7", "--yes"],
+    );
+    assert!(r.ok, "{}", r.err);
+    assert_eq!(r.json()["data"]["disks"][0]["after"]["maxAgeDays"], 7);
+}
+
+#[test]
+fn an_out_of_range_max_age_is_refused_before_anything_is_sent() {
+    let r = run("ret-range", vec![], &[], &["retention", "--max-age", "7001"]);
+    assert!(!r.ok);
+    assert!(r.err.contains("0 to 7000"), "{}", r.err);
+    assert!(r.reqs.iter().all(|q| !q.contains("setcleanup") && !q.contains("param.cgi")), "{:?}", r.reqs);
+}
+
+#[test]
+fn an_error_answer_from_the_camera_stops_with_its_description() {
+    let list = retention_xml("fifo", 30);
+    let r = run(
+        "ret-error",
+        vec![route("/axis-cgi/disks/list.cgi", &[&list]), route("/axis-cgi/disks/properties/setcleanupmaxage.cgi", &[PROPS_ERROR])],
+        &[],
+        &["retention", "--max-age", "60"],
+    );
+    assert!(!r.ok);
+    assert!(r.err.contains("Invalid request"), "{}", r.err);
+}
+
+#[test]
+fn a_value_the_camera_does_not_keep_is_reported_as_an_error() {
+    let list = retention_xml("fifo", 30);
+    let r = run(
+        "ret-mismatch",
+        vec![route("/axis-cgi/disks/list.cgi", &[&list]), route("/axis-cgi/disks/properties/setcleanupmaxage.cgi", &[PROPS_OK])],
+        &[],
+        &["retention", "--max-age", "60"],
+    );
+    assert!(!r.ok);
+    assert!(r.err.contains("reports max age 30"), "{}", r.err);
+}

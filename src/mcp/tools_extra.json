@@ -443,5 +443,44 @@
         "confirm"
       ]
     }
+  },
+  {
+    "name": "disk_retention",
+    "description": "Change how long a camera keeps recordings on a disk: the max age in days (0 is no age limit, so the oldest recordings go only when the disk is full) and the cleanup policy (fifo: the camera removes old recordings; none: only by hand, so the disk fills up). Uses the Disk properties API (AXIS OS 13 and later) and falls back to the Storage parameters on older firmware, then reads the result back. disk_status shows the current retention.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier from list_cameras"
+        },
+        "disk_id": {
+          "type": "string",
+          "description": "Disk id, or all for every disk. Default SD_DISK (the card)",
+          "default": "SD_DISK"
+        },
+        "max_age_days": {
+          "type": "integer",
+          "description": "Days to keep recordings; 0 is no age limit",
+          "minimum": 0,
+          "maximum": 7000
+        },
+        "policy": {
+          "type": "string",
+          "enum": [
+            "fifo",
+            "none"
+          ],
+          "description": "Cleanup policy"
+        },
+        "confirm": {
+          "type": "boolean",
+          "description": "Needed when the change can remove recordings (a new or shorter age limit)"
+        }
+      },
+      "required": [
+        "camera_id"
+      ]
+    }
   }
 ]
