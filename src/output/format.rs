@@ -54,10 +54,20 @@ fn apply_filter(data: &Value) -> Value {
 /// Output a successful result wrapped in a status envelope.
 /// `{"status":"ok","data":...}`
 pub fn ok(data: &impl Serialize) {
+    ok_as(output_format(), data);
+}
+
+/// The global output format (json, table, csv, yaml).
+pub fn current_format() -> &'static str {
+    output_format()
+}
+
+/// Like [`ok`], in the given format instead of the global one.
+pub fn ok_as(format: &str, data: &impl Serialize) {
     let raw = serde_json::to_value(data).unwrap();
     let filtered = apply_filter(&raw);
 
-    match output_format() {
+    match format {
         "table" => {
             print_table(&filtered);
         }
@@ -282,4 +292,35 @@ fn csv_escape(s: &str) -> String {
     } else {
         s.to_string()
     }
+}
+
+/// Rows with fixed columns, as a table or CSV. Used where the column order matters
+/// (serde_json objects do not keep their key order).
+pub fn print_rows(format: &str, headers: &[String], rows: &[Vec<String>]) {
+    if format == "csv" {
+        println!("{}", headers.iter().map(|h| csv_escape(h)).collect::<Vec<_>>().join(","));
+        for row in rows {
+            println!("{}", row.iter().map(|c| csv_escape(c)).collect::<Vec<_>>().join(","));
+        }
+        return;
+    }
+    let mut widths: Vec<usize> = headers.iter().map(|h| h.len()).collect();
+    for row in rows {
+        for (i, c) in row.iter().enumerate() {
+            widths[i] = widths[i].max(c.len());
+        }
+    }
+    let line = |cells: Vec<String>| {
+        cells.iter().enumerate().map(|(i, c)| format!("{:<w$}", c, w = widths[i])).collect::<Vec<_>>().join("  ").trim_end().to_string()
+    };
+    println!("{}", line(headers.iter().map(|h| h.to_uppercase()).collect()));
+    println!("{}", widths.iter().map(|w| "-".repeat(*w)).collect::<Vec<_>>().join("  "));
+    for row in rows {
+        println!("{}", line(row.clone()));
+    }
+}
+
+/// A value as one table or CSV cell.
+pub fn cell(value: &Value) -> String {
+    value_to_string(value)
 }
