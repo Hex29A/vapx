@@ -17,6 +17,8 @@ body{margin:0;min-height:100vh;display:flex;align-items:flex-start;justify-conte
 main{width:100%;max-width:560px}
 header{display:flex;align-items:center;gap:12px;margin-bottom:6px}
 header .logo{width:44px;height:32px}
+header .ver{align-self:center;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:1px 8px;border:1px solid var(--line);border-radius:999px;background:var(--code);color:var(--mute);text-decoration:none}
+header .ver:hover{color:var(--accent);border-color:var(--accent)}
 header .pages{margin-left:auto;display:flex;gap:4px}
 header .pages a{font-size:13px;padding:5px 12px;border-radius:6px;color:var(--mute);text-decoration:none;border:1px solid transparent}
 header .pages a:hover{color:var(--fg)}
@@ -60,7 +62,7 @@ p.lede code{font:14px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 </head>
 <body>
 <main>
-  <header><svg class="logo" viewBox="0 6 48 34" aria-hidden="true"><path d="M6 20 H42 A18 18 0 0 1 6 20 Z" fill="currentColor"/><rect x="6" y="12" width="36" height="5" rx="2.5" fill="currentColor"/><circle cx="24" cy="25" r="5" fill="var(--accent)"/></svg><h1>vapx</h1>
+  <header><svg class="logo" viewBox="0 6 48 34" aria-hidden="true"><path d="M6 20 H42 A18 18 0 0 1 6 20 Z" fill="currentColor"/><rect x="6" y="12" width="36" height="5" rx="2.5" fill="currentColor"/><circle cx="24" cy="25" r="5" fill="var(--accent)"/></svg><h1>vapx</h1><a class="ver" href="https://github.com/Hex29A/vapx/releases/latest" title="Latest release" hidden></a>
     <nav class="pages" aria-label="Pages"><a href="/">CLI</a><a href="/mcp" aria-current="page">MCP</a></nav></header>
   <p class="lede">Let an AI assistant look at and operate your Axis cameras. <code>vapx mcp</code> is a Model Context Protocol server built into vapx; it reads the same <code>cameras.yaml</code> as the command line, so there is nothing more to configure.</p>
 
