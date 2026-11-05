@@ -432,7 +432,7 @@ vapx o3c status 192.168.1.100                  # mode, dispatcher or assigned to
 vapx o3c mode oneclick 192.168.1.100           # always | oneclick | off (off needs --yes)
 vapx o3c oak 192.168.1.100                     # serial number and owner authentication key
 vapx o3c oak 192.168.1.100 --only-oak          # just the key
-vapx batch building_a o3c oak                  # one line per camera, to register a group
+vapx batch building_a o3c oak --format csv     # serial and OAK, one row per camera, to register a group
 ```
 
 The OAK proves ownership of the camera: keep it like a password. It is only available in the CLI, not as an MCP tool. Retrieving it needs administrator rights and direct internet access from the camera (a proxy makes it fail).

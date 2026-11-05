@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.32.1
+
+### Fixed
+- `vapx batch` ignored `--format csv` and `--format table`: the result was always the JSON envelope, and a `--format` after the command went to each camera instead of to the batch. Now `--format` works wherever it is given, every camera is asked for JSON, and csv/table give one row per camera (`camera`, `success`, the fields of the answer flattened to dotted columns, `error`). Results come in the order the cameras were given.
+
 ## v0.32.0
 
 ### Added
