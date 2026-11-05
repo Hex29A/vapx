@@ -528,5 +528,53 @@
         "mode"
       ]
     }
+  },
+  {
+    "name": "install_application",
+    "description": "Install an ACAP application from a .eap file on the server, or replace the installed app with the same name (upgrade). The package is read first: the result says whether it is an install, upgrade, reinstall or downgrade, and a downgrade needs allow_downgrade. Give one file per architecture and the camera gets the one that fits. The camera keeps the app's data; a new install is not started unless start is true. Unsigned packages are refused from AXIS OS 12 unless the camera allows them (CLI: vapx acap unsigned).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "type": "string",
+          "description": "Camera identifier from list_cameras"
+        },
+        "file_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": ".eap files on the machine running this server, one per architecture"
+        },
+        "allow_downgrade": {
+          "type": "boolean",
+          "description": "Install even if the package is older than the installed version",
+          "default": false
+        },
+        "upgrade_only": {
+          "type": "boolean",
+          "description": "Only replace an installed app",
+          "default": false
+        },
+        "start": {
+          "type": "boolean",
+          "description": "Start the app afterwards if it is not running",
+          "default": false
+        },
+        "dry_run": {
+          "type": "boolean",
+          "description": "Show the plan without changing anything",
+          "default": false
+        },
+        "confirm": {
+          "type": "boolean",
+          "description": "Must be true to install (not needed with dry_run)"
+        }
+      },
+      "required": [
+        "camera_id",
+        "file_paths"
+      ]
+    }
   }
 ]

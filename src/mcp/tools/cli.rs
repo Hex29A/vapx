@@ -16,7 +16,7 @@ use super::write::{exports_dir, safe_filename};
 use super::{json_out, Args, Handler, Out};
 use crate::cmd::{audit, fw, health, param_to_json};
 use crate::mcp::camera::{self, Cam};
-use crate::vapix::{certs, data_of, disk, firmware, image, o3c, params, selftest, streamurl, zipstream};
+use crate::vapix::{acap_install, certs, data_of, disk, firmware, image, o3c, params, selftest, streamurl, zipstream};
 
 /// Tools in this file that do not change anything.
 pub const READ_ONLY: &[&str] = &[
@@ -47,6 +47,7 @@ pub fn handlers() -> Vec<(&'static str, Handler)> {
         ("disk_retention", disk_retention),
         ("o3c_status", o3c_status),
         ("o3c_mode", o3c_mode),
+        ("install_application", install_application),
     ]
 }
 
@@ -404,6 +405,39 @@ fn disk_format(args: &Args) -> anyhow::Result<Vec<Out>> {
 fn server_passphrase() -> anyhow::Result<disk::Secret> {
     let file = std::env::var_os("VAPX_DISK_PASSPHRASE_FILE").map(std::path::PathBuf::from);
     disk::secret_from(file.as_deref(), "VAPX_DISK_PASSPHRASE", "passphrase")
+}
+
+// ---- ACAP install ----
+
+fn install_application(args: &Args) -> anyhow::Result<Vec<Out>> {
+    let dry_run = args.opt_bool("dry_run")?.unwrap_or(false);
+    if !dry_run && args.opt_bool("confirm")? != Some(true) {
+        bail!("confirm must be true (or use dry_run): installing replaces the app with the same name and restarts it");
+    }
+    let mut paths: Vec<String> = Vec::new();
+    if let Some(Value::Array(list)) = args.0.get("file_paths") {
+        paths.extend(list.iter().filter_map(Value::as_str).map(String::from));
+    }
+    if paths.is_empty() {
+        bail!("file_paths must list at least one .eap file on the server");
+    }
+    for p in &paths {
+        if !p.to_ascii_lowercase().ends_with(".eap") {
+            bail!("{p} is not a .eap file");
+        }
+        if p.contains("://") {
+            bail!("{p}: file_paths are files on the server, not URLs");
+        }
+    }
+    let loaded = paths.iter().map(|p| acap_install::load(p)).collect::<anyhow::Result<Vec<_>>>()?;
+    let opts = acap_install::Options {
+        allow_downgrade: args.opt_bool("allow_downgrade")?.unwrap_or(false),
+        upgrade_only: args.opt_bool("upgrade_only")?.unwrap_or(false),
+        start: args.opt_bool("start")?.unwrap_or(false),
+        dry_run,
+    };
+    let cam = args.camera_for_firmware()?;
+    Ok(json_out(&acap_install::install(&cam.client, &loaded, opts)?))
 }
 
 // ---- O3C ----
