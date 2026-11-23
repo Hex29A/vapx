@@ -39,6 +39,8 @@ pub mod streamurl;
 pub mod system;
 pub mod systemready;
 pub mod temperature;
+#[cfg(test)]
+pub mod testserver;
 pub mod time;
 pub mod users;
 pub mod viewarea;

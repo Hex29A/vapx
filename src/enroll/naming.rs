@@ -11,7 +11,7 @@ const SERIAL_TAIL: usize = 6;
 /// Turn a product name into a config key fragment.
 ///
 /// `ProdNbr` is free text and really does contain spaces — "C Cube LW" is one
-/// of Martin's cameras — so this lowercases, replaces any run of non
+/// of the supported models — so this lowercases, replaces any run of non
 /// alphanumeric characters with a single dash, and trims dashes off the ends.
 pub fn slugify(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -95,7 +95,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn real_cameras_from_martins_fleet() {
+    fn real_camera_models() {
         // Model and serial read off the actual devices.
         assert_eq!(derive("M3045-V", "000000000002"), "m3045-v-000002");
         assert_eq!(derive("M3128-LVE", "000000000003"), "m3128-lve-000003");

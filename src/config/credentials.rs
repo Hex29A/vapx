@@ -4,7 +4,8 @@ use tracing::debug;
 
 use crate::config::cameras::load_cameras;
 
-#[derive(Debug, Clone)]
+// No `Debug`: the struct holds the password, and a stray `{:?}` would print it.
+#[derive(Clone)]
 #[allow(dead_code)]
 pub struct Credentials {
     pub user: String,

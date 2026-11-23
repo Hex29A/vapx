@@ -1,7 +1,7 @@
 use anyhow::{bail, Context};
 use serde_json::Value;
 use std::time::Duration;
-use tracing::{debug, trace, warn};
+use tracing::{debug, warn};
 
 use crate::config::credentials::Credentials;
 use crate::vapix::auth::{probe_auth_header, request_with_auth, request_with_preemptive_auth};
@@ -52,7 +52,6 @@ fn parse_vapix_json(resp: reqwest::blocking::Response) -> anyhow::Result<Value> 
     }
 
     let json: Value = resp.json().context("Failed to parse JSON response")?;
-    trace!("Response: {}", json);
 
     if let Some(error) = json.get("error") {
         let code = error.get("code").and_then(|c| c.as_i64()).unwrap_or(0);
@@ -176,7 +175,8 @@ impl VapixClient {
         let url = format!("{}{}", self.base_url, path);
         let body_bytes = serde_json::to_vec(body)?;
 
-        debug!("POST {} body={}", url, body);
+        // The body is never logged: it can carry a password (MQTT, users).
+        debug!("POST {}", path);
 
         let resp = self.request_with_retry("POST", &url, Some(&body_bytes), Some("application/json"))?;
         parse_vapix_json(resp)
@@ -193,7 +193,7 @@ impl VapixClient {
         let url = format!("{}{}", self.base_url, path);
         let body_bytes = serde_json::to_vec(body)?;
 
-        debug!("POST (no retry) {} body={}", url, body);
+        debug!("POST (no retry) {}", path);
 
         let result = request_with_auth(
             &self.inner,
@@ -227,7 +227,7 @@ impl VapixClient {
         let url = format!("{}{}", self.base_url, path);
         let body_bytes = body.map(serde_json::to_vec).transpose()?;
 
-        debug!("{} {} (JSON body: {})", method, url, body_bytes.is_some());
+        debug!("{} {} (JSON body: {})", method, path, body_bytes.is_some());
 
         let resp = self.request_with_retry(
             method,
@@ -270,7 +270,12 @@ impl VapixClient {
             url = format!("{}?{}", url, query.join("&"));
         }
 
-        debug!("GET {}", url);
+        // Path and parameter names only: the values can be secrets.
+        debug!(
+            "GET {} (params: {})",
+            path,
+            params.iter().map(|(k, _)| *k).collect::<Vec<_>>().join(",")
+        );
 
         let resp = self.request_with_retry("GET", &url, None, None)?;
 
@@ -358,7 +363,7 @@ impl VapixClient {
         // Log the keys only — never the values.
         debug!(
             "POST {} (form fields: {})",
-            url,
+            path,
             params.iter().map(|(k, _)| *k).collect::<Vec<_>>().join(",")
         );
 
@@ -422,7 +427,6 @@ impl VapixClient {
         }
 
         let json: Value = resp.json().context("Failed to parse JSON response")?;
-        trace!("Response: {}", json);
 
         if let Some(error) = json.get("error") {
             let code = error.get("code").and_then(|c| c.as_i64()).unwrap_or(0);
@@ -497,7 +501,6 @@ impl VapixClient {
         }
 
         let json: Value = resp.json().context("Failed to parse JSON response")?;
-        trace!("Response: {}", json);
 
         if let Some(error) = json.get("error") {
             let code = error.get("code").and_then(|c| c.as_i64()).unwrap_or(0);
@@ -549,7 +552,7 @@ impl VapixClient {
 
         let content_type = format!("multipart/form-data; boundary={}", boundary);
 
-        debug!("POST multipart {} ({} bytes, field={})", url, data.len(), field_name);
+        debug!("POST multipart {} ({} bytes, field={})", path, data.len(), field_name);
 
         let resp = request_with_preemptive_auth(
             &self.inner,
@@ -632,5 +635,52 @@ mod tests {
     fn test_encode_value_escapes_reserved() {
         assert_eq!(encode_value("a b&c=d"), "a%20b%26c%3Dd");
     }
-}
 
+    // --- logging must not leak secrets (verbosity -vv / -vvv) ---
+
+    use crate::vapix::testserver::{capture_logs, Reply, TestServer};
+
+    #[test]
+    fn post_json_does_not_log_the_request_body() {
+        let server = TestServer::start(|_| Reply::Json(200, r#"{"data":{"field":"from-camera"}}"#));
+        let client = server.client();
+        let mut result = None;
+        let logs = capture_logs(|| {
+            result = Some(client.post_json(
+                "/mqtt/client.cgi",
+                &serde_json::json!({"field": "needle-mqtt-value"}),
+            ));
+        });
+        assert!(result.unwrap().is_ok());
+        // The body did reach the camera ...
+        assert!(server.requests().iter().any(|r| r.contains("needle-mqtt-value")));
+        // ... but is nowhere in the logs, nor is the response.
+        assert!(!logs.contains("needle-mqtt-value"), "request body leaked: {logs}");
+        assert!(!logs.contains("from-camera"), "response leaked: {logs}");
+        assert!(logs.contains("/mqtt/client.cgi"), "path should still be logged: {logs}");
+    }
+
+    #[test]
+    fn post_json_once_and_rest_json_do_not_log_the_body() {
+        let server = TestServer::start(|_| Reply::Json(200, r#"{"status":"success","data":{"token":"tok-123"}}"#));
+        let client = server.client();
+        let body = serde_json::json!({"field": "needle-rest-value"});
+        let logs = capture_logs(|| {
+            let _ = client.post_json_once("/axis-cgi/x.cgi", &body);
+            let _ = client.rest_json("PUT", "/config/rest/y", Some(&body));
+        });
+        assert!(!logs.contains("needle-rest-value"), "request body leaked: {logs}");
+        assert!(!logs.contains("tok-123"), "response leaked: {logs}");
+    }
+
+    #[test]
+    fn get_logs_parameter_names_but_not_values() {
+        let server = TestServer::start(|_| Reply::Text(200, "ok"));
+        let client = server.client();
+        let logs = capture_logs(|| {
+            let _ = client.get("/axis-cgi/param.cgi", &[("action", "update"), ("root.Pass", "needle-get-value")]);
+        });
+        assert!(!logs.contains("needle-get-value"), "query value leaked: {logs}");
+        assert!(logs.contains("root.Pass"), "parameter names should still be logged: {logs}");
+    }
+}
