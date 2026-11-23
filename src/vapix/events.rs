@@ -55,7 +55,8 @@ pub fn stream_events_until(
     let session_token = get_ws_session(client)?;
 
     let ws_url = build_ws_url(creds, host, &session_token, "events");
-    debug!("Connecting WebSocket: {}", ws_url);
+    // The URL carries the session token: log the endpoint only.
+    debug!("Connecting WebSocket to {}:{}", host, creds.port);
 
     let uri: Uri = ws_url.parse().context("Invalid WebSocket URL")?;
     let (mut socket, _response) = connect(uri).context("WebSocket connection failed")?;

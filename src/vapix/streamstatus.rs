@@ -73,7 +73,7 @@ fn query_streamstatus_ws(
 ) -> anyhow::Result<Value> {
     let token = get_ws_session(client)?;
     let url = build_ws_url(creds, host, &token, "streamstatus");
-    debug!("Connecting WS for streamstatus: {}", url);
+    debug!("Connecting WS for streamstatus to {}:{}", host, creds.port);
 
     let uri: Uri = url.parse()?;
     let (mut socket, _resp) = connect(uri)?;

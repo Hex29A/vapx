@@ -60,10 +60,7 @@ impl WatchCmd {
                     println!("{}", serde_json::to_string(&output).unwrap_or_default());
 
                     received += 1;
-                    if max_count > 0 && received >= max_count {
-                        return false;
-                    }
-                    true
+                    !(max_count > 0 && received >= max_count)
                 },
             )?;
             return Ok(());
@@ -99,10 +96,7 @@ impl WatchCmd {
                         println!("{}", serde_json::to_string(&output).unwrap_or_default());
 
                         let prev = total_c.fetch_add(1, Ordering::Relaxed);
-                        if max_count > 0 && prev + 1 >= max_count {
-                            return false;
-                        }
-                        true
+                        !(max_count > 0 && prev + 1 >= max_count)
                     },
                 )?;
                 Ok(())

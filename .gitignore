@@ -2,3 +2,6 @@
 /.cargo-docker
 /site/.wrangler
 /site/node_modules
+
+# Local agent instructions (not part of the project)
+/CLAUDE.md
