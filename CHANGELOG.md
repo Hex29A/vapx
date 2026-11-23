@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.34.0
 
 ### Changed
 - **`vapx mcp --transport http` is read-only by default** (#94). Only the tools that change nothing are offered; start the server with `--mode write` or `--mode all` (or `VAPX_MCP_MODE`) to offer more. Over stdio the default is `all`, as before. The container image runs HTTP, so it needs `-e VAPX_MCP_MODE=write` (or `all`) to keep its write tools.
@@ -11,6 +11,7 @@
 ### Added
 - `--mode read|write|all` / `VAPX_MCP_MODE` and `--allow tool,tool` / `VAPX_MCP_ALLOW` for `vapx mcp`: a server-side policy that a prompt injection cannot change. Tools outside it are not listed and are refused when called by name; a misspelt name in the allowlist stops the server at start-up.
 - `allow_io_ports` per camera in `cameras.yaml`: the only outputs `set_io_port` may switch on that camera.
+- Global `--https` (or `VAPX_HTTPS=1`): use HTTPS/WSS for a camera given with `-u/-p`, which used to be plain HTTP only; default port 443. Combine with `-k` for a self-signed certificate.
 
 ### Fixed
 - Debug and trace logs no longer leak secrets (#95). `-vv` used to print every JSON request body, which includes the MQTT password from `configure_mqtt`, and `-vvv` printed whole responses; query strings and WebSocket session tokens were logged too. Now only the method, the path and the parameter names are logged. `Credentials` no longer derives `Debug`, so a stray `{:?}` cannot print the password.
@@ -20,9 +21,6 @@
 - `get_bytes` (snapshots) refuses a response over 64 MiB.
 - `sanitize_error_body` no longer panics when byte 200 falls inside a multi-byte character.
 - Every MCP tool call has an overall deadline (600 s, `VAPX_MCP_TOOL_TIMEOUT` seconds to change it); on a timeout the client gets an error that says the camera may still have carried the action out.
-
-### Added
-- Global `--https` (or `VAPX_HTTPS=1`): use HTTPS/WSS for a camera given with `-u/-p`, which used to be plain HTTP only; default port 443. Combine with `-k` for a self-signed certificate.
 
 ## v0.33.0
 
