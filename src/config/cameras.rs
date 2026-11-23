@@ -64,6 +64,10 @@ pub struct CameraEntry {
     /// Whether the image is mirrored (see `mask_rotation`).
     #[serde(default)]
     pub mask_mirror: bool,
+    /// The digital outputs (relays) `vapx mcp` may switch on this camera, by
+    /// port id. Without the list every port can be switched (with `confirm`).
+    #[serde(default)]
+    pub allow_io_ports: Option<Vec<String>>,
 }
 
 fn default_true() -> bool {

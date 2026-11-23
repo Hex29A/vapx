@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Changed
+- **`vapx mcp --transport http` is read-only by default** (#94). Only the tools that change nothing are offered; start the server with `--mode write` or `--mode all` (or `VAPX_MCP_MODE`) to offer more. Over stdio the default is `all`, as before. The container image runs HTTP, so it needs `-e VAPX_MCP_MODE=write` (or `all`) to keep its write tools.
+- `reboot_camera`, `activate_siren` and `set_io_port` run only with `confirm: true`. A siren runs for at most 120 seconds and for 30 seconds when no duration is given (it used to run until stopped).
+- `activate_siren`, `set_io_port`, `imaging_set`, `start_guard_tour` and `stop_guard_tour` now carry the destructive hint, like `param_set` and `set_motion_config`. `snapshot_all` and `poll_events` are marked read-only.
+- `get_system_log`, `get_audit_log`, `list_overlays` and `poll_events` wrap what the camera controls in an `<untrusted-camera-data>` marker (with a random id) and cut it at 20 000 characters, so a client does not take text from a log or an overlay for instructions.
+
+### Added
+- `--mode read|write|all` / `VAPX_MCP_MODE` and `--allow tool,tool` / `VAPX_MCP_ALLOW` for `vapx mcp`: a server-side policy that a prompt injection cannot change. Tools outside it are not listed and are refused when called by name; a misspelt name in the allowlist stops the server at start-up.
+- `allow_io_ports` per camera in `cameras.yaml`: the only outputs `set_io_port` may switch on that camera.
+
 ### Fixed
 - Debug and trace logs no longer leak secrets (#95). `-vv` used to print every JSON request body, which includes the MQTT password from `configure_mqtt`, and `-vvv` printed whole responses; query strings and WebSocket session tokens were logged too. Now only the method, the path and the parameter names are logged. `Credentials` no longer derives `Debug`, so a stray `{:?}` cannot print the password.
 

@@ -11,6 +11,7 @@ use rmcp::service::RequestContext;
 use rmcp::{ErrorData, RoleServer, ServerHandler};
 use tracing::{debug, warn};
 
+use super::policy::Policy;
 use super::tools::{Args, Out, Registry};
 
 #[derive(Clone)]
@@ -19,8 +20,8 @@ pub struct VapxMcp {
 }
 
 impl VapxMcp {
-    pub fn new() -> Self {
-        Self { registry: Arc::new(Registry::new()) }
+    pub fn new(policy: Policy) -> Self {
+        Self { registry: Arc::new(Registry::with_policy(policy)) }
     }
 }
 
@@ -28,7 +29,11 @@ impl VapxMcp {
 /// as the Python server did.
 pub fn run_tool(registry: &Registry, name: &str, args: Args) -> Vec<ContentBlock> {
     let result = match registry.handler(name) {
-        Some(handler) => registry.validate(name, &args).and_then(|()| handler(&args)),
+        Some(handler) => registry
+            .permit(name)
+            .map_err(|why| anyhow::anyhow!(why))
+            .and_then(|()| registry.validate(name, &args))
+            .and_then(|()| handler(&args)),
         None => Err(anyhow::anyhow!("Unknown tool: {}", name)),
     };
     match result {

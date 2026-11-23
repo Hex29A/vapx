@@ -4,7 +4,7 @@ use anyhow::Context;
 use base64::Engine;
 use serde_json::{json, Value};
 
-use super::{json_out, text_out, Args, Handler, Out};
+use super::{json_out, text_out, untrusted, Args, Handler, Out};
 use crate::mcp::camera::{self, Cam};
 use crate::vapix::{
     analyticsmetadata, applications, audio, audio_clip, capturemode, clearview, daynight, device, discover,
@@ -145,12 +145,14 @@ fn lines_arg(args: &Args) -> anyhow::Result<Option<usize>> {
 
 fn get_system_log(args: &Args) -> anyhow::Result<Vec<Out>> {
     let lines = lines_arg(args)?;
-    Ok(text_out(system::system_log(&args.camera()?.client, lines)?))
+    let cam = args.camera()?;
+    Ok(text_out(untrusted(&cam.id, "system log", &system::system_log(&cam.client, lines)?)))
 }
 
 fn get_audit_log(args: &Args) -> anyhow::Result<Vec<Out>> {
     let lines = lines_arg(args)?;
-    Ok(text_out(system::audit_log(&args.camera()?.client, lines)?))
+    let cam = args.camera()?;
+    Ok(text_out(untrusted(&cam.id, "audit log", &system::audit_log(&cam.client, lines)?)))
 }
 
 fn get_users(args: &Args) -> anyhow::Result<Vec<Out>> {
@@ -221,7 +223,11 @@ fn get_mqtt_config(args: &Args) -> anyhow::Result<Vec<Out>> {
 }
 
 fn list_overlays(args: &Args) -> anyhow::Result<Vec<Out>> {
-    on_camera(args, |c| Ok(crate::vapix::data_of(overlay::list(&c.client)?)))
+    // Overlay texts are set by whoever can write to the camera.
+    let cam = args.camera()?;
+    let data = crate::vapix::data_of(overlay::list(&cam.client)?);
+    let body = serde_json::to_string_pretty(&data)?;
+    Ok(text_out(untrusted(&cam.id, "overlay list", &body)))
 }
 
 fn list_privacy_masks(args: &Args) -> anyhow::Result<Vec<Out>> {
