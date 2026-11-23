@@ -31,12 +31,15 @@ rayon = "1"
 dirs = "6"
 clap_complete = "4"
 clap_mangen = "0.2"
-tungstenite = "0.26"
+# TLS for wss:// (event and stream-status WebSockets on HTTPS cameras); webpki roots, same as reqwest.
+tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
+# Only for the verify_ssl=false path of the WebSocket connector; same provider as reqwest.
+rustls = { version = "0.23", default-features = false, features = ["std", "ring", "tls12"] }
 url = "2"
 keyring = { version = "3", optional = true }
 rand = "0.8"
 rmcp = { version = "3.6", default-features = false, features = ["server", "transport-io", "transport-streamable-http-server"], optional = true }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal"], optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "time"], optional = true }
 tokio-util = { version = "0.7", optional = true }
 axum = { version = "0.8", default-features = false, features = ["tokio", "http1"], optional = true }
 base64 = "0.22"
@@ -45,6 +48,9 @@ tar = "0.4"
 subtle = "2"
 sha2 = "0.10"
 x509-parser = { version = "0.18", default-features = false }
+
+[dev-dependencies]
+rcgen = { version = "0.13", default-features = false, features = ["ring", "pem"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

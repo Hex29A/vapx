@@ -12,13 +12,11 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 use tracing::debug;
-use tungstenite::http::Uri;
-use tungstenite::stream::MaybeTlsStream;
-use tungstenite::{connect, Message};
+use tungstenite::Message;
 
 use crate::config::credentials::Credentials;
 use crate::vapix::client::VapixClient;
-use crate::vapix::ws::{build_ws_url, get_ws_session};
+use crate::vapix::ws::{build_ws_url, connect_ws, get_ws_session, set_read_timeout};
 
 /// Retrieve stream status as structured JSON.
 ///
@@ -75,14 +73,11 @@ fn query_streamstatus_ws(
     let url = build_ws_url(creds, host, &token, "streamstatus");
     debug!("Connecting WS for streamstatus to {}:{}", host, creds.port);
 
-    let uri: Uri = url.parse()?;
-    let (mut socket, _resp) = connect(uri)?;
+    let mut socket = connect_ws(creds, &url)?;
 
     // Set a 3s read timeout on the underlying stream so we don't hang
     // indefinitely if the camera doesn't reply.
-    if let MaybeTlsStream::Plain(ref s) = socket.get_ref() {
-        let _ = s.set_read_timeout(Some(Duration::from_secs(3)));
-    }
+    set_read_timeout(&mut socket, Some(Duration::from_secs(3)));
 
     let configure = json!({
         "apiVersion": "1.0",

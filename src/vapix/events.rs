@@ -3,13 +3,11 @@ use std::time::{Duration, Instant};
 use anyhow::Context;
 use serde_json::{json, Value};
 use tracing::debug;
-use tungstenite::http::Uri;
-use tungstenite::stream::MaybeTlsStream;
-use tungstenite::{connect, Message};
+use tungstenite::Message;
 
 use crate::config::credentials::Credentials;
 use crate::vapix::client::VapixClient;
-use crate::vapix::ws::{build_ws_url, get_ws_session};
+use crate::vapix::ws::{build_ws_url, connect_ws, get_ws_session, set_read_timeout, WsSocket};
 
 /// Connect to the event WebSocket and stream events.
 /// Calls `on_event` for each received event notification.
@@ -58,8 +56,7 @@ pub fn stream_events_until(
     // The URL carries the session token: log the endpoint only.
     debug!("Connecting WebSocket to {}:{}", host, creds.port);
 
-    let uri: Uri = ws_url.parse().context("Invalid WebSocket URL")?;
-    let (mut socket, _response) = connect(uri).context("WebSocket connection failed")?;
+    let mut socket = connect_ws(creds, &ws_url)?;
 
     debug!("WebSocket connected, sending configure");
 
@@ -140,10 +137,8 @@ pub fn stream_events_until(
 
 /// Make blocking reads return when `deadline` arrives, so a quiet camera does
 /// not hold the connection past it.
-fn limit_read_time(socket: &mut tungstenite::WebSocket<MaybeTlsStream<std::net::TcpStream>>, deadline: Option<Instant>) {
+fn limit_read_time(socket: &mut WsSocket, deadline: Option<Instant>) {
     let Some(deadline) = deadline else { return };
     let left = deadline.saturating_duration_since(Instant::now()).max(Duration::from_millis(50));
-    if let MaybeTlsStream::Plain(stream) = socket.get_mut() {
-        let _ = stream.set_read_timeout(Some(left));
-    }
+    set_read_timeout(socket, Some(left));
 }

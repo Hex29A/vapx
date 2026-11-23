@@ -35,6 +35,11 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub profile: Option<String>,
 
+    /// Use HTTPS (and WSS) for cameras given with -u/-p; also forces it for
+    /// cameras from cameras.yaml. Combine with -k for a self-signed certificate.
+    #[arg(long, global = true, env = "VAPX_HTTPS")]
+    pub https: bool,
+
     /// Path to cameras.yaml config file
     #[arg(long, global = true)]
     pub config: Option<std::path::PathBuf>,
@@ -193,6 +198,8 @@ fn main() {
     if cli.format != "json" {
         output::format::set_output_format(cli.format.clone());
     }
+
+    config::credentials::set_force_https(cli.https);
 
     // Set explicit config path
     if let Some(ref config_path) = cli.config {

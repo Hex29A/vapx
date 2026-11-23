@@ -2,6 +2,7 @@
 //! thread (the VAPIX client is synchronous).
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use rmcp::model::{
     CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, Implementation, ListToolsResult,
@@ -21,6 +22,38 @@ pub struct VapxMcp {
 impl VapxMcp {
     pub fn new() -> Self {
         Self { registry: Arc::new(Registry::new()) }
+    }
+}
+
+/// How long one tool call may run before the client gets an error back.
+/// `VAPX_MCP_TOOL_TIMEOUT` (seconds) overrides it. The default leaves room for
+/// a firmware upload (300 s on the camera side) and a reboot wait.
+const DEFAULT_TOOL_TIMEOUT_SECS: u64 = 600;
+
+fn tool_deadline() -> Duration {
+    let secs = std::env::var("VAPX_MCP_TOOL_TIMEOUT")
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .filter(|n| *n > 0)
+        .unwrap_or(DEFAULT_TOOL_TIMEOUT_SECS);
+    Duration::from_secs(secs)
+}
+
+/// How a bounded blocking call ended.
+enum Bounded<T> {
+    Done(T),
+    Panicked,
+    TimedOut,
+}
+
+/// Run `f` on a blocking thread and wait at most `limit` for it. A thread
+/// cannot be cancelled, so on a timeout it runs on in the background; the
+/// caller just stops waiting.
+async fn run_bounded<T: Send + 'static>(limit: Duration, f: impl FnOnce() -> T + Send + 'static) -> Bounded<T> {
+    match tokio::time::timeout(limit, tokio::task::spawn_blocking(f)).await {
+        Ok(Ok(value)) => Bounded::Done(value),
+        Ok(Err(_)) => Bounded::Panicked,
+        Err(_) => Bounded::TimedOut,
     }
 }
 
@@ -69,14 +102,63 @@ impl ServerHandler for VapxMcp {
         let args = Args(request.arguments.unwrap_or_default());
         let registry = self.registry.clone();
         let tool = name.clone();
-        let content = tokio::task::spawn_blocking(move || run_tool(&registry, &tool, args))
-            .await
-            .map_err(|e| {
-                warn!("tool {} panicked: {}", name, e);
-                ErrorData::internal_error(format!("tool {} failed unexpectedly", name), None)
-            })?;
+        let limit = tool_deadline();
+        let content = match run_bounded(limit, move || run_tool(&registry, &tool, args)).await {
+            Bounded::Done(content) => content,
+            Bounded::Panicked => {
+                warn!("tool {} panicked", name);
+                return Err(ErrorData::internal_error(format!("tool {} failed unexpectedly", name), None));
+            }
+            Bounded::TimedOut => {
+                warn!("tool {} did not finish within {} s", name, limit.as_secs());
+                vec![ContentBlock::text(format!(
+                    "Error: {} did not finish within {} s. The camera may still have carried it out; check its state before trying again.",
+                    name,
+                    limit.as_secs()
+                ))]
+            }
+        };
         let is_error = matches!(content.first(), Some(ContentBlock::Text(t)) if t.text.starts_with("Error: "));
         let result = if is_error { CallToolResult::error(content) } else { CallToolResult::success(content) };
         Ok(result.into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn a_tool_that_never_returns_ends_in_a_timeout() {
+        let started = std::time::Instant::now();
+        let out = run_bounded(Duration::from_millis(100), || std::thread::sleep(Duration::from_secs(3))).await;
+        assert!(matches!(out, Bounded::TimedOut));
+        assert!(started.elapsed() < Duration::from_secs(2));
+    }
+
+    #[tokio::test]
+    async fn a_tool_within_the_limit_returns_its_result() {
+        let out = run_bounded(Duration::from_secs(5), || 7).await;
+        assert!(matches!(out, Bounded::Done(7)));
+    }
+
+    #[tokio::test]
+    async fn a_panicking_tool_is_reported_not_propagated() {
+        let out = run_bounded(Duration::from_secs(5), || -> u8 { panic!("boom") }).await;
+        assert!(matches!(out, Bounded::Panicked));
+    }
+
+    #[test]
+    fn the_deadline_has_a_default_and_an_override() {
+        // Tests share the environment; keep all variable handling in this one test.
+        std::env::remove_var("VAPX_MCP_TOOL_TIMEOUT");
+        assert_eq!(tool_deadline(), Duration::from_secs(DEFAULT_TOOL_TIMEOUT_SECS));
+        std::env::set_var("VAPX_MCP_TOOL_TIMEOUT", "30");
+        assert_eq!(tool_deadline(), Duration::from_secs(30));
+        std::env::set_var("VAPX_MCP_TOOL_TIMEOUT", "0");
+        assert_eq!(tool_deadline(), Duration::from_secs(DEFAULT_TOOL_TIMEOUT_SECS));
+        std::env::set_var("VAPX_MCP_TOOL_TIMEOUT", "soon");
+        assert_eq!(tool_deadline(), Duration::from_secs(DEFAULT_TOOL_TIMEOUT_SECS));
+        std::env::remove_var("VAPX_MCP_TOOL_TIMEOUT");
     }
 }

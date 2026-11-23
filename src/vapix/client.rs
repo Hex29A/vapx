@@ -7,6 +7,9 @@ use crate::config::credentials::Credentials;
 use crate::vapix::auth::{probe_auth_header, request_with_auth, request_with_preemptive_auth};
 
 const MAX_RETRIES: u32 = 3;
+
+/// Largest response `get_bytes` accepts (snapshots are a few MB at most).
+const MAX_BODY_BYTES: u64 = 64 * 1024 * 1024;
 const INITIAL_BACKOFF_MS: u64 = 500;
 
 /// Strip HTML from error response bodies, returning a clean message.
@@ -27,11 +30,56 @@ fn sanitize_error_body(text: &str) -> String {
         return "HTML error page (no details)".to_string();
     }
     // Return as-is for non-HTML (truncate very long messages)
-    if trimmed.len() > 200 {
-        format!("{}...", &trimmed[..200])
+    // Count characters, not bytes: slicing at byte 200 panics inside a
+    // multi-byte character.
+    if trimmed.chars().count() > 200 {
+        format!("{}...", trimmed.chars().take(200).collect::<String>())
     } else {
         trimmed.to_string()
     }
+}
+
+/// A non-success HTTP answer from the camera. Displays as `HTTP <status>: <message>`;
+/// callers that need the status (for instance to tell "not supported" from
+/// "failed") downcast to it.
+#[derive(Debug)]
+pub struct HttpError {
+    pub status: u16,
+    pub message: String,
+}
+
+impl std::fmt::Display for HttpError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "HTTP {}: {}", self.status, self.message)
+    }
+}
+
+impl std::error::Error for HttpError {}
+
+fn http_error(status: reqwest::StatusCode, body: &str) -> anyhow::Error {
+    HttpError { status: status.as_u16(), message: sanitize_error_body(body) }.into()
+}
+
+/// Whether `err` says the camera does not have the endpoint or method:
+/// HTTP 404, 405 or 501, or a VAPIX error that says "not supported". Anything
+/// else (a timeout, 401, 500, a refused request) is a real failure.
+pub fn is_not_supported(err: &anyhow::Error) -> bool {
+    if let Some(e) = err.downcast_ref::<HttpError>() {
+        return matches!(e.status, 404 | 405 | 501);
+    }
+    let text = err.to_string().to_lowercase();
+    text.contains("not supported") || text.contains("unsupported")
+}
+
+/// How a request may be retried after a failure.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Retry {
+    /// Safe to repeat: retry timeouts, connection errors and 5xx answers.
+    Idempotent,
+    /// Writes: retry only a failure to connect, when nothing has been sent. A
+    /// timeout or 5xx after the camera got the request could repeat the
+    /// action (a duplicate user, rule or overlay).
+    ConnectOnly,
 }
 
 /// Result of a request sent exactly once (see `VapixClient::post_json_once`).
@@ -48,7 +96,7 @@ fn parse_vapix_json(resp: reqwest::blocking::Response) -> anyhow::Result<Value> 
     let status = resp.status();
     if !status.is_success() {
         let text = resp.text().unwrap_or_default();
-        bail!("HTTP {}: {}", status.as_u16(), sanitize_error_body(&text));
+        return Err(http_error(status, &text));
     }
 
     let json: Value = resp.json().context("Failed to parse JSON response")?;
@@ -71,12 +119,15 @@ pub struct VapixClient {
     creds: Credentials,
 }
 
-/// Check if an error is retryable (connection/timeout errors).
-fn is_retryable_error(err: &anyhow::Error) -> bool {
-    if let Some(reqwest_err) = err.downcast_ref::<reqwest::Error>() {
-        return reqwest_err.is_timeout() || reqwest_err.is_connect();
+/// Check if an error is retryable under `retry`: connection and timeout
+/// errors for idempotent calls, only a failed connect for writes (a timeout
+/// may mean the camera already acted on the request).
+fn is_retryable_error(err: &anyhow::Error, retry: Retry) -> bool {
+    match (err.downcast_ref::<reqwest::Error>(), retry) {
+        (Some(e), Retry::Idempotent) => e.is_timeout() || e.is_connect(),
+        (Some(e), Retry::ConnectOnly) => e.is_connect(),
+        (None, _) => false,
     }
-    false
 }
 
 /// Check if a request failed *after* it was sent: the connection was reset,
@@ -170,7 +221,9 @@ impl VapixClient {
     }
 
     /// POST JSON to a VAPIX API endpoint. Validates the response body for errors.
-    /// Retries on 5xx and connection/timeout errors with exponential backoff.
+    /// A write: retried only when the connection could not be made (nothing
+    /// was sent). A timeout or a 5xx answer is reported, not repeated, since
+    /// the camera may already have acted on the request.
     pub fn post_json(&self, path: &str, body: &Value) -> anyhow::Result<Value> {
         let url = format!("{}{}", self.base_url, path);
         let body_bytes = serde_json::to_vec(body)?;
@@ -178,7 +231,7 @@ impl VapixClient {
         // The body is never logged: it can carry a password (MQTT, users).
         debug!("POST {}", path);
 
-        let resp = self.request_with_retry("POST", &url, Some(&body_bytes), Some("application/json"))?;
+        let resp = self.request_with_retry("POST", &url, Some(&body_bytes), Some("application/json"), Retry::ConnectOnly)?;
         parse_vapix_json(resp)
     }
 
@@ -234,6 +287,7 @@ impl VapixClient {
             &url,
             body_bytes.as_deref(),
             body_bytes.as_ref().map(|_| "application/json"),
+            if matches!(method, "GET" | "HEAD") { Retry::Idempotent } else { Retry::ConnectOnly },
         )?;
 
         let status = resp.status();
@@ -251,7 +305,7 @@ impl VapixClient {
                 .and_then(|m| m.as_str())
                 .map(str::to_string)
                 .unwrap_or_else(|| sanitize_error_body(&text));
-            bail!("HTTP {}: {}", status.as_u16(), message);
+            return Err(HttpError { status: status.as_u16(), message }.into());
         }
 
         Ok(json)
@@ -277,24 +331,26 @@ impl VapixClient {
             params.iter().map(|(k, _)| *k).collect::<Vec<_>>().join(",")
         );
 
-        let resp = self.request_with_retry("GET", &url, None, None)?;
+        let resp = self.request_with_retry("GET", &url, None, None, Retry::Idempotent)?;
 
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().unwrap_or_default();
-            bail!("HTTP {}: {}", status.as_u16(), sanitize_error_body(&text));
+            return Err(http_error(status, &text));
         }
 
         Ok(resp)
     }
 
-    /// Core retry logic: attempt the request up to MAX_RETRIES times with exponential backoff.
+    /// Core retry logic: attempt the request up to MAX_RETRIES times with
+    /// exponential backoff, as far as `retry` allows.
     fn request_with_retry(
         &self,
         method: &str,
         url: &str,
         body: Option<&[u8]>,
         content_type: Option<&str>,
+        retry: Retry,
     ) -> anyhow::Result<reqwest::blocking::Response> {
         let mut last_err: Option<anyhow::Error> = None;
 
@@ -320,14 +376,14 @@ impl VapixClient {
                 &self.creds.pass,
                 self.creds.https,
             ) {
-                Ok(resp) if is_retryable_status(resp.status()) => {
+                Ok(resp) if retry == Retry::Idempotent && is_retryable_status(resp.status()) => {
                     let status = resp.status();
                     let text = resp.text().unwrap_or_default();
                     warn!("Server error HTTP {}: {}", status.as_u16(), sanitize_error_body(&text));
-                    last_err = Some(anyhow::anyhow!("HTTP {}: {}", status.as_u16(), sanitize_error_body(&text)));
+                    last_err = Some(http_error(status, &text));
                 }
                 Ok(resp) => return Ok(resp),
-                Err(err) if is_retryable_error(&err) => {
+                Err(err) if is_retryable_error(&err, retry) => {
                     warn!("Retryable error: {}", err);
                     last_err = Some(err);
                 }
@@ -336,6 +392,40 @@ impl VapixClient {
         }
 
         Err(last_err.unwrap_or_else(|| anyhow::anyhow!("Request failed after {} retries", MAX_RETRIES)))
+    }
+
+    /// GET exactly once and return the response as text: for a legacy action
+    /// that must not be repeated (`restart.cgi`). Like `post_json_once`, a
+    /// connection that ends before the camera replies is `Sent::Dropped`.
+    pub fn get_text_once(&self, path: &str) -> anyhow::Result<Sent> {
+        let url = format!("{}{}", self.base_url, path);
+        debug!("GET (no retry) {}", path);
+        let result = request_with_auth(
+            &self.inner,
+            "GET",
+            &url,
+            None,
+            None,
+            &self.creds.user,
+            &self.creds.pass,
+            self.creds.https,
+        )
+        .and_then(|resp| {
+            let status = resp.status();
+            if status.is_success() {
+                Ok(())
+            } else {
+                Err(http_error(status, &resp.text().unwrap_or_default()))
+            }
+        });
+        match result {
+            Ok(()) => Ok(Sent::Answered),
+            Err(err) if is_dropped_after_send(&err) => {
+                debug!("Connection closed before the camera replied: {}", err);
+                Ok(Sent::Dropped)
+            }
+            Err(err) => Err(err),
+        }
     }
 
     /// GET and return response as text.
@@ -372,20 +462,35 @@ impl VapixClient {
             &url,
             Some(body.as_bytes()),
             Some("application/x-www-form-urlencoded"),
+            Retry::ConnectOnly,
         )?;
 
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().unwrap_or_default();
-            bail!("HTTP {}: {}", status.as_u16(), sanitize_error_body(&text));
+            return Err(http_error(status, &text));
         }
 
         Ok(resp.text()?)
     }
 
-    /// GET and return response as raw bytes.
+    /// GET and return response as raw bytes, at most [`MAX_BODY_BYTES`]: a
+    /// camera (or something posing as one) must not be able to fill our memory.
     pub fn get_bytes(&self, path: &str, params: &[(&str, &str)]) -> anyhow::Result<Vec<u8>> {
-        let bytes = self.get(path, params)?.bytes()?.to_vec();
+        self.get_bytes_limited(path, params, MAX_BODY_BYTES)
+    }
+
+    fn get_bytes_limited(&self, path: &str, params: &[(&str, &str)], limit: u64) -> anyhow::Result<Vec<u8>> {
+        use std::io::Read;
+        let resp = self.get(path, params)?;
+        if resp.content_length().is_some_and(|n| n > limit) {
+            bail!("Response from {} is larger than the {} byte limit", path, limit);
+        }
+        let mut bytes = Vec::new();
+        resp.take(limit + 1).read_to_end(&mut bytes).context("Failed to read response body")?;
+        if bytes.len() as u64 > limit {
+            bail!("Response from {} is larger than the {} byte limit", path, limit);
+        }
         Ok(bytes)
     }
 
@@ -423,7 +528,7 @@ impl VapixClient {
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().unwrap_or_default();
-            bail!("HTTP {}: {}", status.as_u16(), sanitize_error_body(&text));
+            return Err(http_error(status, &text));
         }
 
         let json: Value = resp.json().context("Failed to parse JSON response")?;
@@ -497,7 +602,7 @@ impl VapixClient {
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().unwrap_or_default();
-            bail!("HTTP {}: {}", status.as_u16(), sanitize_error_body(&text));
+            return Err(http_error(status, &text));
         }
 
         let json: Value = resp.json().context("Failed to parse JSON response")?;
@@ -568,7 +673,7 @@ impl VapixClient {
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().unwrap_or_default();
-            bail!("HTTP {}: {}", status.as_u16(), sanitize_error_body(&text));
+            return Err(http_error(status, &text));
         }
 
         Ok(resp.text().unwrap_or_default())
@@ -682,5 +787,107 @@ mod tests {
         });
         assert!(!logs.contains("needle-get-value"), "query value leaked: {logs}");
         assert!(logs.contains("root.Pass"), "parameter names should still be logged: {logs}");
+    }
+
+    // --- retry policy ---
+
+    /// Requests the fake camera got whose request line starts with `prefix`.
+    fn count(server: &TestServer, prefix: &str) -> usize {
+        server.requests().iter().filter(|r| r.starts_with(prefix)).count()
+    }
+
+    #[test]
+    fn a_write_is_not_repeated_after_a_5xx_answer() {
+        let server = TestServer::start(|_| Reply::Json(500, r#"{"error":"busy"}"#));
+        let err = server.client().post_json("/axis-cgi/pwdgrp.cgi", &serde_json::json!({"a": 1})).unwrap_err();
+        assert!(err.to_string().starts_with("HTTP 500"), "{err}");
+        assert_eq!(count(&server, "POST"), 1, "{:?}", server.requests());
+    }
+
+    #[test]
+    fn a_write_is_not_repeated_after_a_timeout() {
+        // The camera got the request and then went quiet: it may have acted.
+        let server = TestServer::start(|_| Reply::Stall(Duration::from_secs(3)));
+        let creds = crate::vapix::testserver::test_creds(server.port);
+        let client = VapixClient::new("127.0.0.1", server.port, creds, 1);
+        let err = client.post_json("/axis-cgi/pwdgrp.cgi", &serde_json::json!({"a": 1})).unwrap_err();
+        assert!(is_dropped_after_send(&err), "{err:#}");
+        assert_eq!(count(&server, "POST"), 1, "{:?}", server.requests());
+    }
+
+    #[test]
+    fn a_form_write_is_not_repeated_after_a_5xx_answer() {
+        let server = TestServer::start(|_| Reply::Text(503, "try later"));
+        let err = server.client().post_form_text("/axis-cgi/pwdgrp.cgi", &[("action", "add")]).unwrap_err();
+        assert!(err.to_string().starts_with("HTTP 503"), "{err}");
+        assert_eq!(count(&server, "POST"), 1, "{:?}", server.requests());
+    }
+
+    #[test]
+    fn a_read_is_still_retried_after_a_5xx_answer() {
+        let server = TestServer::start(|_| Reply::Text(500, "oops"));
+        let err = server.client().get("/axis-cgi/param.cgi", &[]).unwrap_err();
+        assert!(err.to_string().starts_with("HTTP 500"), "{err}");
+        assert_eq!(count(&server, "GET"), MAX_RETRIES as usize, "{:?}", server.requests());
+    }
+
+    #[test]
+    fn a_write_is_retried_when_the_connection_cannot_be_made() {
+        // Nothing listens on this port, so nothing was sent and a retry is safe:
+        // three attempts with the back-off in between.
+        let port = {
+            let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            l.local_addr().unwrap().port()
+        };
+        let creds = crate::vapix::testserver::test_creds(port);
+        let client = VapixClient::new("127.0.0.1", port, creds, 5);
+        let started = std::time::Instant::now();
+        assert!(client.post_json("/axis-cgi/x.cgi", &serde_json::json!({})).is_err());
+        assert!(started.elapsed() >= Duration::from_millis(INITIAL_BACKOFF_MS * 3), "{:?}", started.elapsed());
+    }
+
+    #[test]
+    fn rest_writes_are_not_retried_but_reads_are() {
+        let server = TestServer::start(|_| Reply::Json(500, r#"{"status":"error"}"#));
+        let client = server.client();
+        assert!(client.rest_json("PUT", "/config/rest/x", Some(&serde_json::json!({}))).is_err());
+        assert_eq!(count(&server, "PUT"), 1);
+        assert!(client.rest_json("GET", "/config/rest/x", None).is_err());
+        assert_eq!(count(&server, "GET"), MAX_RETRIES as usize);
+    }
+
+    // --- error text and size limits ---
+
+    #[test]
+    fn sanitize_does_not_panic_inside_a_multibyte_character() {
+        // 'é' is two bytes: byte 200 is in the middle of a character.
+        let body = "é".repeat(300);
+        let out = sanitize_error_body(&body);
+        assert_eq!(out.chars().count(), 203);
+        assert!(out.ends_with("..."));
+        // Three-byte characters, and a body of exactly 200 characters, pass untouched.
+        assert_eq!(sanitize_error_body(&"€".repeat(200)), "€".repeat(200));
+        assert!(sanitize_error_body(&"€".repeat(201)).ends_with("..."));
+    }
+
+    #[test]
+    fn get_bytes_refuses_a_response_over_the_limit() {
+        let server = TestServer::start(|_| Reply::Text(200, "0123456789abcdefghij"));
+        let client = server.client();
+        assert_eq!(client.get_bytes_limited("/x", &[], 20).unwrap().len(), 20);
+        let err = client.get_bytes_limited("/x", &[], 19).unwrap_err();
+        assert!(err.to_string().contains("larger than"), "{err}");
+    }
+
+    #[test]
+    fn not_supported_is_told_apart_from_failure() {
+        let http = |status| anyhow::Error::from(HttpError { status, message: "x".into() });
+        assert!(is_not_supported(&http(404)));
+        assert!(is_not_supported(&http(405)));
+        assert!(is_not_supported(&http(501)));
+        assert!(!is_not_supported(&http(401)));
+        assert!(!is_not_supported(&http(500)));
+        assert!(is_not_supported(&anyhow::anyhow!("VAPIX error 1000: method not supported")));
+        assert!(!is_not_supported(&anyhow::anyhow!("operation timed out")));
     }
 }
