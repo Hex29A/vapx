@@ -1,5 +1,6 @@
 use anyhow::Context;
 use std::io::IsTerminal;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tracing::debug;
 
 use crate::config::cameras::load_cameras;
@@ -14,6 +15,26 @@ pub struct Credentials {
     pub verify_ssl: bool,
     pub port: u16,
     pub timeout: u64,
+}
+
+/// Set by the global `--https` flag: talk HTTPS (and WSS) to cameras that are
+/// given on the command line with `-u/-p` instead of by name from cameras.yaml.
+static FORCE_HTTPS: AtomicBool = AtomicBool::new(false);
+
+pub fn set_force_https(on: bool) {
+    FORCE_HTTPS.store(on, Ordering::Relaxed);
+}
+
+/// Credentials for a camera given on the command line (not in cameras.yaml).
+fn flag_credentials(user: &str, pass: &str, https: bool, insecure: bool, port: Option<u16>) -> Credentials {
+    Credentials {
+        user: user.to_string(),
+        pass: pass.to_string(),
+        https,
+        verify_ssl: !insecure,
+        port: port.unwrap_or(if https { 443 } else { 80 }),
+        timeout: 10,
+    }
 }
 
 /// Resolve credentials and the effective host.
@@ -34,6 +55,8 @@ pub fn resolve(
     port: Option<u16>,
     insecure: bool,
 ) -> anyhow::Result<(Credentials, String)> {
+    let force_https = FORCE_HTTPS.load(Ordering::Relaxed);
+
     // Try cameras.yaml first — the name must map to the configured host even
     // when the caller brings its own credentials.
     if let Some(config) = load_cameras()? {
@@ -48,13 +71,14 @@ pub fn resolve(
                 .or_else(|| crate::cmd::config::keyring_lookup(name));
 
             if let (Some(u), Some(p)) = (effective_user, effective_pass) {
+                let https = force_https || config.effective_https(entry);
                 return Ok((
                     Credentials {
                         user: u,
                         pass: p,
-                        https: config.effective_https(entry),
+                        https,
                         verify_ssl: if insecure { false } else { config.effective_verify_ssl(entry) },
-                        port: port.or(entry.port).unwrap_or(if config.effective_https(entry) { 443 } else { 80 }),
+                        port: port.or(entry.port).unwrap_or(if https { 443 } else { 80 }),
                         timeout: config.effective_timeout(entry),
                     },
                     entry.host.clone(),
@@ -66,17 +90,7 @@ pub fn resolve(
     // Not in the config — use the flags directly against the host as given.
     if let (Some(u), Some(p)) = (user, pass) {
         debug!("Using credentials from CLI flags");
-        return Ok((
-            Credentials {
-                user: u.to_string(),
-                pass: p.to_string(),
-                https: false,
-                verify_ssl: !insecure,
-                port: port.unwrap_or(80),
-                timeout: 10,
-            },
-            host.to_string(),
-        ));
+        return Ok((flag_credentials(u, p, force_https, insecure, port), host.to_string()));
     }
 
     // Interactive prompt as fallback (only if TTY)
@@ -100,15 +114,32 @@ pub fn resolve(
                 .unwrap()
         });
 
-    Ok((
-        Credentials {
-            user: u,
-            pass: p,
-            https: false,
-            verify_ssl: !insecure,
-            port: port.unwrap_or(80),
-            timeout: 10,
-        },
-        host.to_string(),
-    ))
+    Ok((flag_credentials(&u, &p, force_https, insecure, port), host.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::flag_credentials;
+
+    #[test]
+    fn a_camera_given_by_flags_is_plain_http_on_80_by_default() {
+        let c = flag_credentials("root", "pass", false, false, None);
+        assert!(!c.https);
+        assert_eq!(c.port, 80);
+        assert!(c.verify_ssl);
+    }
+
+    #[test]
+    fn https_flag_means_tls_on_443_unless_a_port_is_given() {
+        let c = flag_credentials("root", "pass", true, false, None);
+        assert!(c.https);
+        assert_eq!(c.port, 443);
+        assert!(c.verify_ssl);
+        assert_eq!(flag_credentials("root", "pass", true, false, Some(8443)).port, 8443);
+    }
+
+    #[test]
+    fn insecure_switches_certificate_verification_off() {
+        assert!(!flag_credentials("root", "pass", true, true, None).verify_ssl);
+    }
 }

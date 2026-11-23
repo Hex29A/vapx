@@ -4,6 +4,15 @@
 
 ### Fixed
 - Debug and trace logs no longer leak secrets (#95). `-vv` used to print every JSON request body, which includes the MQTT password from `configure_mqtt`, and `-vvv` printed whole responses; query strings and WebSocket session tokens were logged too. Now only the method, the path and the parameter names are logged. `Credentials` no longer derives `Debug`, so a stray `{:?}` cannot print the password.
+- Writes are no longer repeated when the answer is unclear (#96). `post_json`, `post_form_text` and non-GET `rest_json` retry only when the connection could not be made; a timeout or a 5xx answer is reported, since the camera may already have acted (a duplicate user, rule or overlay). Reads are retried as before.
+- `reboot` (MCP and `system::reboot`) falls back to the legacy `restart.cgi` only when the camera says it has no such API (HTTP 404, 405, 501 or "not supported"), and the legacy call is sent once. A timeout, a refused login or a 500 is reported as it is, so the camera cannot be rebooted twice.
+- `wss://` now works: the event and stream-status WebSockets use TLS on HTTPS cameras, with the same trust roots as the HTTP client, and honour `verify_ssl` / `-k`. The TCP connect and the handshake have timeouts, so a silent camera cannot hang the command.
+- `get_bytes` (snapshots) refuses a response over 64 MiB.
+- `sanitize_error_body` no longer panics when byte 200 falls inside a multi-byte character.
+- Every MCP tool call has an overall deadline (600 s, `VAPX_MCP_TOOL_TIMEOUT` seconds to change it); on a timeout the client gets an error that says the camera may still have carried the action out.
+
+### Added
+- Global `--https` (or `VAPX_HTTPS=1`): use HTTPS/WSS for a camera given with `-u/-p`, which used to be plain HTTP only; default port 443. Combine with `-k` for a self-signed certificate.
 
 ## v0.33.0
 
