@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.33.1
+## Unreleased
 
 ### Fixed
 - Debug and trace logs no longer leak secrets (#95). `-vv` used to print every JSON request body, which includes the MQTT password from `configure_mqtt`, and `-vvv` printed whole responses; query strings and WebSocket session tokens were logged too. Now only the method, the path and the parameter names are logged. `Credentials` no longer derives `Debug`, so a stray `{:?}` cannot print the password.
