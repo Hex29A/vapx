@@ -5,6 +5,7 @@
 
 mod auth;
 mod camera;
+mod policy;
 mod server;
 mod tools;
 
@@ -17,6 +18,8 @@ use rmcp::transport::streamable_http_server::session::local::LocalSessionManager
 use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
 use rmcp::{transport::stdio, ServiceExt};
 use tokio_util::sync::CancellationToken;
+
+use policy::{Mode, Policy};
 
 const TOKEN_ENV: &str = "VAPX_MCP_TOKEN";
 
@@ -44,6 +47,16 @@ pub struct McpCmd {
     #[arg(long = "allowed-host", env = "VAPX_MCP_ALLOWED_HOSTS", value_delimiter = ',')]
     pub allowed_hosts: Vec<String>,
 
+    /// Which tools to offer: read (nothing that changes a camera), write (also
+    /// settings) or all (also reboot, siren, relays, firmware, parameters).
+    /// Default: read over HTTP, all over stdio
+    #[arg(long, value_enum, env = "VAPX_MCP_MODE")]
+    pub mode: Option<Mode>,
+
+    /// Offer only these tools (comma-separated names), if the mode permits them
+    #[arg(long, env = "VAPX_MCP_ALLOW", value_delimiter = ',')]
+    pub allow: Vec<String>,
+
     /// Serve HTTP without a bearer token. Only for a trusted loopback setup.
     #[arg(long)]
     pub insecure_no_auth: bool,
@@ -52,14 +65,37 @@ pub struct McpCmd {
 impl McpCmd {
     pub fn run(self) -> anyhow::Result<()> {
         let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
+        let policy = self.policy();
+        for warning in tools::Registry::with_policy(policy.clone()).check_policy()? {
+            eprintln!("WARNING: {warning}");
+        }
         match self.transport {
-            Transport::Stdio => rt.block_on(serve_stdio()),
+            Transport::Stdio => rt.block_on(serve_stdio(policy)),
             Transport::Http => {
                 let bind = self.bind.context("--transport http needs --bind <addr:port>")?;
                 let token = http_token(self.insecure_no_auth, std::env::var(TOKEN_ENV).ok())?;
-                rt.block_on(serve_http(bind, token, self.allowed_hosts))
+                eprintln!("vapx mcp: {} mode{}", policy.mode().name(), match policy.mode() {
+                    Mode::Read => " (tools that change a camera are not offered; set VAPX_MCP_MODE=write or all to offer them)",
+                    _ => "",
+                });
+                rt.block_on(serve_http(bind, token, self.allowed_hosts, policy))
             }
         }
+    }
+
+    /// The tool policy: the mode given, or the transport's default.
+    fn policy(&self) -> Policy {
+        Policy::new(self.mode.unwrap_or(default_mode(self.transport)), self.allow.clone())
+    }
+}
+
+/// Over HTTP the client is somewhere else and the server may be reachable by
+/// more than its owner, so writing is off unless asked for. Over stdio the
+/// client is the owner's own program.
+fn default_mode(transport: Transport) -> Mode {
+    match transport {
+        Transport::Stdio => Mode::All,
+        Transport::Http => Mode::Read,
     }
 }
 
@@ -76,13 +112,13 @@ fn http_token(insecure_no_auth: bool, env_value: Option<String>) -> anyhow::Resu
     }
 }
 
-async fn serve_stdio() -> anyhow::Result<()> {
-    let running = server::VapxMcp::new().serve(stdio()).await.context("MCP initialisation failed")?;
+async fn serve_stdio(policy: Policy) -> anyhow::Result<()> {
+    let running = server::VapxMcp::new(policy).serve(stdio()).await.context("MCP initialisation failed")?;
     running.waiting().await?;
     Ok(())
 }
 
-async fn serve_http(bind: SocketAddr, token: Option<String>, extra_hosts: Vec<String>) -> anyhow::Result<()> {
+async fn serve_http(bind: SocketAddr, token: Option<String>, extra_hosts: Vec<String>, policy: Policy) -> anyhow::Result<()> {
     let ct = CancellationToken::new();
     let mut hosts: Vec<String> = ["localhost", "127.0.0.1", "::1"].iter().map(|s| s.to_string()).collect();
     hosts.push(bind.ip().to_string());
@@ -95,7 +131,7 @@ async fn serve_http(bind: SocketAddr, token: Option<String>, extra_hosts: Vec<St
         .with_json_response(true)
         .with_cancellation_token(ct.child_token());
     let service = StreamableHttpService::new(
-        || Ok(server::VapxMcp::new()),
+        move || Ok(server::VapxMcp::new(policy.clone())),
         Arc::new(LocalSessionManager::default()),
         config,
     );
@@ -121,7 +157,34 @@ async fn serve_http(bind: SocketAddr, token: Option<String>, extra_hosts: Vec<St
 
 #[cfg(test)]
 mod tests {
-    use super::http_token;
+    use super::*;
+    use clap::Parser;
+
+    #[derive(Parser)]
+    struct Wrapper {
+        #[command(flatten)]
+        cmd: McpCmd,
+    }
+
+    fn parse(args: &[&str]) -> McpCmd {
+        Wrapper::parse_from(std::iter::once("vapx").chain(args.iter().copied())).cmd
+    }
+
+    #[test]
+    fn the_mode_defaults_to_read_over_http_and_all_over_stdio() {
+        assert_eq!(parse(&[]).policy().mode(), Mode::All);
+        assert_eq!(parse(&["--transport", "http", "--bind", "127.0.0.1:1"]).policy().mode(), Mode::Read);
+        assert_eq!(parse(&["--transport", "http", "--mode", "write"]).policy().mode(), Mode::Write);
+        assert_eq!(parse(&["--mode", "read"]).policy().mode(), Mode::Read);
+    }
+
+    #[test]
+    fn the_allowlist_is_comma_separated() {
+        let policy = parse(&["--allow", "get_users,ptz_home"]).policy();
+        let allow: Vec<&str> = policy.allowlist().unwrap().iter().map(String::as_str).collect();
+        assert_eq!(allow, ["get_users", "ptz_home"]);
+        assert!(parse(&[]).policy().allowlist().is_none());
+    }
 
     #[test]
     fn http_refuses_to_start_without_a_token() {

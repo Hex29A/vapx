@@ -8,7 +8,7 @@ use anyhow::{anyhow, bail, Context};
 use base64::Engine;
 use serde_json::{json, Map, Value};
 
-use super::{json_out, text_out, Args, Handler, Out};
+use super::{json_out, require_confirm, text_out, untrusted, Args, Handler, Out};
 use crate::mcp::camera;
 use crate::vapix::{
     analyticsmetadata, applications, audio, audio_clip, capturemode, clearview, daynight, events, geolocation,
@@ -130,9 +130,23 @@ fn ptz_preset(args: &Args) -> anyhow::Result<Vec<Out>> {
 
 // ---- I/O and lights ----
 
+/// A camera's `allow_io_ports` list in `cameras.yaml`, when it has one, names
+/// the only outputs this server may switch. Without a list every port is open
+/// to the tool (it still needs `confirm`).
+fn check_io_port_allowed(allowed: Option<&[String]>, camera: &str, port: &str) -> anyhow::Result<()> {
+    match allowed {
+        Some(list) if !list.iter().any(|p| p == port) => {
+            bail!("port {port} on {camera} may not be switched through this server (allow_io_ports in cameras.yaml: {})", list.join(", "))
+        }
+        _ => Ok(()),
+    }
+}
+
 fn set_io_port(args: &Args) -> anyhow::Result<Vec<Out>> {
     let (port, state) = (args.str("port")?, args.str("state")?);
+    require_confirm(args, "switching an output can open a door or start equipment")?;
     let cam = args.camera()?;
+    check_io_port_allowed(cam.allow_io_ports.as_deref(), &cam.id, port)?;
     io::set_port_state(&cam.client, port, state)?;
     Ok(text_out(format!("Set port {} on {} to '{}'", port, cam.id, state)))
 }
@@ -378,13 +392,26 @@ fn stop_guard_tour(args: &Args) -> anyhow::Result<Vec<Out>> {
     Ok(text_out(format!("Stopped guard tour {} on {}", tour, cam.id)))
 }
 
+/// Longest siren/strobe run a tool call may ask for.
+const MAX_SIREN_SECONDS: i64 = 120;
+/// Used when the call gives no duration.
+const DEFAULT_SIREN_SECONDS: i64 = 30;
+
 /// The `start` parameters for `activate_siren`: a saved profile, or the siren
 /// and light settings given, each with the duration if one was set.
 fn siren_params(args: &Args) -> anyhow::Result<Value> {
     if let Some(profile) = args.opt_str("profile")?.filter(|p| !p.is_empty()) {
         return Ok(json!({"profile": profile}));
     }
-    let duration = args.opt_i64("duration")?.filter(|d| *d != 0);
+    // A siren that was not given an end would run until someone stops it, so
+    // there is always a duration, and a cap on it.
+    let duration = match args.opt_i64("duration")?.filter(|d| *d != 0) {
+        Some(d) if !(1..=MAX_SIREN_SECONDS).contains(&d) => {
+            bail!("duration must be between 1 and {MAX_SIREN_SECONDS} seconds")
+        }
+        Some(d) => Some(d),
+        None => Some(DEFAULT_SIREN_SECONDS),
+    };
     let with_duration = |mut cfg: Value| {
         if let Some(d) = duration {
             cfg["duration"] = json!({"unit": "seconds", "value": d});
@@ -413,6 +440,7 @@ fn siren_params(args: &Args) -> anyhow::Result<Value> {
 }
 
 fn activate_siren(args: &Args) -> anyhow::Result<Vec<Out>> {
+    require_confirm(args, "the siren is loud and the strobe is bright at the camera's location")?;
     let params = siren_params(args)?;
     let cam = args.camera()?;
     let result = siren::start(&cam.client, &params)?;
@@ -448,7 +476,8 @@ fn poll_events(args: &Args) -> anyhow::Result<Vec<Out>> {
     let topic = args.opt_str("topic_filter")?.filter(|t| !t.is_empty());
     let cam = args.camera()?;
     let collected = events::poll_events(&cam.client, &cam.creds, &cam.host, topic, seconds)?;
-    Ok(json_out(&json!({"events_collected": collected.len(), "events": collected})))
+    let body = serde_json::to_string_pretty(&json!({"events_collected": collected.len(), "events": collected}))?;
+    Ok(text_out(untrusted(&cam.id, "events", &body)))
 }
 
 fn snapshot_all(args: &Args) -> anyhow::Result<Vec<Out>> {
@@ -515,6 +544,7 @@ fn export_recording(args: &Args) -> anyhow::Result<Vec<Out>> {
 }
 
 fn reboot_camera(args: &Args) -> anyhow::Result<Vec<Out>> {
+    require_confirm(args, "the camera stops recording and streaming while it restarts")?;
     let cam = args.camera()?;
     let mut result = system::reboot(&cam.client)?;
     result["camera"] = json!(cam.id);
@@ -557,5 +587,44 @@ mod tests {
             json!({"pattern": "flash", "speed": 1, "colors": ["red"], "duration": {"unit": "seconds", "value": 5}})
         );
         assert_eq!(siren_params(&args(json!({}))).unwrap(), json!({}));
+    }
+
+    #[test]
+    fn a_siren_without_a_duration_gets_the_default_and_a_long_one_is_refused() {
+        let p = siren_params(&args(json!({"siren_pattern": "wail", "light_pattern": "flash"}))).unwrap();
+        let thirty = json!({"unit": "seconds", "value": DEFAULT_SIREN_SECONDS});
+        assert_eq!(p["siren"]["duration"], thirty);
+        assert_eq!(p["light"]["duration"], thirty);
+        assert!(siren_params(&args(json!({"siren_pattern": "wail", "duration": MAX_SIREN_SECONDS}))).is_ok());
+        for bad in [MAX_SIREN_SECONDS + 1, 86_400, -5] {
+            let e = siren_params(&args(json!({"siren_pattern": "wail", "duration": bad}))).unwrap_err().to_string();
+            assert!(e.contains("between 1 and 120"), "{bad}: {e}");
+        }
+        // A saved profile has its own timing and is passed on as it is.
+        assert_eq!(siren_params(&args(json!({"profile": "alarm", "duration": 9999}))).unwrap(), json!({"profile": "alarm"}));
+    }
+
+    #[test]
+    fn the_dangerous_tools_ask_for_confirm_before_they_touch_a_camera() {
+        // No camera is configured in the test, so reaching the camera lookup would give a different error.
+        for (name, f) in [
+            ("reboot_camera", reboot_camera as Handler),
+            ("activate_siren", activate_siren as Handler),
+            ("set_io_port", set_io_port as Handler),
+        ] {
+            let a = args(json!({"camera_id": "nowhere", "port": "0", "state": "closed", "siren_pattern": "wail"}));
+            let e = f(&a).err().unwrap_or_else(|| panic!("{name} ran without confirm")).to_string();
+            assert!(e.contains("confirm must be true"), "{name}: {e}");
+        }
+    }
+
+    #[test]
+    fn a_camera_can_limit_which_outputs_are_switched() {
+        let list = vec!["0".to_string(), "2".to_string()];
+        assert!(check_io_port_allowed(None, "cam", "7").is_ok());
+        assert!(check_io_port_allowed(Some(&list), "cam", "2").is_ok());
+        let e = check_io_port_allowed(Some(&list), "cam", "1").unwrap_err().to_string();
+        assert!(e.contains("port 1") && e.contains("cam") && e.contains("0, 2"), "{e}");
+        assert!(check_io_port_allowed(Some(&[]), "cam", "0").is_err(), "an empty list allows nothing");
     }
 }

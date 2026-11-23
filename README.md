@@ -610,7 +610,7 @@ credentials on AXIS OS 9.50 and later.
 | `param_get` | read | Read camera parameters by key or group, e.g. |
 | `param_set` | write | Set camera parameters by explicit key. |
 | `play_audio_clip` | write | Trigger playback of an audio clip on the camera's built-in speaker. |
-| `poll_events` | write | Poll for camera events over WebSocket for a specified duration. |
+| `poll_events` | read | Poll for camera events over WebSocket for a specified duration. |
 | `ptz_home` | write | Return a PTZ camera to its home position. |
 | `ptz_move` | write | Move a PTZ camera to an absolute pan/tilt/zoom position. |
 | `ptz_preset` | write | Move a PTZ camera to a named preset position. |
@@ -634,7 +634,7 @@ credentials on AXIS OS 9.50 and later.
 | `set_ntp_config` | write | Configure NTP time synchronization — enable/disable, set server source (static or DHCP), and configure NTP server addresses. |
 | `set_timezone` | write | Set the camera's timezone using an IANA timezone name (e.g. |
 | `set_view_area_geometry` | write | Set the crop geometry for a view area, digitally repositioning where the camera 'looks' without moving the physical lens. |
-| `snapshot_all` | write | Capture a JPEG snapshot from every configured camera simultaneously. |
+| `snapshot_all` | read | Capture a JPEG snapshot from every configured camera simultaneously. |
 | `start_application` | write | Start a stopped ACAP application on a camera. |
 | `start_clear_view` | write | Activate the camera's wiper or speed-dry function to clean the lens. |
 | `start_guard_tour` | write | Start a guard tour (automated PTZ patrol). |
@@ -664,6 +664,16 @@ credentials on AXIS OS 9.50 and later.
 **Not available as tools**, because they can lock you out of a camera: factory default, changing passwords, creating or deleting users, SSH accounts, network settings and enrolling a camera. Use the command line for those.
 
 `list_cameras` returns an empty `capabilities` list: the server does not probe cameras to list them, and a tool the camera does not support returns the camera's own error.
+
+### Limiting what a client can do
+
+The `confirm` argument of the dangerous tools is filled in by the calling model, so it guards against mistakes, not against a prompt injection: text in a log, an overlay or an event can talk a model into setting it. What an injection cannot change is how the server was started.
+
+- **Mode.** `--mode read|write|all` (or `VAPX_MCP_MODE`). `read` offers only the tools that change nothing, `write` adds the tools that change settings, and `all` adds the disruptive ones: `reboot_camera`, `activate_siren`, `set_io_port`, `param_set`, `imaging_set`, the guard tour tools, `set_motion_config`, firmware, disk and application tools. The default is **`read` over HTTP** and `all` over stdio, where the client is a program you started yourself. A tool outside the mode is left out of `tools/list` and refused if called by name. To let an HTTP server write, start it with `--mode write` or `--mode all`; the container image needs `-e VAPX_MCP_MODE=...` for the same reason.
+- **Allowlist.** `--allow tool1,tool2` (or `VAPX_MCP_ALLOW`) offers only those tools, if the mode also permits them. A name that is not a tool stops the server at start-up, and a tool the mode shuts out is reported as a warning.
+- **`confirm`.** `reboot_camera`, `activate_siren` and `set_io_port` run only with `confirm: true`, like the firmware and disk tools. A siren runs for at most 120 seconds, 30 if the call gives no duration.
+- **Outputs.** `allow_io_ports` in a camera's entry in `cameras.yaml` (for example `allow_io_ports: ["0"]`) lists the only ports `set_io_port` may switch on that camera. Without it any port can be switched.
+- **Untrusted text.** What the camera itself controls (`get_system_log`, `get_audit_log`, `list_overlays`, `poll_events`) comes wrapped in an `<untrusted-camera-data id="...">` marker that says it is data and not instructions, and is cut at 20 000 characters. The marker carries a random id, so the text cannot close it early.
 
 ### Client configuration: stdio
 
@@ -809,6 +819,7 @@ groups:
 | `enabled` | bool | `true` | Set `false` to skip camera in `batch`/`watch`/`health` without removing it |
 | `mask_rotation` | int | `0` | Image rotation in degrees (0, 90, 180, 270). `vapx mcp` uses it to convert privacy mask polygons from the displayed image to the sensor |
 | `mask_mirror` | bool | `false` | Whether the image is mirrored (see `mask_rotation`) |
+| `allow_io_ports` | list | all ports | The digital outputs `vapx mcp` may switch with `set_io_port`, by port id, for example `["0"]` |
 
 Per-camera fields override `defaults`. Each camera entry also requires `host`.
 

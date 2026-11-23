@@ -13,6 +13,8 @@ pub struct Cam {
     pub id: String,
     pub mask_rotation: u16,
     pub mask_mirror: bool,
+    /// The outputs `set_io_port` may switch on this camera; `None` = any.
+    pub allow_io_ports: Option<Vec<String>>,
     pub host: String,
     pub creds: Credentials,
     pub client: VapixClient,
@@ -65,6 +67,7 @@ fn open_as(id: &str, firmware: bool) -> anyhow::Result<Cam> {
         id: id.to_string(),
         mask_rotation: entry.mask_rotation,
         mask_mirror: entry.mask_mirror,
+        allow_io_ports: entry.allow_io_ports.clone(),
         host: entry.host.clone(),
         creds,
         client,
