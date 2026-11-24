@@ -1,5 +1,6 @@
 use clap::Args;
 
+use crate::cmd::pwd::PwdArgs;
 use crate::config::credentials::resolve;
 use crate::vapix::client::VapixClient;
 use crate::vapix::users;
@@ -11,9 +12,8 @@ pub struct PassCmd {
     /// Account name whose password to change (defaults to authenticating user)
     #[arg(long)]
     pub name: Option<String>,
-    /// New password
-    #[arg(long)]
-    pub pwd: String,
+    #[command(flatten)]
+    pub pwd: PwdArgs,
     #[arg(short, long, env = "VAPX_USER")]
     pub user: Option<String>,
     #[arg(short, long, env = "VAPX_PASS")]
@@ -39,7 +39,8 @@ impl PassCmd {
         let timeout = self.timeout.unwrap_or(creds.timeout);
         let target_user = self.name.unwrap_or_else(|| creds.user.clone());
         let client = VapixClient::new(&resolved_host, creds.port, creds, timeout);
-        let result = users::update(&client, &target_user, &self.pwd)?;
+        let pwd = self.pwd.read(&format!("account {target_user}"), true)?;
+        let result = users::update(&client, &target_user, &pwd)?;
         crate::output::format::ok_msg(result.trim());
         Ok(())
     }

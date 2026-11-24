@@ -1,5 +1,7 @@
 use clap::{Args, Subcommand};
 
+use crate::cmd::confirm::confirm;
+use crate::cmd::pwd::PwdArgs;
 use crate::cmd::CameraArgs;
 use crate::output::format;
 use crate::vapix::ssh;
@@ -53,9 +55,8 @@ pub enum SshUsersCommands {
         #[arg(long)]
         name: String,
 
-        /// Password for the account
-        #[arg(long)]
-        pwd: String,
+        #[command(flatten)]
+        pwd: PwdArgs,
 
         /// Account description
         #[arg(long, default_value = "")]
@@ -70,9 +71,8 @@ pub enum SshUsersCommands {
         #[arg(long)]
         name: String,
 
-        /// New password
-        #[arg(long)]
-        pwd: String,
+        #[command(flatten)]
+        pwd: PwdArgs,
     },
     /// Remove an SSH account
     Remove {
@@ -82,7 +82,23 @@ pub enum SshUsersCommands {
         /// Account name to remove
         #[arg(long)]
         name: String,
+
+        /// Skip the confirmation prompt (required when stdin is not a terminal)
+        #[arg(short, long)]
+        yes: bool,
+
+        /// Show whether the account exists, without removing anything
+        #[arg(long)]
+        dry_run: bool,
     },
+}
+
+/// The account names in the `data` array of the account list, as plain strings or as objects.
+fn account_names(accounts: &[serde_json::Value]) -> Vec<&str> {
+    accounts
+        .iter()
+        .filter_map(|u| u.as_str().or_else(|| u.get("username").or_else(|| u.get("name")).and_then(|n| n.as_str())))
+        .collect()
 }
 
 impl SshCmd {
@@ -126,15 +142,29 @@ impl SshUsersCmd {
                 format::output(&users, cam.plain);
             }
             SshUsersCommands::Add { cam, name, pwd, comment } => {
+                let pwd = pwd.read(&format!("the new SSH account {name}"), true)?;
                 ssh::add_user(&cam.client()?, &name, &pwd, &comment)?;
                 format::ok_msg(&format!("SSH user {} created", name));
             }
             SshUsersCommands::Passwd { cam, name, pwd } => {
+                let pwd = pwd.read(&format!("SSH account {name}"), true)?;
                 ssh::set_password(&cam.client()?, &name, &pwd)?;
                 format::ok_msg(&format!("Password changed for SSH user {}", name));
             }
-            SshUsersCommands::Remove { cam, name } => {
-                ssh::remove_user(&cam.client()?, &name)?;
+            SshUsersCommands::Remove { cam, name, yes, dry_run } => {
+                let client = cam.client()?;
+                let accounts = ssh::list_users(&client)?;
+                let names = account_names(&accounts);
+                // An answer in a shape this does not know gives no names; then the camera decides.
+                if !names.is_empty() && !names.contains(&name.as_str()) {
+                    anyhow::bail!("no SSH account '{}' on {} (accounts: {})", name, cam.host, names.join(", "));
+                }
+                if dry_run {
+                    format::output(&serde_json::json!({"account": name, "ssh": true, "performed": false}), cam.plain);
+                    return Ok(());
+                }
+                confirm(&format!("Removing SSH account '{}' from {} cannot be undone", name, cam.host), yes)?;
+                ssh::remove_user(&client, &name)?;
                 format::ok_msg(&format!("SSH user {} removed", name));
             }
         }

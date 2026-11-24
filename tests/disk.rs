@@ -248,7 +248,7 @@ fn format_with_yes_unmounts_formats_follows_the_job_and_mounts() {
 }
 
 #[test]
-fn a_failed_format_job_stops_with_the_reason_and_does_not_mount() {
+fn a_failed_format_job_stops_with_the_reason_and_mounts_the_disk_again() {
     let ok = disk_xml("SD_DISK", "ext4", "OK", false);
     let r = run(
         "format-fail",
@@ -257,13 +257,131 @@ fn a_failed_format_job_stops_with_the_reason_and_does_not_mount() {
             route("/axis-cgi/disks/unmount.cgi", &[OK]),
             route("/axis-cgi/disks/format.cgi", &[JOB_STARTED]),
             route("/axis-cgi/disks/job.cgi", &[JOB_FAILED]),
+            route("/axis-cgi/disks/mount.cgi", &[OK]),
         ],
         &[],
         &["format", "--yes", "--poll-interval", "0"],
     );
     assert!(!r.ok);
     assert!(r.err.contains("disk busy"), "{}", r.err);
-    assert!(r.hits("GET /axis-cgi/disks/mount.cgi").is_empty(), "{:?}", r.reqs);
+    // The disk was unmounted for the format: it is mounted again so the camera can record (#101).
+    assert!(r.err.contains("mounted again"), "{}", r.err);
+    assert!(r.at("GET /axis-cgi/disks/format.cgi") < r.at("GET /axis-cgi/disks/mount.cgi"), "{:?}", r.reqs);
+}
+
+const HTML_ERROR_PAGE: &str = "<!DOCTYPE html><html><head><title>Error</title></head><body><h1>Service unavailable</h1><br></body></html>";
+
+/// The stand-in for a camera with a card that formats fine, with `format` as its answer to format.cgi.
+fn format_run(tag: &str, format_answer: &str, mount_answer: &str, recordings: &[&str]) -> Run {
+    let ok = disk_xml("SD_DISK", "ext4", "OK", false);
+    run(
+        tag,
+        vec![
+            route("/axis-cgi/disks/list.cgi", &[&ok]),
+            route("/axis-cgi/record/list.cgi", recordings),
+            route("/axis-cgi/disks/unmount.cgi", &[OK]),
+            route("/axis-cgi/disks/format.cgi", &[format_answer]),
+            route("/axis-cgi/disks/job.cgi", &[JOB_DONE]),
+            route("/axis-cgi/disks/mount.cgi", &[mount_answer]),
+        ],
+        &[],
+        &["format", "--yes", "--poll-interval", "0"],
+    )
+}
+
+#[test]
+fn a_format_answer_that_is_not_xml_or_json_is_an_error_and_the_disk_is_mounted_again() {
+    let r = format_run("format-html", HTML_ERROR_PAGE, OK, &[RECORDINGS]);
+    assert!(!r.ok, "an HTML page is no proof of a format: {}", r.out);
+    assert!(r.err.contains("neither XML nor JSON"), "{}", r.err);
+    assert!(r.err.contains("mounted again"), "the state of the disk must be reported: {}", r.err);
+    let (unmount, format, mount) = (
+        r.at("GET /axis-cgi/disks/unmount.cgi"),
+        r.at("GET /axis-cgi/disks/format.cgi"),
+        r.at("GET /axis-cgi/disks/mount.cgi"),
+    );
+    assert!(unmount < format && format < mount, "the disk must be mounted again after the failure: {:?}", r.reqs);
+}
+
+#[test]
+fn a_failed_format_that_cannot_be_mounted_again_says_the_disk_is_unmounted() {
+    let r = format_run("format-no-remount", HTML_ERROR_PAGE, HTML_ERROR_PAGE, &[RECORDINGS]);
+    assert!(!r.ok);
+    assert!(r.err.contains("NOT mounted"), "{}", r.err);
+    assert!(r.err.contains("neither XML nor JSON"), "the first cause must stay in the message: {}", r.err);
+}
+
+#[test]
+fn a_format_that_removed_the_recordings_is_verified() {
+    // the oldest recording before the format, then none after it
+    let r = format_run("format-verified", JOB_STARTED, OK, &[RECORDINGS, NO_RECORDINGS]);
+    assert!(r.ok, "{}", r.err);
+    let data = &r.json()["data"];
+    assert_eq!(data["formatted"], true);
+    assert_eq!(data["verified"], true);
+    assert_eq!(data["jobReported"], true);
+}
+
+#[test]
+fn a_format_that_ends_on_another_file_system_than_asked_warns_but_a_finished_job_stands() {
+    // The disk list says ext4 before and after, but vfat was asked for.
+    let ok = disk_xml("SD_DISK", "ext4", "OK", false);
+    let r = run(
+        "format-other-fs",
+        vec![
+            route("/axis-cgi/disks/list.cgi", &[&ok]),
+            route("/axis-cgi/disks/unmount.cgi", &[OK]),
+            route("/axis-cgi/disks/format.cgi", &[JOB_DONE]),
+            route("/axis-cgi/disks/mount.cgi", &[OK]),
+        ],
+        &[],
+        &["format", "--yes", "--filesystem", "vfat", "--poll-interval", "0"],
+    );
+    assert!(r.ok, "{}", r.err);
+    let data = &r.json()["data"];
+    assert_eq!(data["verified"], false);
+    assert!(data["warning"].as_str().unwrap_or("").contains("ext4"), "{data}");
+}
+
+#[test]
+fn a_format_that_left_the_old_recordings_is_an_error() {
+    let r = format_run("format-still-there", JOB_STARTED, OK, &[RECORDINGS]);
+    assert!(!r.ok, "{}", r.out);
+    assert!(r.err.contains("still on disk"), "{}", r.err);
+    assert!(!r.out.contains("\"formatted\""), "must not claim success: {}", r.out);
+}
+
+#[test]
+fn a_format_without_a_job_and_without_evidence_is_not_reported_as_formatted() {
+    // `<root/>` carries no job, and the card was empty and ext4 before, so nothing can show the format.
+    let r = format_run("format-no-evidence", OK, OK, &[NO_RECORDINGS]);
+    assert!(!r.ok, "{}", r.out);
+    assert!(r.err.contains("no format job"), "{}", r.err);
+}
+
+#[test]
+fn a_format_without_a_job_is_accepted_when_the_disk_shows_the_recordings_gone() {
+    let r = format_run("format-no-job-proven", OK, OK, &[RECORDINGS, NO_RECORDINGS]);
+    assert!(r.ok, "{}", r.err);
+    let data = &r.json()["data"];
+    assert_eq!((data["verified"].as_bool(), data["jobReported"].as_bool()), (Some(true), Some(false)));
+}
+
+#[test]
+fn an_unmount_answer_that_is_not_xml_or_json_stops_before_the_format() {
+    let ok = disk_xml("SD_DISK", "ext4", "OK", false);
+    let r = run(
+        "format-unmount-html",
+        vec![
+            route("/axis-cgi/disks/list.cgi", &[&ok]),
+            route("/axis-cgi/record/list.cgi", &[NO_RECORDINGS]),
+            route("/axis-cgi/disks/unmount.cgi", &[HTML_ERROR_PAGE]),
+        ],
+        &[],
+        &["format", "--yes", "--poll-interval", "0"],
+    );
+    assert!(!r.ok);
+    assert!(r.hits("GET /axis-cgi/disks/format.cgi").is_empty(), "{:?}", r.reqs);
 }
 
 #[test]

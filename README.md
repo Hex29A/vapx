@@ -205,18 +205,22 @@ vapx param set 192.168.1.100 root.Network.HostName=myaxis -u root -p <password>
 
 # User management
 vapx user list 192.168.1.100 -u root -p <password>
-vapx user add 192.168.1.100 --name viewer1 --pwd secret --role viewer -u root -p <password>
-vapx user add 192.168.1.100 --name op1 --pwd secret --role operator --ptz -u root -p <password>
-vapx user update 192.168.1.100 --name viewer1 --pwd newpass -u root -p <password>
-vapx user remove 192.168.1.100 --name viewer1 -u root -p <password>
+vapx user add 192.168.1.100 --name viewer1 --role viewer -u root -p <password>   # asks for the new password in a terminal
+vapx user add 192.168.1.100 --name op1 --pwd-env OP1_PWD --role operator --ptz -u root -p <password>
+vapx user update 192.168.1.100 --name viewer1 --pwd-file ./newpass -u root -p <password>   # file mode 0600
+vapx user remove 192.168.1.100 --name viewer1 --dry-run -u root -p <password>   # what would go, and whether it locks you out
+vapx user remove 192.168.1.100 --name viewer1 --yes -u root -p <password>
+# Passwords: --pwd-env VAR, --pwd-file FILE or the prompt keep them out of the process list and the
+# shell history. --pwd still works but warns. The same goes for ssh users, pass and enroll.
+# remove refuses the account you log in with and the last admin unless you add --force.
 
 # SSH service and SSH accounts (accounts need AXIS OS 11.5+; `ssh status` shows how the device logs in)
 vapx ssh status 192.168.1.100 -u root -p <password>
 vapx ssh enable 192.168.1.100 -u root -p <password>
-vapx ssh users add 192.168.1.100 --name support --pwd secret -u root -p <password>
-vapx ssh users passwd 192.168.1.100 --name support --pwd newpass -u root -p <password>
+vapx ssh users add 192.168.1.100 --name support --pwd-env SUPPORT_PWD -u root -p <password>
+vapx ssh users passwd 192.168.1.100 --name support --pwd-file ./newpass -u root -p <password>
 vapx ssh users list 192.168.1.100 -u root -p <password>
-vapx ssh users remove 192.168.1.100 --name support -u root -p <password>
+vapx ssh users remove 192.168.1.100 --name support --yes -u root -p <password>   # --dry-run shows without removing
 vapx ssh disable 192.168.1.100 -u root -p <password>
 
 # Use camera name from config
@@ -290,6 +294,9 @@ vapx enroll 192.168.0.90
 vapx enroll 192.168.0.90 --name entrance --to-group site-a
 vapx enroll 192.168.0.90 --dry-run            # plan only, touches nothing
 vapx enroll 192.168.0.90 --out creds.json     # full result to a 0600 file
+vapx enroll 192.168.0.90 --pwd-file ./pwd     # a password of your own (--pwd-env works too); else one is generated
+# If the account is created but the login or the config write then fails, the password is saved in a
+# 0600 file (the --out file, or enroll-<host>.recovery.json in the config directory) and the message names it.
 
 # The password is masked in the output by default:
 #   "password": "@6… (20 chars)"
@@ -308,6 +315,8 @@ vapx reboot mycam --wait
 # has been told to restart keeps answering "ready" until it actually goes down.
 BOOT=$(vapx systemready mycam | jq -r .data.bootid)
 vapx fw factory-default mycam --mode soft --yes   # --yes skips the confirmation
+# `fw upgrade --factory-default soft|hard` asks the same way (--yes). `fw upgrade --wait` waits for the
+# camera to go down and come back, checks it runs the new version, and only then does --auto-commit commit.
 vapx systemready mycam --until-ready 300 --after-bootid "$BOOT"
 
 # Rename a camera, updating its group memberships too. The name enroll
@@ -338,7 +347,7 @@ vapx config list
 vapx config init
 
 # Change password
-vapx pass 192.168.1.100 -u root -p oldpass --name root --pwd newpass
+vapx pass 192.168.1.100 -u root -p oldpass --name root --pwd-env NEW_PWD
 
 # Network configuration
 vapx net show 192.168.1.100 -u admin -p secret
@@ -369,7 +378,7 @@ vapx diff 192.168.1.100 192.168.1.101 -u admin -p <password>
 vapx diff 192.168.1.100 --group-diff building_a -u admin -p secret
 
 # Backup/restore parameters
-vapx backup save 192.168.1.100 -u admin -p secret -o backup.json
+vapx backup save 192.168.1.100 -u admin -p secret -o backup.json   # holds every parameter, passwords included: written 0600
 vapx backup restore 192.168.1.100 -u admin -p secret -i backup.json --dry-run
 
 # Overlay management
@@ -947,6 +956,8 @@ src/
     viewarea.rs        # vapx viewarea — view area management
     config.rs          # vapx config — config management
     enroll.rs          # vapx enroll — factory-default camera setup
+    confirm.rs         # --yes / terminal confirmation for destructive commands
+    pwd.rs             # --pwd / --pwd-env / --pwd-file / prompt for account passwords
     systemready.rs     # vapx systemready — readiness / needs-setup state
   vapix/
     auth.rs            # Digest/Basic auth negotiation

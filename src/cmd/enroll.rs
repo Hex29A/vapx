@@ -1,5 +1,6 @@
 use clap::{Args, ValueEnum};
 
+use crate::cmd::pwd::PwdArgs;
 use crate::config::cameras;
 use crate::config::credentials::Credentials;
 use crate::config::writer;
@@ -52,9 +53,10 @@ pub struct EnrollCmd {
     #[arg(long)]
     pub to_group: Option<String>,
 
-    /// Use this password instead of generating one (validated against the device policy)
-    #[arg(long)]
-    pub pwd: Option<String>,
+    /// Use a password of your own instead of a generated one (validated against the device
+    /// policy): --pwd-env or --pwd-file keep it out of the process list
+    #[command(flatten)]
+    pub pwd: PwdArgs,
 
     /// Length of the generated password
     #[arg(long)]
@@ -117,7 +119,7 @@ impl EnrollCmd {
 
         // 2. Password: generate to the device's stated policy, or validate the
         //    one we were handed against it before the camera rejects it.
-        let pwd = match self.pwd.clone() {
+        let pwd = match self.pwd.given()? {
             Some(p) => {
                 password::satisfies(&p, policy)
                     .map_err(|e| anyhow::anyhow!("Supplied password rejected: {}", e))?;
@@ -211,11 +213,10 @@ impl EnrollCmd {
 
         let props = device::get_all_properties(&client).map_err(|e| {
             anyhow::anyhow!(
-                "Account '{}' was created but logging in with it failed: {}. \
-                 The password is: {} — save it, the camera now requires it.",
+                "Account '{}' was created but logging in with it failed: {}. {}",
                 self.account,
                 e,
-                pwd
+                self.keep_password(&pwd, false)
             )
         })?;
 
@@ -302,14 +303,49 @@ impl EnrollCmd {
             format::err_json(
                 "CONFIG_WRITE_FAILED",
                 &format!(
-                    "Account created on {} but the config was not updated: {}. Credentials: {} / {}",
-                    self.host, e, self.account, pwd
+                    "Account created on {} but the config was not updated: {}. {}",
+                    self.host,
+                    e,
+                    self.keep_password(&pwd, self.out.is_some())
                 ),
             );
         }
 
         format::ok(&result);
         Ok(())
+    }
+
+    /// Save the password of the account that now exists, so a failure further on does not lose
+    /// it, and say where it is. The camera requires this password from now on. It goes to the
+    /// `--out` file when there is one, else to a private file in the config directory. The
+    /// password is printed only when no file could be written.
+    fn keep_password(&self, pwd: &str, out_written: bool) -> String {
+        let path = self.out.clone().unwrap_or_else(|| recovery_path(&self.host));
+        if out_written {
+            // The `--out` file already holds the full result with the password.
+            return format!(
+                "The password for '{}' is saved in {} (readable only by you). Keep it, the camera now requires it.",
+                self.account,
+                path.display()
+            );
+        }
+        let content = serde_json::json!({"host": self.host, "account": self.account, "password": pwd});
+        let saved = path
+            .parent()
+            .filter(|d| !d.as_os_str().is_empty())
+            .map_or(Ok(()), std::fs::create_dir_all)
+            .map_err(anyhow::Error::from)
+            .and_then(|_| write_secret_file(&path, &serde_json::to_string_pretty(&content).unwrap_or_default()));
+        match saved {
+            Ok(()) => format!(
+                "The password for '{}' is saved in {} (readable only by you). Keep it, the camera now requires it.",
+                self.account,
+                path.display()
+            ),
+            Err(e) => format!(
+                "The password could not be saved ({e}), so here it is: {pwd}. Keep it, the camera now requires it."
+            ),
+        }
     }
 
     /// A client with no credentials, for the pre-account endpoints.
@@ -331,19 +367,18 @@ fn mask(pw: &str) -> String {
     format!("{}… ({} chars)", pw.chars().take(2).collect::<String>(), n)
 }
 
+/// Created with mode 0600 from the start: the file is never readable by others, not even briefly.
 fn write_secret_file(path: &std::path::Path, content: &str) -> anyhow::Result<()> {
-    use std::io::Write;
+    crate::fsutil::write_private(path, content.as_bytes())
+}
 
-    let mut f = std::fs::File::create(path)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = f.metadata()?.permissions();
-        perms.set_mode(0o600);
-        std::fs::set_permissions(path, perms)?;
-    }
-    f.write_all(content.as_bytes())?;
-    Ok(())
+/// Where the password of a new account is kept when it would otherwise be lost.
+fn recovery_path(host: &str) -> std::path::PathBuf {
+    let safe: String = host.chars().map(|c| if c.is_ascii_alphanumeric() || matches!(c, '.' | '-') { c } else { '_' }).collect();
+    dirs::config_dir()
+        .map(|d| d.join("vapx"))
+        .unwrap_or_default()
+        .join(format!("enroll-{safe}.recovery.json"))
 }
 
 #[cfg(test)]

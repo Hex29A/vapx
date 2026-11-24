@@ -14,6 +14,7 @@ use serde_json::{json, Map, Value};
 
 use super::write::{exports_dir, safe_filename};
 use super::{json_out, Args, Handler, Out};
+use crate::fsutil::write_private;
 use crate::cmd::{audit, fw, health, param_to_json};
 use crate::mcp::camera::{self, Cam};
 use crate::vapix::{acap_install, certs, data_of, disk, firmware, image, o3c, params, selftest, streamurl, zipstream};
@@ -117,16 +118,26 @@ fn firmware_upgrade(args: &Args) -> anyhow::Result<Vec<Out>> {
     let new_version = resp.pointer("/data/firmwareVersion").and_then(Value::as_str).unwrap_or("unknown").to_string();
 
     let mut committed = false;
+    let mut active_version = Value::Null;
+    let mut verified = Value::Null;
     if wait {
-        fw::wait_for_reboot(&cam.host, cam.creds.port, cam.creds.clone(), wait_timeout, false)?;
-        if auto_commit {
-            firmware::commit(&camera::open(&cam.id)?.client)?;
-            committed = true;
-        }
+        let done = fw::finish_upgrade(
+            &cam.host,
+            cam.creds.clone(),
+            wait_timeout,
+            fw::UPGRADE_DOWN_LIMIT,
+            &new_version,
+            auto_commit,
+        )?;
+        committed = done.committed;
+        verified = json!(done.verified);
+        active_version = json!(done.active_version);
     }
     Ok(json_out(&json!({
         "previousVersion": old_version,
         "newVersion": new_version,
+        "activeVersion": active_version,
+        "versionVerified": verified,
         "rebooting": !wait,
         "committed": committed,
     })))
@@ -287,27 +298,6 @@ fn backup_params(args: &Args) -> anyhow::Result<Vec<Out>> {
     let path = dir.join(&filename);
     write_private(&path, serde_json::to_string_pretty(&map)?.as_bytes())?;
     Ok(json_out(&json!({"path": path.display().to_string(), "parameters": map.len()})))
-}
-
-/// Write a file only its owner can read (parameter dumps hold secrets).
-fn write_private(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
-    use std::io::Write;
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    let mut file = options.open(path).with_context(|| format!("cannot write {}", path.display()))?;
-    file.write_all(bytes).with_context(|| format!("cannot write {}", path.display()))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        // A file that already existed keeps its old mode otherwise.
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
-    }
-    Ok(())
 }
 
 const MAX_DIFFS: usize = 500;

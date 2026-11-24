@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.35.0
+
+CLI hardening from a review of the command-line side (#101).
+
+### Changed
+- **`fw upgrade --wait` checks the camera before it commits.** It used to sleep five seconds and take the first answer for "back online", which could be a camera that had not rebooted yet, and `--auto-commit` then committed without looking at the version. Now the camera must be seen going down (up to 90 s) and coming back, its active firmware is compared with the version the upload reported, and `--auto-commit` commits only when they match. On a mismatch, or a camera that never rebooted, it fails and leaves the camera's rollback timer running. The result has `activeVersion` and `versionVerified`. The MCP `firmware_upgrade` tool does the same.
+- **`fw upgrade --factory-default` asks like `fw factory-default` does.** It is now `none|soft|hard` (an unknown value is refused before anything is sent), and `soft` or `hard` needs `--yes` or an answer in a terminal. `fw factory-default --mode` takes `soft|hard` the same way.
+- **`disk format` reports `formatted` only with evidence.** The camera must report a finished format job, or the disk must show the new file system or have lost its oldest recording; an old recording still on the disk is an error. The result has `verified`, `jobReported` and, when the camera reports another file system than asked for, a `warning`. Answers to format, mount, unmount and the encryption switch that are neither XML nor JSON (an HTML error page with status 200, for instance) are errors, not success.
+- **A failed `disk format` mounts the disk again.** The disk is unmounted before the format; when the format then fails, vapx mounts it again so the camera can go on recording and says how the disk is left, or that it could not be mounted.
+- **`user remove` and `ssh users remove` ask first.** They need `--yes` (or an answer in a terminal) and have `--dry-run`. `user remove` also refuses the account vapx logs in with and the last admin account, unless `--force`, and an account that does not exist is reported with the accounts there are.
+- `--pwd` still works, and now warns that it shows in the process list.
+
+### Added
+- `--pwd-env VAR` and `--pwd-file FILE` (mode 0600) for the password of `user add`, `user update`, `ssh users add`, `ssh users passwd`, `pass` and `enroll`. Without any of the three, a terminal gets a prompt (asked twice); a script gets an error that names the options.
+
+### Security
+- `backup save` and `template create` write their file with mode 0600, also over an existing open file: both hold every parameter of the camera, passwords included. A file that already exists is restricted before it is overwritten.
+- `enroll` no longer prints the generated password in the error when the login with the new account fails or the config cannot be written. The password is saved in a 0600 file (the `--out` file, or `enroll-<host>.recovery.json` in the config directory) and the message names it; it is printed only if no file could be written. The `--out` file is created with mode 0600 from the start instead of being restricted afterwards.
+
 ## v0.34.0
 
 ### Changed

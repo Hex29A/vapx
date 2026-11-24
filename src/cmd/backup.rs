@@ -112,7 +112,8 @@ impl BackupSaveCmd {
         });
 
         let json = serde_json::to_string_pretty(&map)?;
-        std::fs::write(&output_path, &json)?;
+        // The dump holds every parameter of the camera, passwords included.
+        crate::fsutil::write_private(&output_path, json.as_bytes())?;
 
         format::ok_msg(&format!(
             "Saved {} parameters to {}",

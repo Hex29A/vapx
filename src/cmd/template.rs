@@ -128,7 +128,8 @@ impl TemplateCmd {
 
                 // Organize into nested YAML structure by group
                 let yaml = serde_yaml::to_string(&all_params)?;
-                std::fs::write(&output, &yaml)?;
+                // The export holds every parameter of the camera, passwords included.
+                crate::fsutil::write_private(&output, yaml.as_bytes())?;
 
                 format::ok(&serde_json::json!({
                     "file": output.display().to_string(),
