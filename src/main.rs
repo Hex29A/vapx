@@ -231,6 +231,26 @@ fn main() {
         .with_ansi(std::io::IsTerminal::is_terminal(&std::io::stderr()))
         .init();
 
+    // An explicit --config that does not exist is an error, unless the command is one that
+    // creates the file there (it then never falls back to the default location).
+    if let Some(path) = config::cameras::explicit_config_path() {
+        let creates = matches!(
+            cli.command,
+            Commands::Enroll(_)
+                | Commands::Completions { .. }
+                | Commands::Mangen { .. }
+                | Commands::Config(cmd::config::ConfigCmd {
+                    command: cmd::config::ConfigCommands::Add { .. } | cmd::config::ConfigCommands::Init
+                })
+        );
+        if !path.exists() && !creates {
+            output::format::err_json(
+                "CONFIG_NOT_FOUND",
+                &format!("--config {} does not exist. Nothing was done; create it with `vapx config init --config {}`.", path.display(), path.display()),
+            );
+        }
+    }
+
     let result = match cli.command {
         Commands::Info(cmd) => cmd.run(),
         Commands::Snap(cmd) => cmd.run(),

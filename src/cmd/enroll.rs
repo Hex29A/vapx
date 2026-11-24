@@ -176,9 +176,7 @@ impl EnrollCmd {
                     "derived from model and serial after the account is created — not knowable yet"
                 } else { "given on the command line" },
                 "group": self.to_group.clone(),
-                "would_write": cameras::config_path()
-                    .map(|p| p.display().to_string())
-                    .unwrap_or_else(|| "(no config file found)".into()),
+                "would_write": cameras::config_write_path().display().to_string(),
             }));
             return Ok(());
         }
@@ -240,9 +238,7 @@ impl EnrollCmd {
 
         // 6. Write the config entry. If this fails the credentials are still
         //    reported, so the camera is never left with a lost password.
-        let config_path = cameras::config_path()
-            .or_else(|| dirs::config_dir().map(|d| d.join("vapx").join("cameras.yaml")))
-            .unwrap_or_else(|| std::path::PathBuf::from("cameras.yaml"));
+        let config_path = cameras::config_write_path();
 
         let write_result = writer::add_camera(
             &config_path,

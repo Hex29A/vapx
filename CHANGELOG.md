@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.35.1
+
+### Fixed
+- `--config FILE` that names a file that does not exist is an error (#103). It used to be ignored without a word, and the default config (or `$VAPX_CONFIG`) was read or written instead; `enroll` then wrote the new camera, with its password, to the default file. Now the command stops with `CONFIG_NOT_FOUND` before anything is sent. Commands that create the file (`enroll`, `config add`, `config init`) create it at the given path and never at the default location, and `enroll --dry-run` shows that path.
+
 ## v0.35.0
 
 CLI hardening from a review of the command-line side (#101).
