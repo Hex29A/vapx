@@ -44,6 +44,8 @@ vapx/
       param.rs           # vapx param — parameter management
       user.rs            # vapx user — user account management
       pass.rs            # vapx pass — password management
+      pwd.rs             # --pwd / --pwd-env / --pwd-file / prompt for account passwords
+      confirm.rs         # --yes / terminal confirmation for destructive commands
       net.rs             # vapx net — network configuration
       time.rs            # vapx time — NTP/timezone management
       hw.rs              # vapx hw — I/O port management

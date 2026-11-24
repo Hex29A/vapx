@@ -1,5 +1,7 @@
 use clap::{Args, Subcommand, ValueEnum};
 
+use crate::cmd::confirm::confirm;
+use crate::cmd::pwd::PwdArgs;
 use crate::config::credentials::resolve;
 use crate::vapix::client::VapixClient;
 use crate::vapix::users;
@@ -85,9 +87,8 @@ pub struct UserAddCmd {
     /// Account name to create (1-14 chars, a-z A-Z 0-9)
     #[arg(long)]
     pub name: String,
-    /// Password for the new account
-    #[arg(long)]
-    pub pwd: String,
+    #[command(flatten)]
+    pub pwd: PwdArgs,
     /// Role for the account
     #[arg(long, default_value = "viewer")]
     pub role: Role,
@@ -124,9 +125,8 @@ pub struct UserUpdateCmd {
     /// Account name to update
     #[arg(long)]
     pub name: String,
-    /// New password
-    #[arg(long)]
-    pub pwd: String,
+    #[command(flatten)]
+    pub pwd: PwdArgs,
     #[arg(short, long, env = "VAPX_USER")]
     pub user: Option<String>,
     #[arg(short, long, env = "VAPX_PASS")]
@@ -147,6 +147,15 @@ pub struct UserRemoveCmd {
     /// Account name to remove
     #[arg(long)]
     pub name: String,
+    /// Skip the confirmation prompt (required when stdin is not a terminal)
+    #[arg(short, long)]
+    pub yes: bool,
+    /// Remove the account vapx logs in with, or the last admin, even though that locks you out
+    #[arg(long)]
+    pub force: bool,
+    /// Show what would be removed and whether it would lock you out, without removing anything
+    #[arg(long)]
+    pub dry_run: bool,
     #[arg(short, long, env = "VAPX_USER")]
     pub user: Option<String>,
     #[arg(short, long, env = "VAPX_PASS")]
@@ -233,10 +242,11 @@ impl UserAddCmd {
         let timeout = self.timeout.unwrap_or(creds.timeout);
         let client = VapixClient::new(&resolved_host, creds.port, creds, timeout);
         let sgrp = self.role.to_sgrp(self.ptz);
+        let pwd = self.pwd.read(&format!("the new account {}", self.name), true)?;
         let result = users::add(
             &client,
             &self.name,
-            &self.pwd,
+            &pwd,
             &sgrp,
             &self.comment,
             if self.initial {
@@ -262,7 +272,8 @@ impl UserUpdateCmd {
         )?;
         let timeout = self.timeout.unwrap_or(creds.timeout);
         let client = VapixClient::new(&resolved_host, creds.port, creds, timeout);
-        let result = users::update(&client, &self.name, &self.pwd)?;
+        let pwd = self.pwd.read(&format!("account {}", self.name), true)?;
+        let result = users::update(&client, &self.name, &pwd)?;
         crate::output::format::ok_msg(result.trim());
         Ok(())
     }
@@ -277,8 +288,24 @@ impl UserRemoveCmd {
             self.port,
             self.insecure,
         )?;
+        let login = creds.user.clone();
         let timeout = self.timeout.unwrap_or(creds.timeout);
         let client = VapixClient::new(&resolved_host, creds.port, creds, timeout);
+
+        let plan = users::plan_removal(&users::list(&client)?, &self.name, &login);
+        if !plan.exists {
+            anyhow::bail!("no account '{}' on {} (accounts: {})", self.name, self.host, plan.accounts.join(", "));
+        }
+        if self.dry_run {
+            let mut out = plan.to_json(&self.name);
+            out["performed"] = serde_json::json!(false);
+            crate::output::format::ok(&out);
+            return Ok(());
+        }
+        if let (Some(reason), false) = (plan.lockout(), self.force) {
+            anyhow::bail!("Not removing '{}': {}. Nothing was done; pass --force to remove it anyway.", self.name, reason);
+        }
+        confirm(&format!("Removing account '{}' from {} cannot be undone", self.name, self.host), self.yes)?;
         let result = users::remove(&client, &self.name)?;
         crate::output::format::ok_msg(result.trim());
         Ok(())

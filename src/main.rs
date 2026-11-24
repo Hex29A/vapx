@@ -10,6 +10,7 @@ mod cmd;
 mod mcp;
 mod config;
 mod enroll;
+mod fsutil;
 mod output;
 mod vapix;
 

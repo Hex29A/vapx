@@ -79,6 +79,70 @@ pub fn remove(client: &VapixClient, user: &str) -> anyhow::Result<String> {
     Ok(text)
 }
 
+/// What removing an account would do, worked out from the account list before anything is sent.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Removal {
+    /// The account is in the list at all.
+    pub exists: bool,
+    /// The groups the account belongs to.
+    pub groups: Vec<String>,
+    /// It is the account vapx logs in with, so the next call would get 401.
+    pub is_login: bool,
+    /// It is the only account of the admin group that a person can log in with.
+    pub last_admin: bool,
+    /// The accounts the camera has, for the error when the name is not one of them.
+    pub accounts: Vec<String>,
+}
+
+impl Removal {
+    /// Why this removal would cut the user off from the camera, if it would.
+    pub fn lockout(&self) -> Option<String> {
+        if self.is_login {
+            Some("it is the account vapx is logged in with, so the next call to the camera would fail".to_string())
+        } else if self.last_admin {
+            Some("it is the last admin account, and nobody could manage the camera afterwards".to_string())
+        } else {
+            None
+        }
+    }
+
+    pub fn to_json(&self, name: &str) -> serde_json::Value {
+        serde_json::json!({
+            "account": name,
+            "groups": self.groups,
+            "isLoginAccount": self.is_login,
+            "isLastAdmin": self.last_admin,
+            "wouldLockOut": self.lockout().is_some(),
+        })
+    }
+}
+
+/// Look `name` up in the text of [`list`]. `login` is the account vapx logs in with.
+pub fn plan_removal(list_text: &str, name: &str, login: &str) -> Removal {
+    let parsed = parse_users(list_text);
+    let accounts: Vec<(String, Vec<String>, bool)> = parsed["users"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .map(|u| {
+                    let groups = u["groups"].as_array().map(|g| g.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default();
+                    (u["username"].as_str().unwrap_or("").to_string(), groups, u["is_service_account"].as_bool().unwrap_or(false))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let me = accounts.iter().find(|(n, _, _)| n == name);
+    let groups = me.map(|(_, g, _)| g.clone()).unwrap_or_default();
+    let other_admins = accounts.iter().filter(|(n, g, service)| n != name && !service && g.iter().any(|x| x == "admin")).count();
+    Removal {
+        exists: me.is_some(),
+        last_admin: groups.iter().any(|g| g == "admin") && other_admins == 0,
+        groups,
+        is_login: name == login,
+        accounts: accounts.into_iter().filter(|(_, _, service)| !service).map(|(n, _, _)| n).collect(),
+    }
+}
+
 /// pwdgrp.cgi answers 200 with an "Error:" body on failure.
 fn check_error(text: &str) -> anyhow::Result<()> {
     if text.contains("Error:") {
@@ -125,4 +189,43 @@ pub fn parse_users(text: &str) -> serde_json::Value {
 /// Accounts with their groups (see [`parse_users`]).
 pub fn get_users(client: &VapixClient) -> anyhow::Result<serde_json::Value> {
     Ok(parse_users(&list(client)?))
+}
+
+#[cfg(test)]
+mod removal_tests {
+    use super::*;
+
+    const LIST: &str = "root=\"root,admin1\"\nadmin=\"root,admin1,stsuser\"\noperator=\"root,admin1,ops\"\nviewer=\"root,admin1,ops,view\"\nusers=\"root,admin1,ops,view,stsuser\"\n";
+
+    #[test]
+    fn an_ordinary_account_can_be_removed() {
+        let r = plan_removal(LIST, "view", "root");
+        assert!(r.exists && r.lockout().is_none());
+        assert_eq!(r.groups, vec!["viewer", "users"]);
+    }
+
+    #[test]
+    fn the_login_account_is_a_lockout() {
+        let r = plan_removal(LIST, "root", "root");
+        assert!(r.is_login);
+        assert!(r.lockout().unwrap().contains("logged in"));
+    }
+
+    #[test]
+    fn the_last_admin_is_a_lockout_but_not_while_another_admin_is_left() {
+        // admin1 is an admin and so is root: removing admin1 leaves root.
+        assert!(!plan_removal(LIST, "admin1", "root").last_admin);
+        // With only one human admin left, removing it locks everyone out; the service account does not count.
+        let one = "admin=\"solo,stsuser\"\nusers=\"solo,stsuser\"\n";
+        let r = plan_removal(one, "solo", "someone-else");
+        assert!(r.last_admin);
+        assert!(r.lockout().unwrap().contains("last admin"));
+    }
+
+    #[test]
+    fn an_account_that_is_not_there_does_not_exist() {
+        let r = plan_removal(LIST, "ghost", "root");
+        assert!(!r.exists);
+        assert!(r.accounts.contains(&"admin1".to_string()) && !r.accounts.contains(&"stsuser".to_string()));
+    }
 }

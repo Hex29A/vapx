@@ -1,8 +1,7 @@
-use std::io::{IsTerminal, Write};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use clap::{Args, Subcommand};
+use clap::{Args, Subcommand, ValueEnum};
 use indicatif::{ProgressBar, ProgressStyle};
 
 use crate::config::credentials::{self, resolve};
@@ -10,6 +9,7 @@ use crate::output::format;
 use crate::vapix::client::VapixClient;
 use crate::vapix::firmware;
 
+use crate::cmd::confirm::confirm;
 use crate::cmd::CameraArgs;
 
 #[derive(Args)]
@@ -33,6 +33,43 @@ pub struct RebootArgs {
     pub wait_timeout: u64,
 }
 
+/// How much a factory default wipes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum ResetMode {
+    /// Keep the network settings
+    Soft,
+    /// Full reset
+    Hard,
+}
+
+impl ResetMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            ResetMode::Soft => "soft",
+            ResetMode::Hard => "hard",
+        }
+    }
+}
+
+/// The factory default mode of a firmware upgrade: `none` keeps all settings.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum UpgradeReset {
+    /// Keep all settings (default)
+    None,
+    Soft,
+    Hard,
+}
+
+impl UpgradeReset {
+    fn mode(self) -> Option<ResetMode> {
+        match self {
+            UpgradeReset::None => None,
+            UpgradeReset::Soft => Some(ResetMode::Soft),
+            UpgradeReset::Hard => Some(ResetMode::Hard),
+        }
+    }
+}
+
 #[derive(Subcommand)]
 pub enum FwCommands {
     /// Show firmware status
@@ -49,9 +86,13 @@ pub enum FwCommands {
         #[arg(short, long)]
         file: PathBuf,
 
-        /// Factory default mode: none (default), soft, hard
-        #[arg(long, default_value = "none")]
-        factory_default: String,
+        /// Factory default after the upgrade
+        #[arg(long, value_enum, default_value_t = UpgradeReset::None)]
+        factory_default: UpgradeReset,
+
+        /// Skip the confirmation prompt for --factory-default soft|hard (required when stdin is not a terminal)
+        #[arg(short, long)]
+        yes: bool,
 
         /// Wait for camera to come back online after reboot
         #[arg(long)]
@@ -83,8 +124,8 @@ pub enum FwCommands {
         cam: CameraArgs,
 
         /// Mode: soft (keep network settings) or hard (full reset)
-        #[arg(long, default_value = "soft")]
-        mode: String,
+        #[arg(long, value_enum, default_value_t = ResetMode::Soft)]
+        mode: ResetMode,
 
         /// Skip the confirmation prompt (required when stdin is not a terminal)
         #[arg(short, long)]
@@ -119,8 +160,8 @@ impl FwCmd {
                 let output = resp.get("data").unwrap_or(&resp);
                 format::output(output, cam.plain);
             }
-            FwCommands::Upgrade { cam, file, factory_default, wait, wait_timeout, auto_commit } => {
-                run_upgrade(cam, file, factory_default, wait, wait_timeout, auto_commit)?;
+            FwCommands::Upgrade { cam, file, factory_default, yes, wait, wait_timeout, auto_commit } => {
+                run_upgrade(cam, file, factory_default.mode(), yes, wait, wait_timeout, auto_commit)?;
             }
             FwCommands::Commit { cam } => {
                 let (creds, resolved_host) = resolve_cam(&cam)?;
@@ -141,11 +182,11 @@ impl FwCmd {
             }
             FwCommands::Reboot(args) => run_reboot(args)?,
             FwCommands::FactoryDefault { cam, mode, yes } => {
-                confirm_factory_default(&cam.host, &mode, yes)?;
+                confirm_factory_default(&cam.host, mode, yes)?;
                 let (creds, resolved_host) = resolve_cam(&cam)?;
                 let client = crate::cmd::make_client(&resolved_host, creds, cam.timeout);
-                firmware::factory_default(&client, &mode)?;
-                format::ok_msg(&format!("Factory default ({}) sent, camera is going down", mode));
+                firmware::factory_default(&client, mode.as_str())?;
+                format::ok_msg(&format!("Factory default ({}) sent, camera is going down", mode.as_str()));
             }
             FwCommands::Check { cam, expected, compare, other } => {
                 run_check(cam, expected, compare, other)?;
@@ -174,7 +215,7 @@ pub fn run_reboot(args: RebootArgs) -> anyhow::Result<()> {
     }
 
     eprintln!("Waiting for the camera to come back (up to {}s)...", wait_timeout);
-    wait_for_reboot(&resolved_host, creds.port, creds, wait_timeout, true)?;
+    wait_for_reboot(&resolved_host, creds.port, creds, wait_timeout, REBOOT_DOWN_LIMIT)?;
     let secs = started.elapsed().as_secs();
     eprintln!("Camera is back online after {} s", secs);
     format::ok_msg(&format!("Camera back online after {} s", secs));
@@ -183,32 +224,16 @@ pub fn run_reboot(args: RebootArgs) -> anyhow::Result<()> {
 
 /// Factory default wipes settings: ask first. Without `--yes` and without a
 /// terminal there is nobody to ask, so nothing is done.
-fn confirm_factory_default(host: &str, mode: &str, yes: bool) -> anyhow::Result<()> {
-    if yes {
-        return Ok(());
-    }
-    if !std::io::stdin().is_terminal() {
-        anyhow::bail!(
-            "Factory default ({}) of {} erases settings on the camera. Nothing was done; pass --yes to confirm.",
-            mode,
-            host
-        );
-    }
-    eprint!("Factory default ({}) of {} erases settings. Type 'yes' to continue: ", mode, host);
-    std::io::stderr().flush().ok();
-    let mut answer = String::new();
-    std::io::stdin().read_line(&mut answer)?;
-    if answer.trim() != "yes" {
-        anyhow::bail!("Aborted, nothing was done.");
-    }
-    Ok(())
+fn confirm_factory_default(host: &str, mode: ResetMode, yes: bool) -> anyhow::Result<()> {
+    confirm(&format!("Factory default ({}) of {} erases settings on the camera", mode.as_str(), host), yes)
 }
 
 #[allow(clippy::too_many_arguments)]
 fn run_upgrade(
     cam: CameraArgs,
     file: PathBuf,
-    factory_default: String,
+    factory_default: Option<ResetMode>,
+    yes: bool,
     wait: bool,
     wait_timeout: u64,
     auto_commit: bool,
@@ -219,6 +244,12 @@ fn run_upgrade(
 
     if !file.exists() {
         anyhow::bail!("Firmware file not found: {}", file.display());
+    }
+
+    // A factory default after the upgrade erases settings like `fw factory-default`
+    // does, so it needs the same confirmation, before anything is sent.
+    if let Some(mode) = factory_default {
+        confirm_factory_default(&cam.host, mode, yes)?;
     }
 
     let (creds, resolved_host) = resolve_cam(&cam)?;
@@ -239,7 +270,7 @@ fn run_upgrade(
         .to_string();
     eprintln!("Current firmware: {}", old_version);
 
-    let fd = if factory_default == "none" { None } else { Some(factory_default.as_str()) };
+    let fd = factory_default.map(ResetMode::as_str);
 
     eprintln!("Uploading firmware...");
     let upload_start = Instant::now();
@@ -262,6 +293,8 @@ fn run_upgrade(
     eprintln!("Camera is rebooting...");
 
     let mut committed = false;
+    let mut active_version = None;
+    let mut verified = None;
 
     if wait {
         let pb = ProgressBar::new_spinner();
@@ -270,21 +303,35 @@ fn run_upgrade(
             .unwrap());
         pb.set_message("Waiting for reboot...");
         pb.enable_steady_tick(Duration::from_millis(100));
-        wait_for_reboot(&resolved_host, creds.port, creds.clone(), wait_timeout, false)?;
+        let result = finish_upgrade(
+            &resolved_host,
+            creds.clone(),
+            wait_timeout,
+            UPGRADE_DOWN_LIMIT,
+            &new_version,
+            auto_commit,
+        );
         pb.finish_and_clear();
-        eprintln!("Camera is back online.");
-
-        if auto_commit {
-            let commit_client = crate::cmd::make_client(&resolved_host, creds, cam.timeout);
-            firmware::commit(&commit_client)?;
+        let done = result?;
+        eprintln!("Camera is back online, running {}.", done.active_version);
+        if done.committed {
             eprintln!("Firmware committed.");
-            committed = true;
+        } else if !done.verified {
+            eprintln!(
+                "Warning: the camera runs {} but the upload reported {}; the version was not confirmed.",
+                done.active_version, new_version
+            );
         }
+        committed = done.committed;
+        verified = Some(done.verified);
+        active_version = Some(done.active_version);
     }
 
     format::ok(&serde_json::json!({
         "previousVersion": old_version,
         "newVersion": new_version,
+        "activeVersion": active_version,
+        "versionVerified": verified,
         "committed": committed,
     }));
     Ok(())
@@ -385,36 +432,38 @@ fn resolve_fw_timeout(host: &str) -> Option<u64> {
     entry.fw_timeout
 }
 
+/// How long a camera may keep answering after a reboot request before the
+/// reboot is considered not to have started.
+const REBOOT_DOWN_LIMIT: Duration = Duration::from_secs(30);
+/// The same after a firmware upload. Flashing takes longer to get going than a
+/// plain reboot.
+pub(crate) const UPGRADE_DOWN_LIMIT: Duration = Duration::from_secs(90);
+
 /// Wait for camera to come back online after reboot.
 ///
-/// With `confirm_down` the camera must first be seen going down (within 30 s),
-/// so a reboot that never started is reported instead of looking like a
-/// reboot that finished at once. Polling is quiet: one attempt per probe.
+/// The camera must first be seen going down (within `down_limit`), so a reboot
+/// that never started is reported instead of looking like a reboot that
+/// finished at once. Polling is quiet: one attempt per probe.
 pub(crate) fn wait_for_reboot(
     host: &str,
     port: u16,
     creds: credentials::Credentials,
     timeout_secs: u64,
-    confirm_down: bool,
+    down_limit: Duration,
 ) -> anyhow::Result<()> {
     let start = Instant::now();
     let timeout = Duration::from_secs(timeout_secs);
     let probe = || firmware::is_up(&VapixClient::new(host, port, creds.clone(), 5));
 
-    if confirm_down {
-        let down_limit = Duration::from_secs(30).min(timeout);
-        while probe() {
-            if start.elapsed() > down_limit {
-                anyhow::bail!(
-                    "Camera still answered {}s after the reboot request; the reboot may not have started",
-                    down_limit.as_secs()
-                );
-            }
-            std::thread::sleep(Duration::from_secs(1));
+    let down_limit = down_limit.min(timeout);
+    while probe() {
+        if start.elapsed() > down_limit {
+            anyhow::bail!(
+                "Camera still answered {}s after the reboot request; the reboot may not have started",
+                down_limit.as_secs()
+            );
         }
-    } else {
-        // Wait for the camera to go down
-        std::thread::sleep(Duration::from_secs(5));
+        std::thread::sleep(Duration::from_millis(500));
     }
 
     loop {
@@ -425,5 +474,135 @@ pub(crate) fn wait_for_reboot(
             return Ok(());
         }
         std::thread::sleep(Duration::from_secs(2));
+    }
+}
+
+/// What a waited-for firmware upgrade ended in.
+pub(crate) struct UpgradeDone {
+    /// The version the camera runs after the reboot.
+    pub active_version: String,
+    /// The camera runs the version the upload reported.
+    pub verified: bool,
+    pub committed: bool,
+}
+
+/// Wait for the camera to go down and come back after a firmware upload, check
+/// that it runs the version the upload reported and, only then and only with
+/// `auto_commit`, commit it. A version that does not match, or a camera that
+/// never rebooted, is an error and nothing is committed, so the camera's own
+/// rollback timer stays armed.
+pub(crate) fn finish_upgrade(
+    host: &str,
+    creds: credentials::Credentials,
+    wait_timeout: u64,
+    down_limit: Duration,
+    expected_version: &str,
+    auto_commit: bool,
+) -> anyhow::Result<UpgradeDone> {
+    wait_for_reboot(host, creds.port, creds.clone(), wait_timeout, down_limit)?;
+    let client = VapixClient::new(host, creds.port, creds, 30);
+    let active_version = firmware::active_version(&client)?;
+    let verified = expected_version != "unknown" && active_version == expected_version;
+    if auto_commit && !verified {
+        anyhow::bail!(
+            "The camera runs {} after the reboot but the upgrade should give {}. Nothing was committed; \
+             the rollback timer is still running, and `vapx fw rollback` goes back to the previous firmware.",
+            active_version,
+            expected_version
+        );
+    }
+    let mut committed = false;
+    if auto_commit {
+        firmware::commit(&client)?;
+        committed = true;
+    }
+    Ok(UpgradeDone { active_version, verified, committed })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::vapix::testserver::{test_creds, Reply, TestServer};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    const STATUS_12_1: &str = r#"{"apiVersion":"1.0","data":{"activeFirmwareVersion":"12.1.0"}}"#;
+    const COMMIT_OK: &str = r#"{"apiVersion":"1.0","data":{"firmwareVersion":"12.1.0"}}"#;
+
+    /// A camera that is down for its first status request and then answers
+    /// with `STATUS_12_1`. `commits` counts commit requests.
+    fn rebooting_camera(commits: Arc<AtomicUsize>) -> TestServer {
+        let statuses = AtomicUsize::new(0);
+        TestServer::start(move |req| {
+            if req.contains("\"method\":\"commit\"") {
+                commits.fetch_add(1, Ordering::SeqCst);
+                Reply::Json(200, COMMIT_OK)
+            } else if statuses.fetch_add(1, Ordering::SeqCst) == 0 {
+                Reply::Drop
+            } else {
+                Reply::Json(200, STATUS_12_1)
+            }
+        })
+    }
+
+    fn finish(server: &TestServer, expected: &str, auto_commit: bool, down: Duration) -> anyhow::Result<UpgradeDone> {
+        finish_upgrade("127.0.0.1", test_creds(server.port), 20, down, expected, auto_commit)
+    }
+
+    #[test]
+    fn upgrade_commits_when_the_camera_runs_the_new_version() {
+        let commits = Arc::new(AtomicUsize::new(0));
+        let server = rebooting_camera(commits.clone());
+        let done = finish(&server, "12.1.0", true, Duration::from_secs(5)).unwrap();
+        assert!(done.verified && done.committed);
+        assert_eq!(done.active_version, "12.1.0");
+        assert_eq!(commits.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn upgrade_does_not_commit_a_camera_on_the_wrong_version() {
+        let commits = Arc::new(AtomicUsize::new(0));
+        let server = rebooting_camera(commits.clone());
+        let err = finish(&server, "12.2.0", true, Duration::from_secs(5)).err().expect("must fail");
+        let text = err.to_string();
+        assert!(text.contains("12.1.0") && text.contains("12.2.0") && text.contains("rollback"), "{text}");
+        assert_eq!(commits.load(Ordering::SeqCst), 0, "a mismatch must leave the rollback timer in place");
+    }
+
+    #[test]
+    fn upgrade_does_not_commit_when_the_new_version_is_unknown() {
+        let commits = Arc::new(AtomicUsize::new(0));
+        let server = rebooting_camera(commits.clone());
+        assert!(finish(&server, "unknown", true, Duration::from_secs(5)).is_err());
+        assert_eq!(commits.load(Ordering::SeqCst), 0);
+    }
+
+    /// The bug behind #101: a camera that has not gone down yet used to count
+    /// as "back online" after a fixed five second sleep.
+    #[test]
+    fn upgrade_does_not_commit_a_camera_that_never_went_down() {
+        let commits = Arc::new(AtomicUsize::new(0));
+        let seen = commits.clone();
+        let server = TestServer::start(move |req| {
+            if req.contains("\"method\":\"commit\"") {
+                seen.fetch_add(1, Ordering::SeqCst);
+                Reply::Json(200, COMMIT_OK)
+            } else {
+                Reply::Json(200, STATUS_12_1)
+            }
+        });
+        let err = finish(&server, "12.1.0", true, Duration::from_secs(1)).err().expect("must fail");
+        assert!(err.to_string().contains("may not have started"), "{err}");
+        assert_eq!(commits.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn upgrade_without_auto_commit_reports_an_unconfirmed_version() {
+        let commits = Arc::new(AtomicUsize::new(0));
+        let server = rebooting_camera(commits.clone());
+        let done = finish(&server, "12.2.0", false, Duration::from_secs(5)).unwrap();
+        assert!(!done.verified && !done.committed);
+        assert_eq!(done.active_version, "12.1.0");
+        assert_eq!(commits.load(Ordering::SeqCst), 0);
     }
 }

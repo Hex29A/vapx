@@ -86,3 +86,47 @@ fn factory_default_with_yes_is_sent_once() {
     assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
     assert_eq!(hits.load(Ordering::SeqCst), 1, "factory default must be sent exactly once");
 }
+
+fn firmware_file() -> std::path::PathBuf {
+    let path = std::env::temp_dir().join(format!("vapx-fw-{}-{:?}.bin", std::process::id(), thread::current().id()));
+    std::fs::write(&path, b"not really firmware").unwrap();
+    path
+}
+
+#[test]
+fn upgrade_with_factory_default_needs_confirmation() {
+    let (port, hits) = dropping_server();
+    let file = firmware_file();
+    let out = run_vapx(&["fw", "upgrade", "--file", file.to_str().unwrap(), "--factory-default", "hard"], port);
+    let _ = std::fs::remove_file(&file);
+    assert!(!out.status.success(), "must refuse without --yes when stdin is not a terminal");
+    assert_eq!(hits.load(Ordering::SeqCst), 0, "nothing may be sent without confirmation");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("--yes"), "the error should name --yes, got: {stderr}");
+}
+
+#[test]
+fn upgrade_with_factory_default_and_yes_goes_ahead() {
+    let (port, hits) = dropping_server();
+    let file = firmware_file();
+    let out = run_vapx(&["fw", "upgrade", "--file", file.to_str().unwrap(), "--factory-default", "soft", "--yes"], port);
+    let _ = std::fs::remove_file(&file);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(!stderr.contains("--yes to confirm"), "confirmation was given, got: {stderr}");
+    assert!(hits.load(Ordering::SeqCst) >= 1, "the upgrade should have reached the camera");
+}
+
+#[test]
+fn factory_default_mode_is_validated_locally() {
+    for args in [
+        &["fw", "factory-default", "--mode", "banana", "--yes"][..],
+        &["fw", "upgrade", "--file", "x.bin", "--factory-default", "banana", "--yes"][..],
+    ] {
+        let (port, hits) = dropping_server();
+        let out = run_vapx(args, port);
+        assert!(!out.status.success());
+        assert_eq!(hits.load(Ordering::SeqCst), 0, "an unknown mode must not reach the camera");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(stderr.contains("soft") && stderr.contains("hard"), "should list the modes, got: {stderr}");
+    }
+}

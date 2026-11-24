@@ -63,6 +63,12 @@ impl std::fmt::Debug for Secret {
 /// passphrase"). The value is never part of an error. A file that others can
 /// read is refused on Unix, like ssh does with a private key.
 pub fn secret_from(file: Option<&Path>, env: &str, what: &str) -> anyhow::Result<Secret> {
+    Secret::new(secret_text(file, env, what)?).with_context(|| format!("the {what} is empty"))
+}
+
+/// The text behind [`secret_from`]: from the file, else from the environment variable, minus one
+/// trailing newline. Empty is not checked here.
+pub fn secret_text(file: Option<&Path>, env: &str, what: &str) -> anyhow::Result<String> {
     let raw = match file {
         Some(path) => {
             #[cfg(unix)]
@@ -83,7 +89,7 @@ pub fn secret_from(file: Option<&Path>, env: &str, what: &str) -> anyhow::Result
     // One trailing newline comes from `echo` and editors; anything else belongs to the passphrase.
     let value = raw.strip_suffix('\n').unwrap_or(&raw);
     let value = value.strip_suffix('\r').unwrap_or(value);
-    Secret::new(value.to_string()).with_context(|| format!("the {what} is empty"))
+    Ok(value.to_string())
 }
 
 /// One disk as `disks/list.cgi` reports it.
@@ -471,6 +477,28 @@ fn check_error(body: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Like [`check_error`], for the calls that unmount, erase or switch encryption: an
+/// answer that is neither XML nor JSON (an HTML error page that came with status 200, for
+/// instance) is no sign that anything happened, so it is an error too. An empty answer passes;
+/// callers check the disk afterwards.
+fn check_answer(body: &str) -> anyhow::Result<()> {
+    let trimmed = body.trim();
+    if !trimmed.is_empty() {
+        let readable = if trimmed.starts_with('{') {
+            serde_json::from_str::<Value>(trimmed).is_ok()
+        } else {
+            roxmltree::Document::parse(trimmed)
+                .map(|doc| !doc.root_element().tag_name().name().eq_ignore_ascii_case("html"))
+                .unwrap_or(false)
+        };
+        if !readable {
+            let shown: String = trimmed.chars().take(80).collect();
+            bail!("the camera answered with something that is neither XML nor JSON ({}), so it is not known whether anything happened", shown.replace('\n', " "));
+        }
+    }
+    check_error(body)
+}
+
 /// The job in an answer, if there is one. Looks for an element with a `jobid`.
 pub fn parse_job(body: &str) -> anyhow::Result<Option<Job>> {
     check_error(body)?;
@@ -571,6 +599,7 @@ fn run_get(
     let mut query = vec![("schemaversion", "1"), ("diskid", disk)];
     query.extend_from_slice(extra);
     let body = client.get_text(path, &query)?;
+    check_answer(&body)?;
     match parse_job(&body)? {
         Some(job) => Ok(Some(follow_job(client, disk, job, wait, on_progress)?)),
         None => Ok(None),
@@ -589,6 +618,7 @@ fn run_post(
     let mut form = vec![("schemaversion", "1"), ("diskid", disk)];
     form.extend_from_slice(fields);
     let body = client.post_form_text(path, &form)?;
+    check_answer(&body)?;
     match parse_job(&body)? {
         Some(job) => Ok(Some(follow_job(client, disk, job, wait, on_progress)?)),
         None => Ok(None),
@@ -627,6 +657,12 @@ fn unmount_if_mounted(client: &VapixClient, disk: &Disk, wait: Wait, mut on_prog
 }
 
 /// Format a local disk: unmount, format, follow the job, mount. Erases every recording.
+///
+/// `formatted` is only reported with evidence: the camera reported a finished format job, or the
+/// disk shows the new file system or lost its oldest recording. Evidence against it (the old
+/// recordings still there) is an error; another file system than asked for is a `warning`, since
+/// the camera may name it differently. A failure after the unmount mounts the disk
+/// again, so the camera goes on recording, and says how the disk is left.
 pub fn format(
     client: &VapixClient,
     id: &str,
@@ -638,17 +674,92 @@ pub fn format(
         bail!("filesystem must be ext4, xfs or vfat");
     }
     let disk = find_local(client, id)?;
+    // The oldest recording now, to tell afterwards that it is gone (None: nothing to compare).
+    let oldest_before = if disk.is_mounted() {
+        recordings_of(client, id).ok().and_then(|r| r["oldest"].as_str().map(str::to_string))
+    } else {
+        None
+    };
     unmount_if_mounted(client, &disk, wait, |j| on_progress("unmount", j))?;
-    run_get(client, FORMAT, id, &[("filesystem", filesystem)], wait, |j| on_progress("format", j))?;
-    mount(client, id, wait, |j| on_progress("mount", j))?;
+    let job = match run_get(client, FORMAT, id, &[("filesystem", filesystem)], wait, |j| on_progress("format", j)) {
+        Ok(job) => job,
+        Err(cause) => return Err(remount_after_failure(client, &disk, wait, &mut on_progress, cause)),
+    };
+    if let Err(cause) = mount(client, id, wait, |j| on_progress("mount", j)) {
+        return Err(anyhow::anyhow!("{cause:#}. Disk {id} was formatted but could not be mounted; mount it with `vapx disk mount`"));
+    }
     let after = wait_until_mounted(client, id, wait)?;
-    Ok(json!({
+    let (verified, warning) = verify_format(client, &disk, &after, filesystem, oldest_before.as_deref())?;
+    let job_done = job.is_some_and(|j| j.state == JobState::Done);
+    if !job_done && !verified {
+        bail!(
+            "the camera reported no format job and nothing shows that disk {id} was erased; check `vapx disk status` before relying on it"
+        );
+    }
+    let mut result = json!({
         "disk": after.id,
         "formatted": true,
+        "verified": verified,
+        "jobReported": job_done,
         "filesystem": after.filesystem,
         "status": after.status,
         "encrypted": after.encrypted,
-    }))
+    });
+    if let Some(warning) = warning {
+        result["warning"] = json!(warning);
+    }
+    Ok(result)
+}
+
+/// Compare the disk after a format with what was asked for. Returns whether the disk itself
+/// shows that the format happened, and a warning when it reports another file system. Evidence
+/// against the format is an error.
+fn verify_format(
+    client: &VapixClient,
+    before: &Disk,
+    after: &Disk,
+    filesystem: &str,
+    oldest_before: Option<&str>,
+) -> anyhow::Result<(bool, Option<String>)> {
+    let has_fs = |d: &Disk| d.filesystem.eq_ignore_ascii_case(filesystem);
+    let warning = (!after.filesystem.is_empty() && !has_fs(after))
+        .then(|| format!("the camera reports file system {} on disk {}, not the {} that was asked for", after.filesystem, after.id, filesystem));
+    let mut proven = !before.filesystem.is_empty() && !has_fs(before) && has_fs(after);
+    if let Some(oldest) = oldest_before {
+        // A listing that fails proves nothing either way.
+        if let Ok(now) = recordings_of(client, &after.id) {
+            if now["oldest"].as_str() == Some(oldest) {
+                bail!("the recording from {oldest} is still on disk {} after the format; it was not erased", after.id);
+            }
+            proven = true;
+        }
+    }
+    Ok((proven, warning))
+}
+
+/// A call failed after the disk was unmounted: mount it again so the camera can record, and
+/// return `cause` with the state the disk is left in.
+fn remount_after_failure(
+    client: &VapixClient,
+    disk: &Disk,
+    wait: Wait,
+    on_progress: &mut impl FnMut(&str, &Job),
+    cause: anyhow::Error,
+) -> anyhow::Error {
+    if !disk.is_mounted() {
+        return cause; // it was not mounted when we started, so there is nothing to restore
+    }
+    let id = &disk.id;
+    match mount(client, id, wait, |j| on_progress("mount", j)).and_then(|_| wait_until_mounted(client, id, wait)) {
+        Ok(now) => anyhow::anyhow!(
+            "{cause:#}. Disk {id} is mounted again (status {}, file system {}); check `vapx disk status` before relying on it",
+            now.status,
+            now.filesystem
+        ),
+        Err(remount) => anyhow::anyhow!(
+            "{cause:#}. Disk {id} is NOT mounted and the camera cannot record to it; mounting it again failed ({remount:#}). Run `vapx disk mount`"
+        ),
+    }
 }
 
 /// Does this camera have disk encryption? (`Properties.LocalStorage.DiskEncryption`.)
