@@ -696,7 +696,7 @@ The client starts the server itself. For Claude Desktop, Claude Code or any clie
 }
 ```
 
-Add `"--config", "/path/to/cameras.yaml"` to `args` to use a specific file (otherwise `$VAPX_CONFIG` or `~/.config/vapx/cameras.yaml`).
+Add `"--config", "/path/to/cameras.yaml"` to `args` to use a specific file (otherwise `$VAPX_CONFIG` or `~/.config/vapx/cameras.yaml`). A `--config` file that does not exist is an error, except for `enroll`, `config add` and `config init`, which create it there.
 
 ### Client configuration: HTTP
 

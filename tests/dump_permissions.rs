@@ -37,6 +37,8 @@ fn camera() -> u16 {
 fn workdir(tag: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!("vapx-dump-{}-{}", std::process::id(), tag));
     std::fs::create_dir_all(&dir).unwrap();
+    // `--config` must name a file that exists.
+    std::fs::write(dir.join("cameras.yaml"), "cameras:\n  cam1:\n    host: 192.0.2.10\n").unwrap();
     dir
 }
 

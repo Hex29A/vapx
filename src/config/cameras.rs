@@ -150,16 +150,31 @@ pub fn set_config_path(path: PathBuf) {
     CONFIG_OVERRIDE.set(path).ok();
 }
 
+/// The path given with `--config`, whether or not the file exists.
+pub fn explicit_config_path() -> Option<&'static PathBuf> {
+    CONFIG_OVERRIDE.get()
+}
+
+/// Where a command that writes the config puts it: the `--config` path when one was given
+/// (it is created if missing, never replaced by the default location), else the file in use,
+/// else the default under the user's config directory.
+pub fn config_write_path() -> PathBuf {
+    explicit_config_path()
+        .cloned()
+        .or_else(config_path)
+        .or_else(|| dirs::config_dir().map(|d| d.join("vapx").join("cameras.yaml")))
+        .unwrap_or_else(|| PathBuf::from("cameras.yaml"))
+}
+
 /// Resolve the config file path. Search order:
-/// 1. --config flag (set via set_config_path)
+/// 1. --config flag (set via set_config_path). When it is given, nothing else is tried: a file
+///    that does not exist is "no config", not a reason to read another one.
 /// 2. $VAPX_CONFIG env var ($VAPIX_CONFIG, the Python vapx-mcp server's name, also works)
 /// 3. ~/.config/vapx/cameras.yaml (XDG)
 pub fn config_path() -> Option<PathBuf> {
     // Explicit --config flag
     if let Some(p) = CONFIG_OVERRIDE.get() {
-        if p.exists() {
-            return Some(p.clone());
-        }
+        return p.exists().then(|| p.clone());
     }
 
     // Explicit env var

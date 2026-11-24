@@ -175,9 +175,13 @@ impl ConfigCmd {
                 }
             }
             ConfigCommands::Init => {
-                let target = dirs::config_dir()
-                    .map(|d| d.join("vapx").join("cameras.yaml"))
-                    .unwrap_or_else(|| std::path::PathBuf::from("cameras.yaml"));
+                // With --config the template goes there; otherwise to the default location, not
+                // to a file that happens to be in use through $VAPX_CONFIG.
+                let target = cameras::explicit_config_path().cloned().unwrap_or_else(|| {
+                    dirs::config_dir()
+                        .map(|d| d.join("vapx").join("cameras.yaml"))
+                        .unwrap_or_else(|| std::path::PathBuf::from("cameras.yaml"))
+                });
 
                 if target.exists() {
                     format::err_json("CONFIG_EXISTS", &format!("Config already exists: {}", target.display()));
@@ -216,9 +220,7 @@ impl ConfigCmd {
                     eprintln!("Verified: {} ({})", host, model);
                 }
 
-                let config_path = cameras::config_path()
-                    .or_else(|| dirs::config_dir().map(|d| d.join("vapx").join("cameras.yaml")))
-                    .unwrap_or_else(|| std::path::PathBuf::from("cameras.yaml"));
+                let config_path = cameras::config_write_path();
 
                 // A camera without a password is unusable, and the vapx-mcp
                 // server rejects the whole config over one such entry.
