@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.35.3
 
 Fixes from a firmware test on AXIS OS 10.12 (#108).
 
