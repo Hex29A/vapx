@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.35.2
 
 Fixes from a smoke test of five cameras on AXIS OS 12.11, 13.0 and 13.2 (#105).
 
