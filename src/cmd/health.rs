@@ -116,7 +116,7 @@ pub(crate) fn check_client(name: &str, resolved_host: &str, client: &VapixClient
             let data = resp.get("data").unwrap_or(&resp);
             let props = data.get("propertyList").unwrap_or(data);
 
-            if let Some(model) = props.get("Model").and_then(|v| v.as_str()) {
+            if let Some(model) = device::model_of(&resp) {
                 result["model"] = serde_json::json!(model);
             }
             if let Some(serial) = props.get("SerialNumber").and_then(|v| v.as_str()) {

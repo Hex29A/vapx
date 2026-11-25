@@ -474,6 +474,27 @@ impl VapixClient {
         Ok(resp.text()?)
     }
 
+    /// POST a SOAP envelope (`application/soap+xml`) and return the reply as
+    /// text. For the few services that have no JSON API (`/vapix/services`).
+    /// Only for requests that change nothing: it is retried like a read.
+    pub fn post_soap(&self, path: &str, envelope: &str) -> anyhow::Result<String> {
+        let url = format!("{}{}", self.base_url, path);
+        debug!("POST {} (SOAP)", path);
+        let resp = self.request_with_retry(
+            "POST",
+            &url,
+            Some(envelope.as_bytes()),
+            Some("application/soap+xml; charset=utf-8"),
+            Retry::Idempotent,
+        )?;
+        let status = resp.status();
+        if !status.is_success() {
+            let text = resp.text().unwrap_or_default();
+            return Err(http_error(status, &text));
+        }
+        Ok(resp.text()?)
+    }
+
     /// GET and return response as raw bytes, at most [`MAX_BODY_BYTES`]: a
     /// camera (or something posing as one) must not be able to fill our memory.
     pub fn get_bytes(&self, path: &str, params: &[(&str, &str)]) -> anyhow::Result<Vec<u8>> {

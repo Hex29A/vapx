@@ -101,7 +101,7 @@
   },
   {
     "name": "add_privacy_mask",
-    "description": "Add a privacy mask to cover a sensitive area in the video. Provide polygon coordinates as they appear in the snapshot image — the server automatically converts to sensor coordinates using the camera's detected rotation/orientation. Masks adapt to PTZ changes.",
+    "description": "Add a privacy mask to cover a sensitive area in the video. Provide polygon coordinates as they appear in the snapshot image. If the camera has mask_rotation or mask_mirror set in cameras.yaml, the server converts them to sensor coordinates; it does not detect the rotation itself. When the camera reports a rotation and none is configured, the polygon is sent unchanged and the result says so: check the mask against a snapshot. Masks adapt to PTZ changes.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -940,7 +940,7 @@
   },
   {
     "name": "poll_events",
-    "description": "Poll for camera events over WebSocket for a specified duration. Returns a batch of events (motion, I/O changes, tampering, etc.). Useful for checking what's happening on a camera right now.",
+    "description": "Poll for camera events over WebSocket for a specified duration. Returns a batch of events (motion, I/O changes, tampering, etc.), at most max_events (default 50). Useful for checking what's happening on a camera right now. A camera first sends its whole current state, which can be 80 events or more: pass topic_filter to see only what you need.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -958,6 +958,13 @@
         "topic_filter": {
           "type": "string",
           "description": "Optional ONVIF topic filter (e.g. \"tns1:Device/tnsaxis:IO/VirtualPort\", \"tns1:RuleEngine/MotionRegionDetector/Motion\")"
+        },
+        "max_events": {
+          "type": "integer",
+          "description": "Stop after this many events (1-500, default 50). The result says limit_reached when it cut the listening short.",
+          "default": 50,
+          "minimum": 1,
+          "maximum": 500
         }
       },
       "required": [

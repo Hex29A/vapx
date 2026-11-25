@@ -22,23 +22,31 @@ pub fn stream_events(
     stream_events_until(client, creds, host, topic_filter, None, on_event)
 }
 
-/// Collect the event notifications that arrive within `seconds`.
+/// Collect the event notifications that arrive within `seconds`, at most
+/// `max_events` of them. Returns the events and whether the limit cut the
+/// listening short.
 pub fn poll_events(
     client: &VapixClient,
     creds: &Credentials,
     host: &str,
     topic_filter: Option<&str>,
     seconds: f64,
-) -> anyhow::Result<Vec<Value>> {
+    max_events: usize,
+) -> anyhow::Result<(Vec<Value>, bool)> {
     let deadline = Instant::now() + Duration::from_secs_f64(seconds);
     let mut events = Vec::new();
+    let mut limited = false;
     stream_events_until(client, creds, host, topic_filter, Some(deadline), |msg| {
         if msg.get("method").and_then(Value::as_str) == Some("events:notify") {
+            if events.len() >= max_events {
+                limited = true;
+                return false;
+            }
             events.push(msg.pointer("/params/notification").cloned().unwrap_or(Value::Null));
         }
         true
     })?;
-    Ok(events)
+    Ok((events, limited))
 }
 
 /// Like [`stream_events`], but stops quietly once `deadline` has passed.

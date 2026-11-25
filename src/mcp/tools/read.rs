@@ -169,7 +169,7 @@ fn list_stream_profiles(args: &Args) -> anyhow::Result<Vec<Out>> {
 }
 
 fn get_stream_status(args: &Args) -> anyhow::Result<Vec<Out>> {
-    on_camera(args, |c| streamstatus::get_stream_status(&c.client, &c.creds, &c.host))
+    on_camera(args, |c| streamstatus::get_stream_status(&c.client))
 }
 
 fn get_io_ports(args: &Args) -> anyhow::Result<Vec<Out>> {

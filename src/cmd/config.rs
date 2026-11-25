@@ -213,10 +213,7 @@ impl ConfigCmd {
                     )?;
                     let client = VapixClient::new(&resolved, creds.port, creds, 5);
                     let info = device::get_all_properties(&client)?;
-                    let model = info
-                        .pointer("/data/propertyList/ProdNbr")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("unknown");
+                    let model = device::model_of(&info).unwrap_or("unknown");
                     eprintln!("Verified: {} ({})", host, model);
                 }
 

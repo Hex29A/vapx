@@ -36,7 +36,7 @@ impl StreamstatusCmd {
         )?;
         let timeout = self.timeout.unwrap_or(creds.timeout);
         let client = VapixClient::new(&resolved_host, creds.port, creds.clone(), timeout);
-        let resp = streamstatus::get_stream_status(&client, &creds, &resolved_host)?;
+        let resp = streamstatus::get_stream_status(&client)?;
         let data = resp.get("data").unwrap_or(&resp);
 
         format::output(data, self.plain);

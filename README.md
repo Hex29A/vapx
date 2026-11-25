@@ -668,7 +668,7 @@ credentials on AXIS OS 9.50 and later.
 - `param_get` and `diff_params` show the values of secrets (passwords, tokens, community strings) as `[redacted]`. `backup_params` keeps them, which is why it saves a file readable only by its owner instead of returning the parameters.
 - `export_recording` and `backup_params` write under `$VAPX_MCP_EXPORTS_DIR` (the Python server's `$VAPIX_EXPORTS_DIR` also works), by default `vapx/exports` in your user data directory, and only accept plain file names.
 - `stream_urls` returns URLs without credentials.
-- `add_privacy_mask` takes the polygon as it appears in a snapshot; set `mask_rotation` and `mask_mirror` for the camera in `cameras.yaml` if its image is rotated or mirrored.
+- `add_privacy_mask` takes the polygon as it appears in a snapshot. vapx does not detect rotation: it converts only when `mask_rotation` and `mask_mirror` are set for the camera in `cameras.yaml`. Whether a camera takes the polygon in the rotated image or in sensor coordinates differs between firmware versions, so when the camera reports a rotation and none is configured the result carries a warning: check the mask against a snapshot, and set `mask_rotation` if it landed rotated.
 
 **Not available as tools**, because they can lock you out of a camera: factory default, changing passwords, creating or deleting users, SSH accounts, network settings and enrolling a camera. Use the command line for those.
 

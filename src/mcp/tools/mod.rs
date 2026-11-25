@@ -307,7 +307,7 @@ pub fn validate_args(schema: &JsonObject, args: &Map<String, Value>) -> anyhow::
     if let Some(required) = schema.get("required").and_then(Value::as_array) {
         for key in required.iter().filter_map(Value::as_str) {
             if args.get(key).is_none_or(Value::is_null) {
-                bail!("{} is required", key);
+                bail!("{} is required{}", key, unknown_args_hint(schema, args));
             }
         }
     }
@@ -317,6 +317,19 @@ pub fn validate_args(schema: &JsonObject, args: &Map<String, Value>) -> anyhow::
         check_value(key, spec, value)?;
     }
     Ok(())
+}
+
+/// When a required argument is missing and the call has arguments the tool does
+/// not take (`id` for `name`, say), name them and list the ones it takes, so a
+/// wrong name is not just "x is required".
+fn unknown_args_hint(schema: &JsonObject, args: &Map<String, Value>) -> String {
+    let Some(props) = schema.get("properties").and_then(Value::as_object) else { return String::new() };
+    let unknown: Vec<&str> = args.keys().map(String::as_str).filter(|k| !props.contains_key(*k)).collect();
+    if unknown.is_empty() {
+        return String::new();
+    }
+    let known: Vec<&str> = props.keys().map(String::as_str).collect();
+    format!(" (this tool has no argument {}; its arguments are: {})", unknown.join(", "), known.join(", "))
 }
 
 fn type_ok(ty: &str, v: &Value) -> bool {
@@ -414,6 +427,30 @@ mod tests {
                 assert!(t.input_schema.contains_key("properties"), "{} has no properties", t.name);
             }
         }
+    }
+
+    fn args_of(v: Value) -> Args {
+        Args(v.as_object().unwrap().clone())
+    }
+
+    #[test]
+    fn a_wrong_argument_name_is_named_in_the_error() {
+        let reg = Registry::new();
+        let err = reg.validate("toggle_light", &args_of(json!({"camera_id": "c", "id": "led0", "on": true}))).unwrap_err().to_string();
+        assert!(err.contains("light_id is required"), "{err}");
+        assert!(err.contains("no argument id"), "{err}");
+        assert!(err.contains("light_id"), "{err}");
+        // Nothing unknown: the plain message.
+        let err = reg.validate("toggle_light", &args_of(json!({"camera_id": "c", "on": true}))).unwrap_err().to_string();
+        assert_eq!(err, "light_id is required");
+    }
+
+    #[test]
+    fn poll_events_can_be_limited() {
+        let reg = Registry::new();
+        assert!(reg.validate("poll_events", &args_of(json!({"camera_id": "c", "max_events": 20}))).is_ok());
+        assert!(reg.validate("poll_events", &args_of(json!({"camera_id": "c", "max_events": 0}))).is_err());
+        assert!(reg.validate("poll_events", &args_of(json!({"camera_id": "c", "max_events": 501}))).is_err());
     }
 
     #[test]

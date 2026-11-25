@@ -108,7 +108,7 @@ pub fn query(
     }
     let text = client.get_text("/axis-cgi/com/ptz.cgi", &params)?;
     if text.starts_with("Error:") {
-        bail!("PTZ: {}", text.trim());
+        return Err(ptz_error(&text));
     }
     Ok(text)
 }
@@ -124,6 +124,17 @@ pub fn info(client: &VapixClient, camera: Option<u8>) -> anyhow::Result<String> 
     client.get_text("/axis-cgi/com/ptz.cgi", &params)
 }
 
+/// The error for a `ptz.cgi` "Error:" reply. A fixed camera answers that the
+/// camera "does not map to any serial port", which means it has no PTZ.
+fn ptz_error(text: &str) -> anyhow::Error {
+    let text = text.trim();
+    if text.contains("does not map to any serial port") {
+        anyhow::anyhow!("This camera has no PTZ (the camera answered: {})", text.replace(['\r', '\n'], " ").trim())
+    } else {
+        anyhow::anyhow!("PTZ: {}", text)
+    }
+}
+
 /// Execute a PTZ command and validate the response.
 /// Success: HTTP 204 No Content.
 /// Error: HTTP 200 with "Error: ..." body.
@@ -135,7 +146,7 @@ fn ptz_command(client: &VapixClient, params: &[(&str, &str)]) -> anyhow::Result<
     }
     let text = resp.text().context("Failed to read PTZ response")?;
     if text.contains("Error:") {
-        bail!("PTZ: {}", text.trim());
+        return Err(ptz_error(&text));
     }
     Ok(())
 }
@@ -158,4 +169,21 @@ fn parse_position(text: &str) -> serde_json::Value {
         }
     }
     serde_json::Value::Object(out)
+}
+
+#[cfg(test)]
+mod error_tests {
+    use super::ptz_error;
+
+    #[test]
+    fn a_fixed_camera_is_said_to_have_no_ptz() {
+        let msg = ptz_error("Error:\r\nCamera 1 does not map to any serial port").to_string();
+        assert!(msg.starts_with("This camera has no PTZ"), "{msg}");
+        assert!(msg.contains("Camera 1 does not map"), "{msg}");
+    }
+
+    #[test]
+    fn other_errors_keep_the_camera_text() {
+        assert_eq!(ptz_error("Error:\nInvalid pan").to_string(), "PTZ: Error:\nInvalid pan");
+    }
 }

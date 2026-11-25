@@ -66,12 +66,7 @@ pub(crate) fn audit_report(
 ) -> serde_json::Value {
     let findings = collect_findings(client, creds);
     let device_info = device::get_all_properties(client).ok();
-    let model = device_info
-        .as_ref()
-        .and_then(|d| d.pointer("/data/propertyList/Model").or(d.get("Model")))
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown")
-        .to_string();
+    let model = device_info.as_ref().and_then(device::model_of).unwrap_or("unknown").to_string();
     let count = |level: &str| findings.iter().filter(|f| f["severity"].as_str() == Some(level)).count();
     serde_json::json!({
         "host": host,

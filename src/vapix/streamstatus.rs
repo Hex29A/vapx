@@ -1,129 +1,37 @@
 //! Stream status retrieval.
 //!
 //! Tries (in order):
-//! 1. `POST /axis-cgi/streamstatus.cgi` over HTTP — works on some cameras.
-//! 2. `/vapix/ws-data-stream?sources=streamstatus` over WebSocket — the
-//!    transport required by newer firmwares.
-//! 3. `param.cgi root.Image.I0.Stream.*` — labelled fallback that returns
+//! 1. `POST /axis-cgi/streamstatus.cgi` with method `getAllStreams` (the
+//!    Stream status API; administrator access, RTSP streams only).
+//! 2. `param.cgi root.Image.I0.Stream.*` — labelled fallback that returns
 //!    *configuration* parameters with an explanatory note. A value of `0`
 //!    here means "unlimited", **not** "no active streams".
 
-use std::time::Duration;
-
 use serde_json::{json, Value};
 use tracing::debug;
-use tungstenite::Message;
 
-use crate::config::credentials::Credentials;
 use crate::vapix::client::VapixClient;
-use crate::vapix::ws::{build_ws_url, connect_ws, get_ws_session, set_read_timeout};
 
 /// Retrieve stream status as structured JSON.
 ///
 /// The returned `Value` always contains a `source` field describing where the
-/// data came from (`"streamstatus_cgi"`, `"websocket"`, or
-/// `"param_cgi_fallback"`).
-pub fn get_stream_status(
-    client: &VapixClient,
-    creds: &Credentials,
-    host: &str,
-) -> anyhow::Result<Value> {
-    // 1. Try HTTP streamstatus.cgi
+/// data came from (`"streamstatus_cgi"` or `"param_cgi_fallback"`).
+pub fn get_stream_status(client: &VapixClient) -> anyhow::Result<Value> {
     let body = json!({
         "apiVersion": "1.0",
-        "method": "getStreamStatus",
+        "method": "getAllStreams",
     });
     match client.post_json("/axis-cgi/streamstatus.cgi", &body) {
         Ok(mut resp) => {
-            debug!("streamstatus.cgi (HTTP) succeeded");
+            debug!("streamstatus.cgi getAllStreams succeeded");
             if let Some(obj) = resp.as_object_mut() {
                 obj.insert("source".into(), json!("streamstatus_cgi"));
             }
             return Ok(resp);
         }
-        Err(e) => debug!("streamstatus.cgi (HTTP) failed: {}", e),
+        Err(e) => debug!("streamstatus.cgi getAllStreams failed: {}", e),
     }
-
-    // 2. Try WebSocket transport
-    match query_streamstatus_ws(client, creds, host) {
-        Ok(mut v) => {
-            debug!("streamstatus over WebSocket succeeded");
-            if let Some(obj) = v.as_object_mut() {
-                obj.insert("source".into(), json!("websocket"));
-            }
-            return Ok(v);
-        }
-        Err(e) => debug!("streamstatus over WebSocket failed: {}", e),
-    }
-
-    // 3. Fallback: labelled param.cgi response
     get_stream_status_from_params(client)
-}
-
-/// Query streamstatus over the VAPIX WebSocket data-stream API.
-///
-/// Connects with `sources=streamstatus`, sends a configure message, reads a
-/// single response (subject to a short read timeout), then closes.
-fn query_streamstatus_ws(
-    client: &VapixClient,
-    creds: &Credentials,
-    host: &str,
-) -> anyhow::Result<Value> {
-    let token = get_ws_session(client)?;
-    let url = build_ws_url(creds, host, &token, "streamstatus");
-    debug!("Connecting WS for streamstatus to {}:{}", host, creds.port);
-
-    let mut socket = connect_ws(creds, &url)?;
-
-    // Set a 3s read timeout on the underlying stream so we don't hang
-    // indefinitely if the camera doesn't reply.
-    set_read_timeout(&mut socket, Some(Duration::from_secs(3)));
-
-    let configure = json!({
-        "apiVersion": "1.0",
-        "method": "streamstatus:configure",
-        "params": {},
-    });
-    socket.send(Message::Text(serde_json::to_string(&configure)?.into()))?;
-
-    // Read until we get a data payload, or the timeout fires.
-    let mut last_data: Option<Value> = None;
-    for _ in 0..4 {
-        match socket.read() {
-            Ok(Message::Text(text)) => {
-                let v: Value = serde_json::from_str(&text)?;
-                if let Some(err) = v.get("error") {
-                    anyhow::bail!("WS streamstatus error: {}", err);
-                }
-                // The first reply is typically the configure ACK. The payload
-                // we actually want is the next message containing stream data.
-                if v.get("data").is_some() || v.get("streams").is_some() {
-                    last_data = Some(v);
-                    break;
-                }
-                last_data = Some(v);
-            }
-            Ok(Message::Close(_)) => break,
-            Ok(Message::Ping(p)) => {
-                let _ = socket.send(Message::Pong(p));
-            }
-            Ok(_) => {}
-            Err(e) => {
-                debug!("WS read ended: {}", e);
-                break;
-            }
-        }
-    }
-    let _ = socket.close(None);
-
-    let payload =
-        last_data.ok_or_else(|| anyhow::anyhow!("No data received from WS streamstatus"))?;
-
-    if let Some(data) = payload.get("data").cloned() {
-        Ok(json!({ "data": data }))
-    } else {
-        Ok(json!({ "data": payload }))
-    }
 }
 
 /// Read stream configuration parameters via param.cgi and label them clearly.
@@ -159,7 +67,41 @@ fn get_stream_status_from_params(client: &VapixClient) -> anyhow::Result<Value> 
         "data": {
             "streamConfig": cfg,
             "source": "param_cgi_fallback",
-            "note": "streamstatus.cgi requires WebSocket transport on this firmware (and the WS attempt also failed). Showing stream *configuration* parameters from param.cgi — a value of 0 means 'unlimited', not 'no active streams'.",
+            "note": "streamstatus.cgi (getAllStreams) did not answer on this camera. Showing stream *configuration* parameters from param.cgi — a value of 0 means 'unlimited', not 'no active streams'.",
         }
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::vapix::testserver::{Reply, TestServer};
+
+    #[test]
+    fn live_streams_come_from_get_all_streams() {
+        let srv = TestServer::start(|req| {
+            if req.contains(r#""method":"getAllStreams""#) {
+                Reply::Json(200, r#"{"apiVersion":"1.0","method":"getAllStreams","data":{"streams":[{"id":11,"state":"playing"}]}}"#)
+            } else {
+                Reply::Json(400, r#"{"error":{"code":2102,"message":"Method not supported"}}"#)
+            }
+        });
+        let v = get_stream_status(&srv.client()).unwrap();
+        assert_eq!(v["source"], "streamstatus_cgi");
+        assert_eq!(v["data"]["streams"][0]["id"], 11);
+    }
+
+    #[test]
+    fn falls_back_to_configuration_when_the_cgi_refuses() {
+        let srv = TestServer::start(|req| {
+            if req.contains("streamstatus.cgi") {
+                Reply::Json(400, r#"{"error":{"code":2102,"message":"Method not supported"}}"#)
+            } else {
+                Reply::Text(200, "root.Image.I0.Stream.Duration=0\n")
+            }
+        });
+        let v = get_stream_status(&srv.client()).unwrap();
+        assert_eq!(v["data"]["source"], "param_cgi_fallback");
+        assert_eq!(v["data"]["streamConfig"]["Duration"], "0");
+    }
 }
