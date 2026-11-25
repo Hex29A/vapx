@@ -868,9 +868,21 @@ x -p y` tried to resolve "mycam" as a DNS hostname.
 vapx auto-negotiates authentication:
 
 - **HTTP**: Digest access authentication (challenge-response, no plaintext)
-- **HTTPS**: Basic access authentication (safe over TLS)
+- **HTTPS**: Basic access authentication (safe over TLS) first; a camera whose
+  HTTP authentication policy is digest-only refuses Basic even over TLS, and
+  vapx then answers its Digest challenge
 
 Per [VAPIX documentation](https://developer.axis.com/vapix/authentication/).
+
+### Troubleshooting: `Illegal instruction` with `--https`
+
+The released x86_64 binaries die with `Illegal instruction` (SIGILL) on the
+first HTTPS request when run on a virtual machine whose CPU model has no AVX
+(a generic QEMU CPU, for example: the flags list `aes`, `ssse3` and `sse4_2`
+but not `avx`). The crash is in the TLS crypto library (`ring`). HTTP is not
+affected. Give the virtual machine a CPU model that exposes AVX2 (host
+passthrough, or a named model such as `x86-64-v3`), or run vapx on another
+host. Check with `grep -o -w avx /proc/cpuinfo | head -1`.
 
 ## Building
 

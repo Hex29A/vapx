@@ -20,6 +20,8 @@ pub enum Reply {
     Json(u16, &'static str),
     /// Answer with this status and plain text body.
     Text(u16, &'static str),
+    /// Answer 401 with a `WWW-Authenticate` header (the full header value).
+    Unauthorized(&'static str),
     /// Close the connection without answering (a camera that is rebooting).
     Drop,
     /// Read the request, then stay silent for this long before closing.
@@ -91,7 +93,12 @@ fn serve(
         let Some(request) = read_request(&mut stream) else { return };
         served.fetch_add(1, Ordering::SeqCst);
         requests.lock().unwrap().push(request.clone());
+        let mut extra = String::new();
         let (status, content_type, body) = match handler(&request) {
+            Reply::Unauthorized(challenge) => {
+                extra = format!("WWW-Authenticate: {challenge}\r\n");
+                (401, "text/plain", "")
+            }
             Reply::Json(s, b) => (s, "application/json", b),
             Reply::Text(s, b) => (s, "text/plain", b),
             Reply::Drop => return,
@@ -101,7 +108,7 @@ fn serve(
             }
         };
         let head = format!(
-            "HTTP/1.1 {status} X\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\n\r\n",
+            "HTTP/1.1 {status} X\r\nContent-Type: {content_type}\r\n{extra}Content-Length: {}\r\n\r\n",
             body.len()
         );
         if stream.write_all(head.as_bytes()).is_err() || stream.write_all(body.as_bytes()).is_err() {

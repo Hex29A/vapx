@@ -16,7 +16,7 @@ fn request_uri(url: &str) -> &str {
 }
 
 /// Perform a request with automatic Digest/Basic auth negotiation.
-/// Strategy: if `https` → use Basic directly. If `http` → try without auth,
+/// Strategy: if `https` → Basic first, and on a 401 with a Digest challenge retry with Digest. If `http` → try without auth,
 /// on 401 with WWW-Authenticate: Digest, retry with computed digest.
 #[allow(clippy::too_many_arguments)]
 pub fn request_with_auth(
@@ -30,26 +30,57 @@ pub fn request_with_auth(
     use_https: bool,
 ) -> anyhow::Result<Response> {
     if use_https {
-        debug!("Using Basic auth over HTTPS");
-        let mut req = request_builder(client, method, url);
-        req = req.basic_auth(username, Some(password));
-        if let Some(ct) = content_type {
-            req = req.header("Content-Type", ct);
-        }
-        if let Some(b) = body {
-            req = req.body(b.to_vec());
-        }
-        let resp = req.send()?;
-        Ok(resp)
+        basic_then_digest(client, method, url, body, content_type, username, password)
     } else {
         digest_request(client, method, url, body, content_type, username, password)
     }
 }
 
+/// The Digest challenge of a 401 answer, if it carries one.
+fn digest_challenge(resp: &Response) -> Option<String> {
+    resp.headers()
+        .get_all(WWW_AUTHENTICATE)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .find(|v| v.trim_start().to_ascii_lowercase().starts_with("digest"))
+        .map(str::to_string)
+}
+
+/// HTTPS: send Basic first. A camera whose HTTP authentication policy is
+/// digest-only refuses Basic even over TLS and answers 401 with a Digest
+/// challenge; answer that challenge instead of returning the 401.
+pub(crate) fn basic_then_digest(
+    client: &Client,
+    method: &str,
+    url: &str,
+    body: Option<&[u8]>,
+    content_type: Option<&str>,
+    username: &str,
+    password: &str,
+) -> anyhow::Result<Response> {
+    debug!("Using Basic auth over HTTPS");
+    let mut req = request_builder(client, method, url).basic_auth(username, Some(password));
+    if let Some(ct) = content_type {
+        req = req.header("Content-Type", ct);
+    }
+    if let Some(b) = body {
+        req = req.body(b.to_vec());
+    }
+    let resp = req.send()?;
+    if resp.status() != reqwest::StatusCode::UNAUTHORIZED {
+        return Ok(resp);
+    }
+    let Some(challenge) = digest_challenge(&resp) else {
+        return Ok(resp);
+    };
+    debug!("Basic refused over HTTPS, answering the Digest challenge");
+    send_digest(client, method, url, body, content_type, username, password, &challenge)
+}
+
 /// Perform a request with preemptive Digest auth for large bodies.
 /// Instead of sending the full body on the initial probe, sends an empty GET
 /// to obtain the digest nonce, then sends the real request with auth pre-set.
-/// For HTTPS, behaves the same as `request_with_auth` (Basic auth, single send).
+/// For HTTPS, behaves the same as `request_with_auth` (Basic first, Digest on a Digest challenge).
 #[allow(clippy::too_many_arguments)]
 pub fn request_with_preemptive_auth(
     client: &Client,
@@ -62,7 +93,7 @@ pub fn request_with_preemptive_auth(
     use_https: bool,
 ) -> anyhow::Result<Response> {
     if use_https {
-        // HTTPS uses Basic — single send, no probe needed
+        // HTTPS: Basic first, Digest when the camera demands it
         return request_with_auth(client, method, url, body, content_type, username, password, use_https);
     }
 
@@ -136,8 +167,9 @@ pub fn request_with_preemptive_auth(
 }
 
 /// Probe a URL for Digest auth and return the Authorization header value.
-/// For HTTPS, returns `None` — caller should use `basic_auth()` directly.
-/// For HTTP, probes with an empty GET to obtain the digest nonce.
+/// Probes with an empty GET to obtain the digest nonce. Over HTTPS, returns
+/// `None` unless the camera demands Digest (digest-only policy); the caller
+/// then uses `basic_auth()`.
 pub fn probe_auth_header(
     client: &Client,
     method: &str,
@@ -147,11 +179,6 @@ pub fn probe_auth_header(
     password: &str,
     use_https: bool,
 ) -> anyhow::Result<Option<String>> {
-    if use_https {
-        // Basic auth doesn't double-send; caller uses reqwest basic_auth directly
-        return Ok(None);
-    }
-
     debug!("Probing for Digest challenge");
     let probe_resp = client.get(url).send()?;
 
@@ -159,11 +186,20 @@ pub fn probe_auth_header(
         return Ok(None);
     }
 
-    let www_auth = probe_resp
-        .headers()
-        .get(WWW_AUTHENTICATE)
-        .ok_or_else(|| anyhow::anyhow!("401 without WWW-Authenticate header"))?
-        .to_str()?;
+    let www_auth = if use_https {
+        match digest_challenge(&probe_resp) {
+            Some(c) => c,
+            None => return Ok(None),
+        }
+    } else {
+        probe_resp
+            .headers()
+            .get(WWW_AUTHENTICATE)
+            .ok_or_else(|| anyhow::anyhow!("401 without WWW-Authenticate header"))?
+            .to_str()?
+            .to_string()
+    };
+    let www_auth = www_auth.as_str();
 
     let mut www_header = WwwAuthenticateHeader::parse(www_auth)?;
 
@@ -219,8 +255,24 @@ fn digest_request(
         .headers()
         .get(WWW_AUTHENTICATE)
         .ok_or_else(|| anyhow::anyhow!("401 without WWW-Authenticate header"))?
-        .to_str()?;
+        .to_str()?
+        .to_string();
 
+    send_digest(client, method, url, body, content_type, username, password, &www_auth)
+}
+
+/// Answer a Digest challenge: compute the response and send the request again.
+#[allow(clippy::too_many_arguments)]
+fn send_digest(
+    client: &Client,
+    method: &str,
+    url: &str,
+    body: Option<&[u8]>,
+    content_type: Option<&str>,
+    username: &str,
+    password: &str,
+    www_auth: &str,
+) -> anyhow::Result<Response> {
     debug!("Got Digest challenge: {}", www_auth);
 
     let mut www_header = WwwAuthenticateHeader::parse(www_auth)?;
@@ -278,5 +330,78 @@ mod tests {
     #[test]
     fn test_request_uri_without_path() {
         assert_eq!(request_uri("http://192.0.2.10:8080"), "/");
+    }
+
+    use crate::vapix::testserver::{Reply, TestServer};
+
+    const DIGEST: &str = r#"Digest realm="AXIS", nonce="abc123", qop="auth", algorithm=MD5"#;
+
+    /// A camera with a digest-only policy refuses Basic and answers the
+    /// Digest retry. `basic_then_digest` is the HTTPS path; the fake speaks
+    /// plain HTTP, which does not change the auth logic.
+    #[test]
+    fn https_falls_back_to_digest_when_basic_is_refused() {
+        let server = TestServer::start(|req| {
+            if req.to_ascii_lowercase().contains("authorization: digest") {
+                Reply::Json(200, r#"{"ok":true}"#)
+            } else {
+                Reply::Unauthorized(DIGEST)
+            }
+        });
+        let client = reqwest::blocking::Client::new();
+        let url = format!("http://127.0.0.1:{}/axis-cgi/param.cgi?action=list", server.port);
+        let resp = basic_then_digest(&client, "GET", &url, None, None, "root", "pass").unwrap();
+        assert_eq!(resp.status(), 200);
+        let reqs = server.requests();
+        assert_eq!(reqs.len(), 2);
+        assert!(reqs[0].to_ascii_lowercase().contains("authorization: basic"));
+        assert!(reqs[1].to_ascii_lowercase().contains("authorization: digest"));
+        assert!(reqs[1].contains("uri=\"/axis-cgi/param.cgi?action=list\""));
+    }
+
+    #[test]
+    fn https_basic_is_kept_when_the_camera_accepts_it() {
+        let server = TestServer::start(|_| Reply::Json(200, "{}"));
+        let client = reqwest::blocking::Client::new();
+        let url = format!("http://127.0.0.1:{}/x", server.port);
+        let resp = basic_then_digest(&client, "GET", &url, None, None, "root", "pass").unwrap();
+        assert_eq!(resp.status(), 200);
+        assert_eq!(server.requests().len(), 1);
+    }
+
+    #[test]
+    fn https_wrong_password_is_not_retried_in_a_loop() {
+        // Digest is answered once; a second 401 is returned as is.
+        let server = TestServer::start(|_| Reply::Unauthorized(DIGEST));
+        let client = reqwest::blocking::Client::new();
+        let url = format!("http://127.0.0.1:{}/x", server.port);
+        let resp = basic_then_digest(&client, "GET", &url, None, None, "root", "bad").unwrap();
+        assert_eq!(resp.status(), 401);
+        assert_eq!(server.requests().len(), 2);
+    }
+
+    #[test]
+    fn https_basic_challenge_only_is_returned_unchanged() {
+        let server = TestServer::start(|_| Reply::Unauthorized(r#"Basic realm="AXIS""#));
+        let client = reqwest::blocking::Client::new();
+        let url = format!("http://127.0.0.1:{}/x", server.port);
+        let resp = basic_then_digest(&client, "GET", &url, None, None, "root", "pass").unwrap();
+        assert_eq!(resp.status(), 401);
+        assert_eq!(server.requests().len(), 1);
+    }
+
+    #[test]
+    fn probe_over_https_returns_digest_only_when_demanded() {
+        let digest = TestServer::start(|_| Reply::Unauthorized(DIGEST));
+        let client = reqwest::blocking::Client::new();
+        let url = format!("http://127.0.0.1:{}/axis-cgi/x", digest.port);
+        let h = probe_auth_header(&client, "POST", &url, Some(b"x"), "root", "pass", true).unwrap();
+        assert!(h.unwrap().starts_with("Digest "));
+        let basic = TestServer::start(|_| Reply::Unauthorized(r#"Basic realm="AXIS""#));
+        let url = format!("http://127.0.0.1:{}/axis-cgi/x", basic.port);
+        assert!(probe_auth_header(&client, "POST", &url, Some(b"x"), "root", "pass", true).unwrap().is_none());
+        let open = TestServer::start(|_| Reply::Json(200, "{}"));
+        let url = format!("http://127.0.0.1:{}/axis-cgi/x", open.port);
+        assert!(probe_auth_header(&client, "POST", &url, Some(b"x"), "root", "pass", true).unwrap().is_none());
     }
 }
