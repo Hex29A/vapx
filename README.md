@@ -863,6 +863,18 @@ resolves to its real address, even when credentials are given on the command
 line. Before v0.22.0 the flags short-circuited this, and `vapx info mycam -u
 x -p y` tried to resolve "mycam" as a DNS hostname.
 
+## Firmware support
+
+| AXIS OS | Support |
+|---------|---------|
+| 10.12 and later | Full. Tested on 10.12, 11.11, 12.x and 13.x. A command that needs a newer release says so (`acap unsigned` needs 11.2, `cert` needs 12). |
+| 8.40 to 9.80 | Reading only: `info`, `param list`, `snap`, `user list` and the other read commands. Writes are not tested. |
+| Below 8.40 | Not supported. |
+
+The tested range is the one the commands are checked against; a command that
+a camera does not have is reported as not supported on that camera, not as a
+failure.
+
 ## Authentication
 
 vapx auto-negotiates authentication:

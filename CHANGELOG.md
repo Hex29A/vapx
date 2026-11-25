@@ -10,9 +10,11 @@ Fixes from a firmware test on AXIS OS 10.12 (#108).
 - **`user list` and the account list leave out the web-access groups** (`wwwa`, `wwwaop`, `wwwaovp` and so on) that AXIS OS 10.x prints among the real accounts. They also no longer count as extra admins when `user remove` checks for the last admin.
 - **`user add`, `user update` and `user remove` print plain text** instead of the HTML page AXIS OS 10.x answers with.
 - **`cert list` on firmware before AXIS OS 12** says that certificate management needs AXIS OS 12 and that older firmware uses the SOAP certificate service, which vapx does not support, instead of suggesting that an API is missing.
-- **`streamstatus` on firmware without the Stream status API** checks API discovery first and skips `streamstatus.cgi` when it is not listed. It then reads the legacy `connection_list.cgi` (source `connection_list_cgi`, the lines as the camera writes them) before falling back to the configuration parameters. Not yet verified against a 10.x camera.
+- **`streamstatus` on firmware without the Stream status API** checks API discovery first and skips `streamstatus.cgi` when it is not listed. It then reads the legacy `connection_list.cgi` (source `connection_list_cgi`) before falling back to the configuration parameters. The rows come as objects with `ip`, `protocol`, `service`, `port`, `pid` and `process`; the header row is left out. Verified against a 10.12 camera.
+- **`get_geolocation` on AXIS OS 10.12** returns the position (`Lat`, `Lng`, `Heading`, `Text`, `ValidPosition`, `ValidHeading`) instead of `{"Success": "\n"}`. The 10.12 answer nests its values; every leaf element is read now. A `Failure` answer is an error.
 
 ### Documentation
+- README: firmware support levels (full from AXIS OS 10.12, read-only 8.40 to 9.80, nothing below).
 - README: troubleshooting for `Illegal instruction` with `--https` on a virtual machine CPU without AVX (the cause is in the TLS library; not fixed in vapx).
 
 ## v0.35.2
