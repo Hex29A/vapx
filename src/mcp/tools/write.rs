@@ -185,13 +185,19 @@ fn add_privacy_mask(args: &Args) -> anyhow::Result<Vec<Out>> {
     let display = (args.opt_i64("display_width")?.unwrap_or(1920), args.opt_i64("display_height")?.unwrap_or(1080));
     let cam = args.camera()?;
     let mut sensor_polygon = polygon.to_string();
+    let mut warning = String::new();
+    if cam.mask_rotation == 0 && !cam.mask_mirror {
+        if let Some(reported) = privacymask::reported_rotation(&cam.client).filter(|r| *r != 0) {
+            warning = privacymask::rotation_warning(reported);
+        }
+    }
     if cam.mask_rotation != 0 || cam.mask_mirror {
         let sensor = privacymask::sensor_resolution(&cam.client);
         sensor_polygon = privacymask::display_to_sensor(polygon, cam.mask_rotation, cam.mask_mirror, sensor, display)?;
     }
     privacymask::add_mask(&cam.client, name, &sensor_polygon)?;
     let note = if cam.mask_rotation != 0 { format!(" (auto-corrected for {}° rotation)", cam.mask_rotation) } else { String::new() };
-    Ok(text_out(format!("Added privacy mask '{}' on {}{}", name, cam.id, note)))
+    Ok(text_out(format!("Added privacy mask '{}' on {}{}{}", name, cam.id, note, warning)))
 }
 
 fn remove_privacy_mask(args: &Args) -> anyhow::Result<Vec<Out>> {
@@ -471,12 +477,21 @@ fn stop_clear_view(args: &Args) -> anyhow::Result<Vec<Out>> {
 
 // ---- events, snapshots, recordings, reboot ----
 
+/// How many events `poll_events` returns unless asked for more. A camera sends
+/// its whole current state first, which can be 80 events or more.
+const DEFAULT_MAX_EVENTS: i64 = 50;
+
 fn poll_events(args: &Args) -> anyhow::Result<Vec<Out>> {
     let seconds = args.opt_f64("duration")?.unwrap_or(5.0).clamp(1.0, 30.0);
     let topic = args.opt_str("topic_filter")?.filter(|t| !t.is_empty());
+    let max_events = usize::try_from(args.opt_i64("max_events")?.unwrap_or(DEFAULT_MAX_EVENTS).clamp(1, 500)).unwrap_or(50);
     let cam = args.camera()?;
-    let collected = events::poll_events(&cam.client, &cam.creds, &cam.host, topic, seconds)?;
-    let body = serde_json::to_string_pretty(&json!({"events_collected": collected.len(), "events": collected}))?;
+    let (collected, limited) = events::poll_events(&cam.client, &cam.creds, &cam.host, topic, seconds, max_events)?;
+    let body = serde_json::to_string_pretty(&json!({
+        "events_collected": collected.len(),
+        "limit_reached": limited,
+        "events": collected,
+    }))?;
     Ok(text_out(untrusted(&cam.id, "events", &body)))
 }
 

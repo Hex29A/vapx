@@ -27,7 +27,23 @@ pub fn create_profile(client: &VapixClient, name: &str, parameters: &str, descri
 pub fn remove_profile(client: &VapixClient, name: &str) -> anyhow::Result<()> {
     client.post_json(
         "/axis-cgi/streamprofile.cgi",
-        &json!({"apiVersion": "1.0", "method": "remove", "params": {"streamProfile": [{"name": name}]}}),
+        &json!({"apiVersion": "1.0", "method": "remove", "params": {"streamProfileName": [{"name": name}]}}),
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::vapix::testserver::{Reply, TestServer};
+
+    #[test]
+    fn remove_sends_stream_profile_name_key() {
+        let srv = TestServer::start(|_| Reply::Json(200, r#"{"apiVersion":"1.0","method":"remove","data":{}}"#));
+        remove_profile(&srv.client(), "vapxsmoke").unwrap();
+        let reqs = srv.requests();
+        let body = reqs.last().unwrap();
+        assert!(body.contains(r#""streamProfileName":[{"name":"vapxsmoke"}]"#), "{body}");
+        assert!(!body.contains(r#""streamProfile":"#), "{body}");
+    }
 }

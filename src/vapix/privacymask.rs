@@ -48,6 +48,34 @@ pub fn sensor_resolution(client: &VapixClient) -> (i64, i64) {
     read().unwrap_or((1920, 1080))
 }
 
+/// The rotation the camera reports (`ImageSource.I0.Rotation`: 0, 90, 180 or
+/// 270), or `None` when it cannot be read.
+///
+/// It is only a hint. Whether `add_mask` takes the polygon in the rotated
+/// image or in sensor coordinates differs between firmware versions, so the
+/// rotation alone does not say how to convert.
+pub fn reported_rotation(client: &VapixClient) -> Option<u16> {
+    let text = client
+        .get_text("/axis-cgi/param.cgi", &[("action", "list"), ("group", "ImageSource.I0.Rotation")])
+        .ok()?;
+    parse_rotation(&text)
+}
+
+fn parse_rotation(text: &str) -> Option<u16> {
+    let value = text.lines().find_map(|l| l.trim().rsplit_once('=').map(|(_, v)| v.trim()))?;
+    value.parse().ok().filter(|r| matches!(r, 0 | 90 | 180 | 270))
+}
+
+/// The note `add_privacy_mask` appends when the camera reports a rotation but
+/// no `mask_rotation` or `mask_mirror` is configured, so the polygon went to
+/// the camera as given.
+pub fn rotation_warning(reported: u16) -> String {
+    format!(
+        " WARNING: the camera reports a rotation of {reported}° but no mask_rotation is set for it in cameras.yaml, so the polygon was sent unchanged. \
+         Depending on the firmware the mask can land rotated by {reported}°: check it against a snapshot, and if it is in the wrong place remove it and set mask_rotation (and mask_mirror) for this camera."
+    )
+}
+
 /// Convert a polygon given in the coordinates of the displayed image (after the
 /// camera's rotation and mirroring) to sensor coordinates.
 pub fn display_to_sensor(
@@ -87,7 +115,16 @@ pub fn display_to_sensor(
 
 #[cfg(test)]
 mod tests {
-    use super::parse_masks;
+    use super::{parse_masks, parse_rotation, rotation_warning};
+
+    #[test]
+    fn reads_the_reported_rotation() {
+        assert_eq!(parse_rotation("root.ImageSource.I0.Rotation=180\n"), Some(180));
+        assert_eq!(parse_rotation("ImageSource.I0.Rotation=0"), Some(0));
+        assert_eq!(parse_rotation("# Error: nope"), None);
+        assert_eq!(parse_rotation("root.ImageSource.I0.Rotation=45"), None);
+        assert!(rotation_warning(180).contains("mask_rotation"));
+    }
 
     #[test]
     fn extracts_listpx() {

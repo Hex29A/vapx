@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+Fixes from a smoke test of five cameras on AXIS OS 12.11, 13.0 and 13.2 (#105).
+
+### Fixed
+- **`remove_stream_profile` works.** It sent the profile under `streamProfile`; the camera wants `streamProfileName` for `remove` (error 2003 before). A profile created with `create_stream_profile` can now be removed.
+- **`signedvideo status|enable|disable` find the setting.** The fallback read a `root.SignedVideo` group that does not exist; the switch is `Image.I<n>.MPEG.SignedVideo.Enabled`, one per video channel, and the fallback now reads and sets those.
+- **`streamstatus` lists live streams.** It asked `streamstatus.cgi` for `getStreamStatus`, which the API does not have (the camera answered "Method not supported"), then tried a WebSocket source that does not exist. It now calls `getAllStreams` and falls back to the configuration parameters as before.
+- **`audit` and `fleet_health` show the model.** They looked for a `Model` property; the product number is `ProdNbr`. `config add` shares the lookup.
+- **`ptz query` and the other PTZ commands on a fixed camera** say "This camera has no PTZ" instead of "Camera 1 does not map to any serial port".
+- **`vmd` and `get_motion_config` on a camera without VMD** point to AXIS Object Analytics (`vapx acap list`) instead of only saying "not available".
+- **`add_privacy_mask` no longer claims to detect rotation.** It converts only when `mask_rotation` or `mask_mirror` is set for the camera. When the camera reports a rotation and none is set, the result carries a warning to check the mask against a snapshot, because firmware versions differ in which coordinates they take.
+
+### Added
+- `rule list` reads the action rules over SOAP (`/vapix/services`, `GetActionRules`) on cameras that have no JSON action API, which is every firmware tested. The other `rule` subcommands still say that the action API is SOAP-only.
+- MCP `poll_events` takes `max_events` (1-500, default 50) and reports `limit_reached`. A camera first sends its whole current state, 80 events or more, which filled an assistant's context.
+- MCP: a call that leaves out a required argument and passes one the tool does not have (`id` for `light_id`, say) is told which argument is unknown and which the tool takes.
+
 ## v0.35.1
 
 ### Fixed

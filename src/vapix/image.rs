@@ -77,7 +77,7 @@ pub fn get_vmd(client: &VapixClient) -> anyhow::Result<String> {
         }
     }
     if result.is_empty() {
-        bail!("Video motion detection parameters not available on this camera. Use 'vapx discover' to check supported APIs.");
+        bail!(crate::vapix::vmd::NOT_AVAILABLE);
     }
     Ok(result)
 }

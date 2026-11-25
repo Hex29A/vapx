@@ -800,7 +800,7 @@ fn imaging_settings_can_be_read_and_only_existing_ones_set() {
 
 fn healthy_camera() -> (u16, Log) {
     fake_camera(vec![
-        json_route("/axis-cgi/basicdeviceinfo.cgi", r#"{"data":{"propertyList":{"Model":"P1375","SerialNumber":"S1"}}}"#),
+        json_route("/axis-cgi/basicdeviceinfo.cgi", r#"{"data":{"propertyList":{"ProdNbr":"P1375","SerialNumber":"S1"}}}"#),
         json_route(FIRMWARE, r#"{"data":{"activeFirmwareVersion":"11.11.1"}}"#),
         Route("/axis-cgi/param.cgi", "text/plain", "root.Network.UPnP.Enabled=yes\nroot.Network.SSH.Enabled=yes\n"),
     ])
