@@ -211,7 +211,7 @@ impl UserListCmd {
                     let users_str = v.trim_matches('"');
                     let user_list: Vec<serde_json::Value> = users_str
                         .split(',')
-                        .filter(|s| !s.is_empty())
+                        .filter(|s| !s.is_empty() && !users::is_web_access_group(s))
                         .map(|s| serde_json::Value::String(s.to_string()))
                         .collect();
                     map.insert(k.to_string(), serde_json::Value::Array(user_list));

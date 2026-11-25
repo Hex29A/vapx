@@ -14,9 +14,9 @@ fn legacy_request(client: &VapixClient, body: &serde_json::Value) -> anyhow::Res
                 match client.post_json("/axis-cgi/certmanagement.cgi", body) {
                     Ok(resp) => Ok(resp),
                     Err(_) => anyhow::bail!(
-                        "Certificate management API not available on this camera: neither \
-                         /config/rest/cert/v1 nor the legacy certificate.cgi answered. \
-                         Use 'vapx discover' to check supported APIs."
+                        "Certificate management needs AXIS OS 12 or later (REST API {REST_BASE}). \
+                         Older firmware manages certificates through the VAPIX SOAP certificate \
+                         service, which vapx does not support."
                     ),
                 }
             } else {
@@ -408,6 +408,17 @@ pub fn create_csr(
 mod tests {
     use super::*;
     use serde_json::Value;
+
+    /// AXIS OS 10.12: no REST cert API, no certificate.cgi, nothing but 404.
+    #[test]
+    fn cert_list_on_firmware_before_12_says_what_is_needed() {
+        use crate::vapix::testserver::{Reply, TestServer};
+        let srv = TestServer::start(|_| Reply::Text(404, "Not Found"));
+        let err = list(&srv.client()).unwrap_err().to_string();
+        assert!(err.contains("AXIS OS 12"), "{err}");
+        assert!(err.contains("SOAP"), "{err}");
+        assert!(!err.contains("legacy certificate.cgi answered"), "{err}");
+    }
 
     const LIST: &str = include_str!("testdata/cert_v1.json");
     const ONE: &str = include_str!("testdata/cert_v1_one.json");

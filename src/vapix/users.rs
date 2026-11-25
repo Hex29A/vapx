@@ -58,7 +58,7 @@ pub fn add(
         params.push(("strict_pwd", "1"));
     }
 
-    let text = client.post_form_text("/axis-cgi/pwdgrp.cgi", &params)?;
+    let text = strip_markup(&client.post_form_text("/axis-cgi/pwdgrp.cgi", &params)?);
     check_error(&text)?;
     Ok(text)
 }
@@ -66,7 +66,7 @@ pub fn add(
 /// Update an existing user account (change password).
 pub fn update(client: &VapixClient, user: &str, pwd: &str) -> anyhow::Result<String> {
     let params = [("action", "update"), ("user", user), ("pwd", pwd)];
-    let text = client.post_form_text("/axis-cgi/pwdgrp.cgi", &params)?;
+    let text = strip_markup(&client.post_form_text("/axis-cgi/pwdgrp.cgi", &params)?);
     check_error(&text)?;
     Ok(text)
 }
@@ -74,7 +74,7 @@ pub fn update(client: &VapixClient, user: &str, pwd: &str) -> anyhow::Result<Str
 /// Remove a user account.
 pub fn remove(client: &VapixClient, user: &str) -> anyhow::Result<String> {
     let params = [("action", "remove"), ("user", user)];
-    let text = client.get_text("/axis-cgi/pwdgrp.cgi", &params)?;
+    let text = strip_markup(&client.get_text("/axis-cgi/pwdgrp.cgi", &params)?);
     check_error(&text)?;
     Ok(text)
 }
@@ -143,6 +143,47 @@ pub fn plan_removal(list_text: &str, name: &str, login: &str) -> Removal {
     }
 }
 
+/// AXIS OS 10.x answers pwdgrp.cgi writes with a small HTML page
+/// (`<html>...Created account x.\r\n</body></html>`). Reduce it to its text.
+/// Text without markup is returned as it is.
+fn strip_markup(text: &str) -> String {
+    if !text.contains('<') {
+        return text.to_string();
+    }
+    let mut out = String::new();
+    let mut in_tag = false;
+    let mut in_title = false;
+    let mut tag = String::new();
+    for c in text.chars() {
+        match c {
+            '<' => {
+                in_tag = true;
+                tag.clear();
+            }
+            '>' if in_tag => {
+                in_tag = false;
+                let t = tag.trim().to_ascii_lowercase();
+                if t == "title" {
+                    in_title = true;
+                } else if t == "/title" {
+                    in_title = false;
+                }
+            }
+            _ if in_tag => tag.push(c),
+            _ if in_title => {}
+            _ => out.push(c),
+        }
+    }
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Names like `wwwa`, `wwwaop`, `wwwaovp`: the web-access groups AXIS OS 10.x
+/// lists next to the real accounts in the role lists (`www` plus one letter
+/// each for admin/operator/viewer/PTZ). They are groups, not people.
+pub fn is_web_access_group(name: &str) -> bool {
+    name.strip_prefix("www").is_some_and(|rest| !rest.is_empty() && rest.chars().all(|c| matches!(c, 'a' | 'o' | 'v' | 'p')))
+}
+
 /// pwdgrp.cgi answers 200 with an "Error:" body on failure.
 fn check_error(text: &str) -> anyhow::Result<()> {
     if text.contains("Error:") {
@@ -166,7 +207,7 @@ pub fn parse_users(text: &str) -> serde_json::Value {
             .trim_matches('"')
             .split(',')
             .map(|u| u.trim().to_string())
-            .filter(|u| !u.is_empty())
+            .filter(|u| !u.is_empty() && !is_web_access_group(u))
             .collect();
         for m in &members {
             by_user.entry(m.clone()).or_default().push(group.to_string());
@@ -227,5 +268,51 @@ mod removal_tests {
         let r = plan_removal(LIST, "ghost", "root");
         assert!(!r.exists);
         assert!(r.accounts.contains(&"admin1".to_string()) && !r.accounts.contains(&"stsuser".to_string()));
+    }
+}
+
+#[cfg(test)]
+mod firmware_10_tests {
+    use super::*;
+
+    /// Role lines as AXIS OS 10.12 prints them: group names mixed with accounts.
+    const LIST_10_12: &str = "users=\"alice\"\nadmin=\"wwwaop,wwwaov,alice,wwwap,root,wwwa,wwwao,wwwav,wwwaovp,wwwavp\"\noperator=\"vdo,wwwovp,wwwo,root,sdk,alice\"\nviewer=\"wwwv,wwwov,sdk,alice\"\n";
+
+    #[test]
+    fn web_access_groups_are_told_from_accounts() {
+        for g in ["wwwa", "wwwaop", "wwwaovp", "wwwv", "wwwovp"] {
+            assert!(is_web_access_group(g), "{g}");
+        }
+        for a in ["www", "www-data", "wwwadmin", "alice", "root", "wwwx", ""] {
+            assert!(!is_web_access_group(a), "{a}");
+        }
+    }
+
+    #[test]
+    fn parsed_users_do_not_include_web_access_groups() {
+        let v = parse_users(LIST_10_12);
+        let names: Vec<&str> = v["users"].as_array().unwrap().iter().map(|u| u["username"].as_str().unwrap()).collect();
+        assert_eq!(names, vec!["alice", "root", "sdk", "vdo"]);
+        assert_eq!(v["groups"]["admin"], serde_json::json!(["alice", "root"]));
+    }
+
+    #[test]
+    fn removal_planning_ignores_web_access_groups_as_admins() {
+        // alice is the only real admin besides root; wwwa* must not count as other admins.
+        let r = plan_removal("admin=\"wwwa,wwwaop,alice\"\nusers=\"alice\"\n", "alice", "root");
+        assert!(r.last_admin);
+    }
+
+    #[test]
+    fn an_html_answer_is_reduced_to_its_message() {
+        let html = "<html><head><title>User accounts</title></head><body bgcolor=#ffffff>Created account vapxtest.\r\n</body>\r\n\r\n</html>\r\n";
+        assert_eq!(strip_markup(html), "Created account vapxtest.");
+        assert_eq!(strip_markup("Created account x.\n"), "Created account x.\n");
+    }
+
+    #[test]
+    fn an_html_error_page_is_still_an_error() {
+        let html = "<html><body>Error: Account exists\r\n</body></html>";
+        assert!(check_error(&strip_markup(html)).is_err());
     }
 }
