@@ -29,6 +29,8 @@ fn camera(login_works: bool) -> u16 {
                 let line = head.lines().next().unwrap_or("");
                 let (status, body) = if line.contains("systemready.cgi") {
                     ("200 OK", r#"{"apiVersion":"1.4","data":{"systemready":"yes","needsetup":"yes","passphrasepolicy":"none"}}"#)
+                } else if line.contains("deviceselftest.cgi") {
+                    ("200 OK", r#"{"apiVersion":"1.0","method":"runSelfTest","data":{"testResult":"selftest-passed"}}"#)
                 } else if line.contains("pwdgrp.cgi") {
                     ("200 OK", "Created account root.")
                 } else if line.contains("basicdeviceinfo.cgi") && login_works {
@@ -155,5 +157,109 @@ fn a_password_from_a_file_works_and_stays_off_the_command_line() {
     assert!(out.status.success(), "{}", text(&out));
     assert!(std::fs::read_to_string(&creds).unwrap().contains("Chosen-Password-123"));
     assert!(!text(&out).contains("Warning: --pwd"), "{}", text(&out));
+    let _ = std::fs::remove_dir_all(&s.dir);
+}
+
+/// Writes a chosen password to a file for `--pwd-file`, so the test knows it.
+fn pwd_file(s: &Setup, pwd: &str) -> PathBuf {
+    let path = s.dir.join("pwd");
+    std::fs::write(&path, format!("{pwd}\n")).unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+    path
+}
+
+/// The `${NAME}` that cameras.yaml refers to for the password, if any.
+fn pass_reference(config: &Path) -> Option<String> {
+    let yaml = std::fs::read_to_string(config).unwrap();
+    let start = yaml.find("pass: \"${")? + "pass: \"${".len();
+    Some(yaml[start..start + yaml[start..].find('}')?].to_string())
+}
+
+const CHOSEN: &str = "Chosen-Password-123";
+
+#[test]
+fn an_existing_env_file_gets_the_password_and_the_config_a_reference() {
+    let s = setup("env-default", true);
+    let env = s.dir.join("env");
+    std::fs::write(&env, "VAPX_PASS_OTHER=x\n").unwrap();
+    let pwd = pwd_file(&s, CHOSEN);
+    let out = enroll(&s, camera(true), &["--pwd-file", pwd.to_str().unwrap()]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert!(!std::fs::read_to_string(&s.config).unwrap().contains(CHOSEN), "no clear text in cameras.yaml");
+    let var = pass_reference(&s.config).expect("cameras.yaml must refer to an env variable");
+    assert!(var.starts_with("VAPX_PASS_"), "{var}");
+    assert_eq!(std::fs::read_to_string(&env).unwrap(), format!("VAPX_PASS_OTHER=x\n{var}={CHOSEN}\n"));
+    assert_eq!(mode(&env), 0o600);
+    assert!(!text(&out).contains(CHOSEN), "{}", text(&out));
+    let _ = std::fs::remove_dir_all(&s.dir);
+}
+
+#[test]
+fn pass_env_creates_a_private_env_file() {
+    let s = setup("env-named", true);
+    let env = s.dir.join("env");
+    let pwd = pwd_file(&s, CHOSEN);
+    let out = enroll(&s, camera(true), &["--pwd-file", pwd.to_str().unwrap(), "--pass-env", "VAPX_PASS_LAB"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert_eq!(pass_reference(&s.config).as_deref(), Some("VAPX_PASS_LAB"));
+    assert_eq!(std::fs::read_to_string(&env).unwrap(), format!("VAPX_PASS_LAB={CHOSEN}\n"));
+    assert_eq!(mode(&env), 0o600);
+    let _ = std::fs::remove_dir_all(&s.dir);
+}
+
+#[test]
+fn a_taken_pass_env_name_stops_before_the_camera_is_touched() {
+    let s = setup("env-taken", true);
+    let env = s.dir.join("env");
+    std::fs::write(&env, "VAPX_PASS_LAB=old\n").unwrap();
+    let out = enroll(&s, camera(true), &["--pass-env", "VAPX_PASS_LAB"]);
+    assert!(!out.status.success(), "{}", text(&out));
+    assert!(text(&out).contains("already defined"), "{}", text(&out));
+    assert!(!s.config.exists());
+    assert!(!s.dir.join("xdg").exists(), "no account was created, so nothing needs recovering");
+    assert_eq!(std::fs::read_to_string(&env).unwrap(), "VAPX_PASS_LAB=old\n");
+    let _ = std::fs::remove_dir_all(&s.dir);
+}
+
+#[test]
+fn a_password_the_env_file_cannot_hold_stops_before_the_camera_is_touched() {
+    let s = setup("env-unsafe", true);
+    std::fs::write(s.dir.join("env"), "").unwrap();
+    let pwd = pwd_file(&s, "Chosen$Password 123");
+    let out = enroll(&s, camera(true), &["--pwd-file", pwd.to_str().unwrap()]);
+    assert!(!out.status.success(), "{}", text(&out));
+    assert!(text(&out).contains("--pass-inline"), "{}", text(&out));
+    assert!(!s.config.exists());
+    let _ = std::fs::remove_dir_all(&s.dir);
+}
+
+#[test]
+fn without_an_env_file_or_with_pass_inline_the_password_stays_in_the_config() {
+    for (tag, with_env, extra) in [("inline-noenv", false, None), ("inline-flag", true, Some("--pass-inline"))] {
+        let s = setup(tag, true);
+        let env = s.dir.join("env");
+        if with_env {
+            std::fs::write(&env, "VAPX_PASS_OTHER=x\n").unwrap();
+        }
+        let pwd = pwd_file(&s, CHOSEN);
+        let mut args = vec!["--pwd-file", pwd.to_str().unwrap()];
+        args.extend(extra);
+        let out = enroll(&s, camera(true), &args);
+        assert!(out.status.success(), "{}", text(&out));
+        assert!(std::fs::read_to_string(&s.config).unwrap().contains(CHOSEN), "{tag}");
+        assert_eq!(env.exists(), with_env, "{tag}");
+        if with_env {
+            assert_eq!(std::fs::read_to_string(&env).unwrap(), "VAPX_PASS_OTHER=x\n");
+        }
+        let _ = std::fs::remove_dir_all(&s.dir);
+    }
+}
+
+#[test]
+fn selftest_runs_before_the_account_and_is_reported() {
+    let s = setup("selftest", true);
+    let out = enroll(&s, camera(true), &["--selftest"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert!(text(&out).contains("selftest-passed"), "{}", text(&out));
     let _ = std::fs::remove_dir_all(&s.dir);
 }
