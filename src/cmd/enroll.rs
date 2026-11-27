@@ -3,11 +3,11 @@ use clap::{Args, ValueEnum};
 use crate::cmd::pwd::PwdArgs;
 use crate::config::cameras;
 use crate::config::credentials::Credentials;
-use crate::config::writer;
+use crate::config::{envfile, writer};
 use crate::enroll::{naming, password};
 use crate::output::format;
 use crate::vapix::client::VapixClient;
-use crate::vapix::{device, systemready, users};
+use crate::vapix::{device, selftest, systemready, users};
 
 #[derive(Clone, Copy, ValueEnum, PartialEq)]
 pub enum EnrollRole {
@@ -69,6 +69,25 @@ pub struct EnrollCmd {
     /// Also write the full result, including the password, to this file (mode 0600)
     #[arg(long)]
     pub out: Option<std::path::PathBuf>,
+
+    /// Keep the password in an env file and write `pass: "${NAME}"` to cameras.yaml.
+    /// This is the default, as VAPX_PASS_<CAMERA NAME>, when the env file already exists
+    #[arg(long, value_name = "NAME", conflicts_with = "pass_inline")]
+    pub pass_env: Option<String>,
+
+    /// The env file for the password (default: `env` next to cameras.yaml). Created with
+    /// mode 0600; the line is appended and nothing in it is rewritten
+    #[arg(long, value_name = "PATH", conflicts_with = "pass_inline")]
+    pub env_file: Option<std::path::PathBuf>,
+
+    /// Write the password in clear text to cameras.yaml even when an env file exists
+    #[arg(long)]
+    pub pass_inline: bool,
+
+    /// Run the device self-test before the account is created. It only works then,
+    /// while the camera is still in its initial setup (AXIS OS 12 and later)
+    #[arg(long)]
+    pub selftest: bool,
 
     /// Show what would happen without touching the camera or the config
     #[arg(long)]
@@ -162,6 +181,12 @@ impl EnrollCmd {
             }
         }
 
+        // Where the password goes, decided and checked before the camera is
+        // touched: an env name that is taken or a password the env file cannot
+        // hold must not be found after the account exists.
+        let config_path = cameras::config_write_path();
+        let env_plan = self.env_plan(&config_path, &pwd)?;
+
         if self.dry_run {
             format::ok(&serde_json::json!({
                 "dry_run": true,
@@ -176,10 +201,36 @@ impl EnrollCmd {
                     "derived from model and serial after the account is created — not knowable yet"
                 } else { "given on the command line" },
                 "group": self.to_group.clone(),
-                "would_write": cameras::config_write_path().display().to_string(),
+                "would_write": config_path.display().to_string(),
+                "password_storage": match &env_plan {
+                    Some(plan) => format!(
+                        "env file {} as {}",
+                        plan.path.display(),
+                        plan.name.as_deref().unwrap_or("VAPX_PASS_<CAMERA NAME>")
+                    ),
+                    None => "cameras.yaml (clear text)".to_string(),
+                },
+                "selftest": if self.selftest { "would run before the account is created" } else { "not requested" },
             }));
             return Ok(());
         }
+
+        // The self-test is only open before the account exists (afterwards
+        // the camera answers 2105 "not in preview mode"). Its result is
+        // reported; it does not stop the enrollment.
+        let selftest_result = if self.selftest {
+            let client = crate::cmd::make_client(
+                &self.host,
+                self.anonymous_creds(),
+                Some(self.timeout.unwrap_or(10).max(120)),
+            );
+            Some(match selftest::run_self_test(&client) {
+                Ok(resp) => resp.get("data").cloned().unwrap_or(resp),
+                Err(e) => serde_json::json!({ "error": e.to_string() }),
+            })
+        } else {
+            None
+        };
 
         // 3. Create the account. Unauthenticated: this is the one window in
         //    which that is possible, and it closes as soon as it succeeds.
@@ -238,22 +289,28 @@ impl EnrollCmd {
 
         // 6. Write the config entry. If this fails the credentials are still
         //    reported, so the camera is never left with a lost password.
-        let config_path = cameras::config_write_path();
-
-        let write_result = writer::add_camera(
-            &config_path,
-            &writer::NewCamera {
-                name: name.clone(),
-                host: self.host.clone(),
-                user: Some(self.account.clone()),
-                pass: Some(pwd.clone()),
-                https: false,
-                port: self.port,
-            },
-        );
+        //    With an env file the password goes there first, so cameras.yaml
+        //    never refers to a variable that holds nothing.
+        let write_result = store_in_env(env_plan.as_ref(), &name, &pwd).and_then(|var| {
+            writer::add_camera(
+                &config_path,
+                &writer::NewCamera {
+                    name: name.clone(),
+                    host: self.host.clone(),
+                    user: Some(self.account.clone()),
+                    pass: Some(match &var {
+                        Some(v) => format!("${{{}}}", v),
+                        None => pwd.clone(),
+                    }),
+                    https: false,
+                    port: self.port,
+                },
+            )?;
+            Ok(var)
+        });
 
         let group_result = match (&self.to_group, &write_result) {
-            (Some(g), Ok(())) => match writer::add_to_group(&config_path, g, &name) {
+            (Some(g), Ok(_)) => match writer::add_to_group(&config_path, g, &name) {
                 Ok(()) => Some(format!("added to group '{}'", g)),
                 Err(e) => Some(format!("group '{}' not updated: {}", g, e)),
             },
@@ -272,10 +329,21 @@ impl EnrollCmd {
             "passphrase_policy": policy.as_str(),
             "password": if self.reveal { pwd.clone() } else { mask(&pwd) },
             "config": match &write_result {
-                Ok(()) => format!("written to {}", config_path.display()),
+                Ok(_) => format!("written to {}", config_path.display()),
                 Err(e) => format!("NOT WRITTEN: {}", e),
             },
         });
+        if let (Ok(Some(var)), Some(plan)) = (&write_result, &env_plan) {
+            result["password_stored"] = serde_json::Value::String(format!(
+                "{} in {}; cameras.yaml refers to ${{{}}}, so load that file into the environment before running vapx",
+                var,
+                plan.path.display(),
+                var
+            ));
+        }
+        if let Some(st) = selftest_result {
+            result["selftest"] = st;
+        }
         if let Some(g) = group_result {
             result["group"] = serde_json::Value::String(g);
         }
@@ -344,18 +412,72 @@ impl EnrollCmd {
         }
     }
 
+    /// Where the password will be kept: an env file when `--pass-env` or
+    /// `--env-file` asks for it or the default env file exists, else
+    /// cameras.yaml. Fails before anything is created if the name is taken or
+    /// the password cannot be written to an env file unchanged.
+    fn env_plan(&self, config_path: &std::path::Path, pwd: &str) -> anyhow::Result<Option<EnvPlan>> {
+        if self.pass_inline {
+            return Ok(None);
+        }
+        let path = self.env_file.clone().unwrap_or_else(|| envfile::default_path(config_path));
+        if self.pass_env.is_none() && self.env_file.is_none() && !path.exists() {
+            return Ok(None);
+        }
+        if !envfile::value_is_safe(pwd) {
+            anyhow::bail!(
+                "The password cannot go into the env file {} unchanged: use only A-Z a-z 0-9 and -_.+=:@%#,/ \
+                 (generated passwords always do), or --pass-inline to keep it in cameras.yaml",
+                path.display()
+            );
+        }
+        if let Some(ref name) = self.pass_env {
+            envfile::validate_name(name)?;
+            if envfile::names(&path)?.iter().any(|n| n == name) {
+                anyhow::bail!("{} is already defined in {}; choose another --pass-env name", name, path.display());
+            }
+        } else {
+            // Read it now, so an unreadable file stops us before the camera does.
+            envfile::names(&path)?;
+        }
+        Ok(Some(EnvPlan { path, name: self.pass_env.clone() }))
+    }
+
     /// A client with no credentials, for the pre-account endpoints.
     fn anonymous_client(&self) -> VapixClient {
-        let creds = Credentials {
+        crate::cmd::make_client(&self.host, self.anonymous_creds(), self.timeout)
+    }
+
+    fn anonymous_creds(&self) -> Credentials {
+        Credentials {
             user: String::new(),
             pass: String::new(),
             https: false,
             verify_ssl: false,
             port: self.port.unwrap_or(80),
             timeout: self.timeout.unwrap_or(10),
-        };
-        crate::cmd::make_client(&self.host, creds, self.timeout)
+        }
     }
+}
+
+/// An env file the password goes into, and the variable name when it was
+/// given (otherwise it is derived from the camera name).
+struct EnvPlan {
+    path: std::path::PathBuf,
+    name: Option<String>,
+}
+
+/// Append the password to the env file, if there is one, and return the
+/// variable that holds it.
+fn store_in_env(plan: Option<&EnvPlan>, camera: &str, pwd: &str) -> anyhow::Result<Option<String>> {
+    let Some(plan) = plan else { return Ok(None) };
+    let var = match &plan.name {
+        Some(n) => n.clone(),
+        None => envfile::derive_name(camera, &envfile::names(&plan.path)?),
+    };
+    envfile::append(&plan.path, &var, pwd)
+        .map_err(|e| anyhow::anyhow!("password not stored in {}: {}", plan.path.display(), e))?;
+    Ok(Some(var))
 }
 
 fn mask(pw: &str) -> String {

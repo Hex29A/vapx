@@ -166,7 +166,7 @@ impl FwCmd {
             FwCommands::Commit { cam } => {
                 let (creds, resolved_host) = resolve_cam(&cam)?;
                 let client = crate::cmd::make_client(&resolved_host, creds, cam.timeout);
-                let resp = firmware::commit(&client)?;
+                let resp = commit_when_booted(&client, COMMIT_BOOT_WAIT)?;
                 let version = resp
                     .pointer("/data/firmwareVersion")
                     .and_then(|v| v.as_str())
@@ -499,9 +499,10 @@ pub(crate) fn finish_upgrade(
     expected_version: &str,
     auto_commit: bool,
 ) -> anyhow::Result<UpgradeDone> {
+    let deadline = Instant::now() + Duration::from_secs(wait_timeout);
     wait_for_reboot(host, creds.port, creds.clone(), wait_timeout, down_limit)?;
     let client = VapixClient::new(host, creds.port, creds, 30);
-    let active_version = firmware::active_version(&client)?;
+    let active_version = firmware::retry_while_booting(deadline, || {}, || firmware::active_version(&client))?;
     let verified = expected_version != "unknown" && active_version == expected_version;
     if auto_commit && !verified {
         anyhow::bail!(
@@ -513,10 +514,47 @@ pub(crate) fn finish_upgrade(
     }
     let mut committed = false;
     if auto_commit {
-        firmware::commit(&client)?;
+        let result = firmware::retry_while_booting(
+            deadline,
+            || eprintln!("The camera has not finished booting yet, retrying the commit..."),
+            || firmware::commit(&client),
+        );
+        if let Err(err) = result {
+            return Err(uncommitted_error(&client, &active_version, err));
+        }
         committed = true;
     }
     Ok(UpgradeDone { active_version, verified, committed })
+}
+
+/// How long `vapx fw commit` keeps retrying while the camera says it has not
+/// finished booting.
+const COMMIT_BOOT_WAIT: Duration = Duration::from_secs(120);
+
+/// Commit the running firmware, retrying for up to `wait` while the camera
+/// answers that it has not finished booting.
+fn commit_when_booted(client: &VapixClient, wait: Duration) -> anyhow::Result<serde_json::Value> {
+    firmware::retry_while_booting(
+        Instant::now() + wait,
+        || eprintln!("The camera has not finished booting yet, retrying the commit for up to {} s...", wait.as_secs()),
+        || firmware::commit(client),
+    )
+}
+
+/// The error for an auto-commit that did not happen: the firmware runs but is
+/// not committed, and the camera rolls back by itself unless someone commits.
+fn uncommitted_error(client: &VapixClient, active_version: &str, cause: anyhow::Error) -> anyhow::Error {
+    let left = match firmware::time_to_rollback(client) {
+        Some(secs) => format!("in about {} s", secs),
+        None => "when the commit window runs out (about 10 minutes after the upgrade)".to_string(),
+    };
+    anyhow::anyhow!(
+        "Firmware {} is running but was NOT committed ({:#}). The camera rolls back to the previous \
+         firmware {} unless `vapx fw commit` succeeds before then.",
+        active_version,
+        cause,
+        left
+    )
 }
 
 #[cfg(test)]
@@ -604,5 +642,109 @@ mod tests {
         assert!(!done.verified && !done.committed);
         assert_eq!(done.active_version, "12.1.0");
         assert_eq!(commits.load(Ordering::SeqCst), 0);
+    }
+
+    /// The commit answer an M1075-L gave on AXIS OS 12.11 for about a minute
+    /// after the upgrade reboot, while systemready already said yes.
+    const COMMIT_BOOTING: &str = r#"{"apiVersion":"1.10","method":"commit","error":{"code":500,"message":"The system hasn't finished booting yet."}}"#;
+    const STATUS_UNCOMMITTED: &str = r#"{"apiVersion":"1.10","method":"status","data":{"activeFirmwareVersion":"12.1.0","isCommitted":false,"timeToRollback":569,"pendingCommit":"started"}}"#;
+
+    /// A camera that is down for its first status request, then answers
+    /// status with `STATUS_UNCOMMITTED` and the first `booting` commits with
+    /// `COMMIT_BOOTING`.
+    fn booting_camera(booting: usize, commits: Arc<AtomicUsize>) -> TestServer {
+        let statuses = AtomicUsize::new(0);
+        TestServer::start(move |req| {
+            if req.contains("\"method\":\"commit\"") {
+                if commits.fetch_add(1, Ordering::SeqCst) < booting {
+                    Reply::Json(200, COMMIT_BOOTING)
+                } else {
+                    Reply::Json(200, COMMIT_OK)
+                }
+            } else if statuses.fetch_add(1, Ordering::SeqCst) == 0 {
+                Reply::Drop
+            } else {
+                Reply::Json(200, STATUS_UNCOMMITTED)
+            }
+        })
+    }
+
+    /// #110: the commit used to be tried once, so "not finished booting"
+    /// ended the upgrade uncommitted and the camera rolled back later.
+    #[test]
+    fn upgrade_retries_the_commit_while_the_camera_finishes_booting() {
+        let commits = Arc::new(AtomicUsize::new(0));
+        let server = booting_camera(3, commits.clone());
+        let done = finish(&server, "12.1.0", true, Duration::from_secs(5)).unwrap();
+        assert!(done.verified && done.committed);
+        assert_eq!(commits.load(Ordering::SeqCst), 4);
+    }
+
+    #[test]
+    fn upgrade_waits_for_a_status_that_says_not_finished_booting() {
+        let commits = Arc::new(AtomicUsize::new(0));
+        let seen = commits.clone();
+        let statuses = AtomicUsize::new(0);
+        let server = TestServer::start(move |req| {
+            if req.contains("\"method\":\"commit\"") {
+                seen.fetch_add(1, Ordering::SeqCst);
+                return Reply::Json(200, COMMIT_OK);
+            }
+            match statuses.fetch_add(1, Ordering::SeqCst) {
+                // Down, then up for the reboot probe, then not quite ready.
+                0 => Reply::Drop,
+                1 => Reply::Json(200, STATUS_12_1),
+                2 => Reply::Text(500, "The system hasn't finished booting yet."),
+                3 => Reply::Text(503, ""),
+                _ => Reply::Json(200, STATUS_12_1),
+            }
+        });
+        let done = finish(&server, "12.1.0", true, Duration::from_secs(5)).unwrap();
+        assert!(done.committed);
+        assert_eq!(commits.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn upgrade_that_cannot_commit_in_time_says_it_will_roll_back() {
+        let commits = Arc::new(AtomicUsize::new(0));
+        let server = booting_camera(usize::MAX, commits.clone());
+        let err = finish_upgrade("127.0.0.1", test_creds(server.port), 2, Duration::from_secs(1), "12.1.0", true)
+            .err()
+            .expect("must fail");
+        let text = err.to_string();
+        assert!(text.contains("NOT committed") && text.contains("569 s") && text.contains("vapx fw commit"), "{text}");
+        assert!(commits.load(Ordering::SeqCst) > 1, "the commit must be retried");
+    }
+
+    #[test]
+    fn fw_commit_retries_while_the_camera_finishes_booting() {
+        let commits = Arc::new(AtomicUsize::new(0));
+        let server = booting_camera(2, commits.clone());
+        let resp = commit_when_booted(&server.client(), Duration::from_secs(5)).unwrap();
+        assert_eq!(resp.pointer("/data/firmwareVersion").and_then(|v| v.as_str()), Some("12.1.0"));
+        assert_eq!(commits.load(Ordering::SeqCst), 3);
+    }
+
+    #[test]
+    fn other_commit_errors_are_not_retried() {
+        let commits = Arc::new(AtomicUsize::new(0));
+        let seen = commits.clone();
+        let server = TestServer::start(move |_| {
+            seen.fetch_add(1, Ordering::SeqCst);
+            Reply::Json(200, r#"{"apiVersion":"1.10","error":{"code":2,"message":"Nothing to commit"}}"#)
+        });
+        assert!(commit_when_booted(&server.client(), Duration::from_secs(5)).is_err());
+        assert_eq!(commits.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn still_booting_is_recognized_in_its_forms() {
+        use crate::vapix::client::HttpError;
+        let http = |status, message: &str| anyhow::Error::from(HttpError { status, message: message.into() });
+        assert!(firmware::is_still_booting(&anyhow::anyhow!("VAPIX error 500: The system hasn't finished booting yet.")));
+        assert!(firmware::is_still_booting(&http(500, "The system hasn't finished booting yet.")));
+        assert!(firmware::is_still_booting(&http(503, "")));
+        assert!(!firmware::is_still_booting(&http(500, "The server encountered an error")));
+        assert!(!firmware::is_still_booting(&http(401, "Unauthorized")));
     }
 }

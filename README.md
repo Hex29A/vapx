@@ -297,6 +297,12 @@ vapx enroll 192.168.0.90 --out creds.json     # full result to a 0600 file
 vapx enroll 192.168.0.90 --pwd-file ./pwd     # a password of your own (--pwd-env works too); else one is generated
 # If the account is created but the login or the config write then fails, the password is saved in a
 # 0600 file (the --out file, or enroll-<host>.recovery.json in the config directory) and the message names it.
+vapx enroll 192.168.0.90 --pass-env VAPX_PASS_ENTRANCE  # password to the env file, pass: "${VAPX_PASS_ENTRANCE}" in cameras.yaml
+vapx enroll 192.168.0.90 --selftest           # run the device self-test first (only possible before enrollment)
+# Env file: `env` next to cameras.yaml (or --env-file PATH), mode 0600, one NAME=value line appended per camera.
+# When that file already exists it is used by default, as VAPX_PASS_<CAMERA NAME>; --pass-inline keeps the
+# password in cameras.yaml instead. Load it before running vapx, e.g. `set -a; . "$(dirname "$VAPX_CONFIG")/env"; set +a`,
+# or `docker run --env-file`.
 
 # The password is masked in the output by default:
 #   "password": "@6… (20 chars)"
@@ -317,6 +323,10 @@ BOOT=$(vapx systemready mycam | jq -r .data.bootid)
 vapx fw factory-default mycam --mode soft --yes   # --yes skips the confirmation
 # `fw upgrade --factory-default soft|hard` asks the same way (--yes). `fw upgrade --wait` waits for the
 # camera to go down and come back, checks it runs the new version, and only then does --auto-commit commit.
+# The firmware API can answer "The system hasn't finished booting yet." for a minute after the reboot, even
+# when systemready says yes: the status and the commit are retried until --wait-timeout. If the commit still
+# fails, the command exits non-zero and says how long is left before the camera rolls back.
+# `vapx fw commit` retries the same answer for up to 120 s.
 vapx systemready mycam --until-ready 300 --after-bootid "$BOOT"
 
 # Rename a camera, updating its group memberships too. The name enroll

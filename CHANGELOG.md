@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.36.0
+
+Findings from a firmware test of an AXIS M1075-L, AXIS OS 11.11 to 12.11 (#110, #111).
+
+### Fixed
+- **`fw upgrade --wait --auto-commit` no longer gives up while the camera finishes booting.** For about a minute after the upgrade reboot the firmware API answered `500 "The system hasn't finished booting yet."`, while `systemready` already said yes. The commit was tried once, so the firmware stayed uncommitted and the camera rolled back after ten minutes. The status and the commit are now retried on that answer (and on HTTP 503) until `--wait-timeout`. A commit that still fails exits non-zero and says that the firmware is uncommitted and how many seconds are left before the rollback. The same applies to the `firmware_upgrade` MCP tool.
+- **`fw commit` retries** the same answer for up to 120 seconds.
+
+### Added
+- **`enroll --pass-env NAME`** writes `pass: "${NAME}"` to cameras.yaml and appends `NAME=<password>` to an env file (`env` next to cameras.yaml, or `--env-file PATH`), created with mode 0600. When that file already exists it is the default, as `VAPX_PASS_<CAMERA NAME>`; `--pass-inline` keeps the password in cameras.yaml as before. A taken name, or a password with characters that a shell and a Docker env file read differently, stops the enrollment before the camera is touched.
+- **`enroll --selftest`** runs the device self-test before the account is created, the only time the camera allows it, and includes the result in the output.
+
 ## v0.35.3
 
 Fixes from a firmware test on AXIS OS 10.12 (#108).
