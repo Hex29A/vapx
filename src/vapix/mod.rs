@@ -15,6 +15,8 @@ pub mod disk;
 pub mod o3c;
 pub mod events;
 pub mod firmware;
+#[cfg(test)]
+mod fixtures_10_12;
 pub mod geolocation;
 pub mod guardtour;
 pub mod image;

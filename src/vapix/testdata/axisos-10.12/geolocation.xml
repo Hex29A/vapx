@@ -1,0 +1,14 @@
+<PositionResponse SchemaVersion="1.0">
+<Success>
+<GetSuccess>
+<Location>
+<Lat>00.000000000</Lat>
+<Lng>000.000000000</Lng>
+<Heading>0.000000</Heading>
+</Location>
+<Text></Text>
+<ValidPosition>false</ValidPosition>
+<ValidHeading>false</ValidHeading>
+</GetSuccess>
+</Success>
+</PositionResponse>

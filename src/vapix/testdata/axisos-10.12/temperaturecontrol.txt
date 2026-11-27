@@ -1,0 +1,17 @@
+Sensor.S0.Name=Main
+Sensor.S0.Celsius=40.19
+Sensor.S0.Fahrenheit=104.34
+Sensor.S1.Name=CPU
+Sensor.S1.Celsius=43.12
+Sensor.S1.Fahrenheit=109.62
+Sensor.S2.Name=IR0
+Sensor.S2.Celsius=33.14
+Sensor.S2.Fahrenheit=91.65
+Sensor.S3.Name=Heater
+Sensor.S3.Celsius=33.56
+Sensor.S3.Fahrenheit=92.40
+Sensor.S4.Name=Sensor
+Sensor.S4.Celsius=49.70
+Sensor.S4.Fahrenheit=121.45
+Heater.H0.Status=Stopped
+Heater.H0.TimeUntilStop=0
