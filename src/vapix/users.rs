@@ -195,19 +195,54 @@ fn check_error(text: &str) -> anyhow::Result<()> {
 /// Accounts created by Axis services rather than people.
 const SERVICE_ACCOUNTS: &[&str] = &["stsuser", "AxisDeviceMgmt", "pfagentvapix"];
 
+/// The groups that hold people's accounts on every AXIS OS release.
+const ACCOUNT_GROUPS: &[&str] = &["root", "users", "admin", "operator", "viewer", "ptz", "digusers"];
+
+/// The names in the `list` text that are accounts, when the text needs telling
+/// apart. AXIS OS 10.x prints every system group (`vdo`, `sdk`, `ptzadm`, ...)
+/// and puts system users such as `sdk` and `debugar` in the role lines; there
+/// the accounts are `root` and the members of `users`. Newer firmware prints
+/// only the role groups, and every member is an account: `None`.
+pub fn accounts_in(text: &str) -> Option<std::collections::HashSet<String>> {
+    let mut users = None;
+    let mut system_groups = false;
+    for line in text.lines() {
+        let Some((group, rest)) = line.trim().split_once('=') else { continue };
+        let group = group.trim();
+        if group == "users" {
+            users = Some(rest.trim_matches('"').split(',').map(|u| u.trim().to_string()).filter(|u| !u.is_empty()).collect::<std::collections::HashSet<_>>());
+        } else if !ACCOUNT_GROUPS.contains(&group) {
+            system_groups = true;
+        }
+    }
+    if !system_groups {
+        return None;
+    }
+    let mut accounts = users?;
+    accounts.insert("root".to_string());
+    Some(accounts)
+}
+
 /// `{groups: {group: [user]}, users: [{username, groups, is_service_account}]}`
 /// from the `list` text (`users="root,viewer"` lines), users sorted by name.
+/// Web-access groups and, on firmware that lists them, system users and
+/// system groups are left out (see [`accounts_in`]).
 pub fn parse_users(text: &str) -> serde_json::Value {
+    let accounts = accounts_in(text);
     let mut groups = serde_json::Map::new();
     let mut by_user: std::collections::BTreeMap<String, Vec<String>> = std::collections::BTreeMap::new();
     for line in text.lines() {
         let Some((group, rest)) = line.trim().split_once('=') else { continue };
         let group = group.trim();
+        if accounts.is_some() && !ACCOUNT_GROUPS.contains(&group) {
+            continue;
+        }
         let members: Vec<String> = rest
             .trim_matches('"')
             .split(',')
             .map(|u| u.trim().to_string())
             .filter(|u| !u.is_empty() && !is_web_access_group(u))
+            .filter(|u| accounts.as_ref().is_none_or(|a| a.contains(u)))
             .collect();
         for m in &members {
             by_user.entry(m.clone()).or_default().push(group.to_string());

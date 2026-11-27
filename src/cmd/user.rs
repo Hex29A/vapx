@@ -198,6 +198,8 @@ impl UserListCmd {
         } else {
             let mut map = serde_json::Map::new();
             let mut hidden = 0usize;
+            // Older firmware puts system users in the role lines too.
+            let accounts = if self.all { None } else { users::accounts_in(&text) };
             for line in text.lines() {
                 let line = line.trim();
                 if line.is_empty() {
@@ -212,6 +214,7 @@ impl UserListCmd {
                     let user_list: Vec<serde_json::Value> = users_str
                         .split(',')
                         .filter(|s| !s.is_empty() && !users::is_web_access_group(s))
+                        .filter(|s| accounts.as_ref().is_none_or(|a| a.contains(*s)))
                         .map(|s| serde_json::Value::String(s.to_string()))
                         .collect();
                     map.insert(k.to_string(), serde_json::Value::Array(user_list));

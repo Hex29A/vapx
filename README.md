@@ -885,6 +885,26 @@ The tested range is the one the commands are checked against; a command that
 a camera does not have is reported as not supported on that camera, not as a
 failure.
 
+### Checking a camera: `scripts/fw-compat.sh`
+
+```
+scripts/fw-compat.sh mycam              # reading: about 45 read-only commands
+scripts/fw-compat.sh --write mycam      # plus reversible writes, checked against a parameter baseline
+```
+
+The script reads the firmware version first and applies the levels above: from
+10.12 everything runs, from 8.40 only the reading phase, and below 8.40 it stops
+with a message. The write phase takes a parameter backup, changes and undoes a
+parameter, an overlay, a viewer account and (when it is off) the SSH switch,
+and compares a second backup with the first. Every command's output, a
+`results.tsv` and a `column.md` for a compatibility table are written to an
+output directory (`--out`); they contain serial numbers and addresses, so keep
+them private. Needs `jq`.
+
+Responses recorded from an AXIS OS 10.12 camera are in
+`src/vapix/testdata/axisos-10.12/`, and `src/vapix/fixtures_10_12.rs` runs the
+older-firmware code paths against them in CI.
+
 ## Authentication
 
 vapx auto-negotiates authentication:

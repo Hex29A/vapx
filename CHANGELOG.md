@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.36.1
+
+Firmware compatibility test script and recorded AXIS OS 10.12 responses (#113).
+
+### Fixed
+- **`user list` on AXIS OS 10.x lists only the accounts.** That firmware prints every system group and puts system users (`sdk`, `vdo`, `ptzadm`, `debugar`) in the role lines; they came out as accounts, about 70 of them in `get_users` and the MCP account list. When the list carries the system groups, the accounts are now `root` and the members of `users`. `user remove` no longer counts such a system user as another admin, so the last-admin check holds on 10.x. Newer firmware is unaffected. `user list --all` still shows everything.
+
+### Added
+- **`scripts/fw-compat.sh`**: a smoke test that runs a fixed set of read-only commands against one camera, and with `--write` reversible changes checked against a parameter baseline, and reports pass, n/a or fail per command. It applies the support levels: full from AXIS OS 10.12, reading only from 8.40, nothing below.
+- **Recorded AXIS OS 10.12 responses** in `src/vapix/testdata/axisos-10.12/` (sanitized), with tests that run the older-firmware code paths against them: MQTT API 1.5, no certificate API, the user list with system groups, SOAP action rules, disks without `properties.cgi`, SSH without the account API.
+
 ## v0.36.0
 
 Findings from a firmware test of an AXIS M1075-L, AXIS OS 11.11 to 12.11 (#110, #111).
